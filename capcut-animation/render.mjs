@@ -12,7 +12,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/nod
 const root = dirname(fileURLToPath(import.meta.url));
 const [outDir = "build/frames", fpsArg = "30", workersArg = "4", only] = process.argv.slice(2);
 const FPS = +fpsArg, WORKERS = +workersArg, DUR = 30;
-const types = { ".html": "text/html", ".ttf": "font/ttf" };
+const types = { ".html": "text/html", ".ttf": "font/ttf", ".jpg": "image/jpeg" };
 
 const server = createServer(async (req, res) => {
   try {
@@ -21,7 +21,7 @@ const server = createServer(async (req, res) => {
     res.end(await readFile(p));
   } catch { res.writeHead(404); res.end(); }
 }).listen(0);
-const url = `http://127.0.0.1:${server.address().port}/scene.html`;
+const url = `http://127.0.0.1:${server.address().port}/${process.env.SCENE || "scene.html"}`;
 
 await mkdir(outDir, { recursive: true });
 const jobs = only ? only.split(",").map(Number).map(t => ({ t, name: `t${t.toFixed(2)}.png` }))

@@ -405,6 +405,14 @@ sfx(sfx_pop(0.7), 27.0, 0.5)
 sfx(crash(), 27.0, 0.2)
 sfx(sfx_sparkle(), 28.0, 0.35)
 
+if "--family" in sys.argv:  # family pops out of the monitor + kids hopping
+    for i in range(4):
+        sfx(sfx_pop(1.0 + 0.15 * i), 22.0 + i * 0.07, 0.45, -0.6 + 0.2 * i)
+    sfx(sfx_sparkle(), 19.5, 0.4)
+    for ts in (25.5, 26.0, 26.5):
+        sfx(sfx_boing(), ts, 0.18, -0.5)
+    sfx(sfx_boing(), 27.4, 0.3, -0.4)
+
 # ---------------------------------------------------------------- master
 mix = np.stack([L, R], axis=1)
 mix /= np.max(np.abs(mix)) + 1e-9
@@ -413,7 +421,8 @@ fade = np.clip((DUR - np.arange(N) / SR) / 0.4, 0, 1)
 mix *= fade[:, None] * 0.89
 pcm = (mix * 32767).astype("<i2")
 
-with wave.open(sys.argv[1] if len(sys.argv) > 1 else "bgm.wav", "wb") as w:
+out = next((a for a in sys.argv[1:] if not a.startswith("--")), "bgm.wav")
+with wave.open(out, "wb") as w:
     w.setnchannels(2)
     w.setsampwidth(2)
     w.setframerate(SR)
