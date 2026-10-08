@@ -127,7 +127,19 @@ const PH = {
   family: [640, 430, 853], kids: [640, 420, 420], dad: [300, 250, 440],
   boy: [515, 370, 330], girl: [750, 390, 330], mom: [1010, 270, 440],
 };
+// new photos generated from the original (people cut out & regrouped / restyled), see gen_photos.py
+const GEN = {};
+for (const k of ["beach", "boys", "girls", "kids2", "party", "night", "retro", "polaroids", "comic", "studio"]) {
+  GEN[k] = new Image(); GEN[k].src = `assets/gen/${k}.jpg`; PH[k] = null;
+}
 function drawPhoto(key, x, y, w, h, lt) {
+  if (GEN[key]) {
+    const z = 1 + .08 * (.5 + .5 * Math.sin(lt * .6));
+    let rw = 1280 / z, rh = rw * h / w;
+    if (rh > 853 / z) { rh = 853 / z; rw = rh * w / h; }
+    ctx.drawImage(GEN[key], (1280 - rw) / 2, (853 - rh) / 2, rw, rh, x, y, w, h);
+    return;
+  }
   const [fx, fy, sz] = PH[key];
   const z = 1 + .06 * (.5 + .5 * Math.sin(lt * .6)); // gentle Ken Burns
   let rh = sz / z, rw = rh * w / h;
@@ -144,7 +156,7 @@ function drawThumb(type, x, y, w, h, lt, opts = {}) {
   rr(x, y, w, h, opts.r ?? Math.min(w, h) * .12);
   ctx.clip();
   const u = Math.min(w, h), cx = x + w / 2, cy = y + h / 2;
-  if (PH[type]) drawPhoto(type, x, y, w, h, lt);
+  if (type in PH) drawPhoto(type, x, y, w, h, lt);
   else if (type === "toon") drawToonPark(x, y, w, h, lt);
   else if (type === "cat") {
     ctx.fillStyle = "#FFE0A8"; ctx.fillRect(x, y, w, h);
@@ -254,19 +266,19 @@ const PV = { x: 780, y: 186, w: 470, h: 264 };
 const TL = { x: 550, y: 466, w: 920, h: 226 };
 const TRACK = { video: [500, 58], text: [566, 24], fx: [596, 24], audio: [628, 50] };
 const CLIPS = [
-  { type: "family", w: 160, land: 3.5 },
-  { type: "kids", w: 200, land: 4.0 },
-  { type: "mom", w: 170, land: 4.5 },
-  { type: "boy", w: 190, land: 5.0 },
-  { type: "dad", w: 150, land: 5.5 },
+  { type: "beach", w: 160, land: 3.5 },
+  { type: "boys", w: 200, land: 4.0 },
+  { type: "girls", w: 170, land: 4.5 },
+  { type: "kids2", w: 190, land: 5.0 },
+  { type: "party", w: 150, land: 5.5 },
 ];
 { let x = 575; for (const c of CLIPS) { c.x = x; x += c.w; } }
 const CUTS = [{ t: 7.5, x: 650 }, { t: 8.0, x: 845 }, { t: 8.5, x: 1000 }, { t: 9.0, x: 1180 }, { t: 9.5, x: 1360 }];
 const TRANS = [
-  { t: 11.5, name: "SWIPE!", kind: "swipe", a: "dad", b: "girl", col: C.blue },
-  { t: 12.5, name: "SPIN!", kind: "spin", a: "girl", b: "mom", col: C.yellow },
-  { t: 13.5, name: "WIPE!", kind: "wipe", a: "mom", b: "boy", col: C.mint },
-  { t: 14.5, name: "GLITCH!", kind: "glitch", a: "boy", b: "family", col: C.pink },
+  { t: 11.5, name: "SWIPE!", kind: "swipe", a: "retro", b: "comic", col: C.blue },
+  { t: 12.5, name: "SPIN!", kind: "spin", a: "comic", b: "polaroids", col: C.yellow },
+  { t: 13.5, name: "WIPE!", kind: "wipe", a: "polaroids", b: "night", col: C.mint },
+  { t: 14.5, name: "GLITCH!", kind: "glitch", a: "night", b: "studio", col: C.pink },
 ];
 
 // ------------------------------------------------------------------ Opus (the editor!)
@@ -823,7 +835,7 @@ function drawPhone(cx, cy, w, h, t, rot = 0) {
   ctx.shadowColor = "transparent";
   const sx = -w / 2 + w * .06, sy = -h / 2 + w * .06, sw = w * .88, sh = h - w * .12;
   // the finished edit, cut to the beat
-  const order = ["family", "toon", "kids", "dad", "mom", "toon"];
+  const order = ["polaroids", "toon", "studio", "beach", "retro", "party"];
   const k = Math.floor(Math.max(0, t - 27) / BEAT) % 6;
   const zz = 1 + .08 * Math.exp(-((t % BEAT)) * 8);
   ctx.save(); rr(sx, sy, sw, sh, w * .1); ctx.clip();
@@ -1009,7 +1021,7 @@ function previewFrame(t, x, y, w, h) {
     return;
   }
   if (t < 7) { const k = CLIPS.filter(c => t >= c.land).length - 1; T(CLIPS[Math.max(0, k)].type); return; }
-  if (t < 11.35) { T(t < 9.5 ? CLIPS[Math.min(3, Math.floor((t - 7) / .5))]?.type || "family" : "dad"); return; }
+  if (t < 11.35) { T(t < 9.5 ? CLIPS[Math.min(3, Math.floor((t - 7) / .5))]?.type || "beach" : "party"); return; }
   if (t < 15) {
     let cur = TRANS[0].a, done = false;
     for (const tr of TRANS) {
@@ -1024,7 +1036,7 @@ function previewFrame(t, x, y, w, h) {
     let z = 1;
     if (t >= 20) z = 1 + .35 * E.out(seg(t, 20, 20.15)) - .3 * E.inOut(seg(t, 20.15, 20.5));
     ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(z, z); ctx.translate(-x - w / 2, -y - h / 2);
-    T("family");
+    T("studio");
     if (t >= 19.5) { // CARTOON filter: the real photo turns into the toon family
       const q = E.inOut(seg(t, 19.5, 19.85)), R = q * Math.hypot(w, h) / 2;
       ctx.save(); circle(x + w / 2, y + h / 2, R); ctx.clip(); T("toon"); ctx.restore();
@@ -1049,7 +1061,7 @@ function previewFrame(t, x, y, w, h) {
   }
   if (t < 22) { T("toon", 20.5); return; } // frozen frame
   if (t < 25) { // beat-synced montage: hard cut on every beat + zoom punch
-    const order = ["toon", "family", "girl", "dad", "boy", "mom"];
+    const order = ["beach", "boys", "girls", "kids2", "party", "night"];
     const k = Math.floor((t - 22) / BEAT) % 6, zz = 1 + .12 * pulse(t, 7);
     ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.scale(zz, zz); ctx.translate(-x - w / 2, -y - h / 2);
     T(order[k]); ctx.restore();
@@ -1551,6 +1563,7 @@ window.ready = (async () => {
   await document.fonts.load(F(700, 20)); await document.fonts.load(F(600, 20)); await document.fonts.load(F(500, 20));
   await document.fonts.load("120px Pacifico");
   await PHOTO.decode();
+  await Promise.all(Object.values(GEN).map(im => im.decode()));
   renderFrame(0);
   return true;
 })();
