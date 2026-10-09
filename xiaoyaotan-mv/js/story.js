@@ -194,8 +194,9 @@
       const span = (list, a, b, src, sec) => {
         const ids = Array.isArray(list) ? list : [list];
         const res = [];
-        ids.forEach((id, k) => {
-          const x = k === 0 ? a : g.nearestDown(a + ((b - a) * k) / ids.length);
+        ids.forEach((it, k) => {
+          const id = typeof it === 'object' ? it.id : it;
+          const x = typeof it === 'object' && it.at != null ? it.at : k === 0 ? a : g.nearestDown(a + ((b - a) * k) / ids.length);
           res.push({ start: x, scene: id, src, sec });
         });
         return res;
@@ -346,9 +347,12 @@
       if (atSection && sec.type === 'chorus') type = 'slash';
       else if (s.scene === 'poem') type = 'ink';
       else if (isNight(s.scene) !== isNight(prevS.scene)) type = 'iris';
-      if (sb && sb.trans && s.line != null && sb.trans[s.line + 1]) type = sb.trans[s.line + 1];
+      // 分镜表按镜头 id 指定转场：字符串类型，或 {type, dur, x, y, color}
+      const st = sb && sb.trans && sb.trans[s.scene];
+      const so = st && typeof st === 'object' ? st : null;
+      if (st) type = so ? so.type : st;
       const d = type === 'cut' ? 0.001 : type === 'slash' ? Math.max(0.35, per * 0.6) : Math.min(1.4, Math.max(0.5, per));
-      s.trans = { type, dur: d };
+      s.trans = { type, dur: so && so.dur != null ? so.dur : type === 'flash' ? 0.001 : d, x: so && so.x, y: so && so.y, color: so && so.color };
     });
 
     // 5) 歌词逐字时间（落在十六分音符网格上）
@@ -399,8 +403,8 @@
     const title = { start: tStart, stamps, seal: g.time(b0 + 3 * stepB), sub: g.time(b0 + 4 * stepB), end: Math.max(titleEnd, g.time(b0 + 5 * stepB)), credits };
 
     return {
-      duration: dur, segments: segs, lines, fx: fxEvents, drunk, title,
-      end: { start: endStart, fade: dur - 1.6 },
+      duration: dur, segments: segs, lines, fx: fxEvents, drunk, title: sb && sb.titleCard === false ? null : title,
+      end: sb && sb.endCard === false ? null : { start: endStart, fade: dur - 1.6 },
       sections: secs,
       sceneAt,
       lineAt(t) {

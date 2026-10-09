@@ -44,6 +44,14 @@
         be: (d) => Math.exp(-Math.max(0, b.since) / d) * (0.4 + 0.6 * b.str),
         de: (d) => Math.exp(-Math.max(0, b.sinceDown) / d),
         rms: se(env, 'rms', t), onset: se(env, 'onset', t), low: se(env, 'low', t), high: se(env, 'high', t),
+        line: seg.line != null && this.tl.lines ? this.tl.lines[seg.line] : null,
+        // 本句第 k 个字（不计标点空格）实际唱出的时间；没有歌词时为 null
+        charT: (k) => {
+          const ln = seg.line != null && this.tl.lines ? this.tl.lines[seg.line] : null;
+          if (!ln) return null;
+          const v = ln.reveal.filter((x) => x != null);
+          return v.length ? v[Math.max(0, Math.min(v.length - 1, k))] : null;
+        },
       };
     }
     drunkAt(t) {
@@ -73,7 +81,7 @@
     }
 
     // 转场：新场景画到缓冲，再用遮罩合成
-    composite(g, type, p, seed, night) {
+    composite(g, type, p, seed, night, trans) {
       const gb = this.buf.g;
       gb.save();
       gb.setTransform(this.S, 0, 0, this.S, 0, 0);
@@ -95,6 +103,19 @@
         const pos = lerp(-420, W + 420, easeInOut(p));
         gb.fillStyle = '#fff';
         gb.beginPath(); gb.moveTo(-100, -100); gb.lineTo(pos + 260, -100); gb.lineTo(pos - 260, H + 100); gb.lineTo(-100, H + 100); gb.closePath(); gb.fill();
+      } else if (type === 'fade') {
+        gb.globalCompositeOperation = 'source-over';
+      } else if (type && type.startsWith('wipe')) {
+        // 软边横扫：右侧随进度推进，边缘 160px 渐隐
+        const pos = lerp(-200, W + 200, easeInOut(p));
+        const gr = gb.createLinearGradient(pos - 160, 0, pos + 160, 0);
+        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
+      } else if (type === 'iris' && trans && trans.x != null) {
+        const r = easeInOut(p) * 1500 + 1;
+        const gr = gb.createRadialGradient(trans.x, trans.y, r * 0.8, trans.x, trans.y, r);
+        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
       } else if (type === 'scroll') {
         const w = easeInOut(p) * W;
         gb.fillStyle = '#fff'; gb.fillRect(640 - w / 2, 0, w, H);
@@ -111,6 +132,7 @@
         }
         g.fill();
       }
+      if (type === 'fade') g.globalAlpha = smooth(p);
       if (type === 'fog') {
         g.fillStyle = rgba(night ? '#c8cde0' : '#f5efe2', 0.7 * Math.sin(Math.PI * p));
         g.fillRect(0, 0, W, H);
@@ -118,6 +140,25 @@
       }
       g.drawImage(this.buf.c, 0, 0, W, H);
       g.globalAlpha = 1;
+      if (type && type.startsWith('wipe')) {
+        // 横扫的前缘带一道有颜色的雾/雨/尘/浪
+        const kind = type.split(':')[1] || 'mist';
+        const col = { wind: '#e8dcc0', rain: '#b8c4cc', cloud: '#ffffff', dust: '#c9a77a', wave: '#d8eef4', snow: '#ffffff', mist: '#eef2f2' }[kind] || '#ffffff';
+        const pos = lerp(-200, W + 200, easeInOut(p));
+        const a = Math.sin(Math.PI * p);
+        g.save();
+        const gr = g.createLinearGradient(pos - 260, 0, pos + 120, 0);
+        gr.addColorStop(0, rgba(col, 0)); gr.addColorStop(0.6, rgba(col, 0.75 * a)); gr.addColorStop(1, rgba(col, 0));
+        g.fillStyle = gr; g.fillRect(pos - 260, 0, 380, H);
+        if (kind === 'rain' || kind === 'wind' || kind === 'snow' || kind === 'dust') {
+          g.fillStyle = rgba(kind === 'wind' ? '#a8552c' : kind === 'dust' ? '#8a6a44' : '#ffffff', 0.7 * a);
+          for (let i = 0; i < 60; i++) {
+            const x = pos - 220 + h2(i, seed) * 300, y = h2(i, seed + 1) * H;
+            if (kind === 'rain') g.fillRect(x, y, 1.2, 18); else { g.beginPath(); g.arc(x, y, kind === 'wind' ? 4 : 2, 0, TAU); g.fill(); }
+          }
+        }
+        g.restore();
+      }
       if (type === 'slash') {
         const pos = lerp(-420, W + 420, easeInOut(p));
         g.save();
@@ -151,8 +192,13 @@
         gb.clearRect(0, 0, W, H);
         this.drawScene(gb, next, t, b);
         const nightNext = (XYT.scenes[next.scene] || {}).night;
-        this.composite(g, next.trans.type, p, next.seed, nightNext);
+        this.composite(g, next.trans.type, p, next.seed, nightNext, next.trans);
         if (p > 0.5) curScene = next;
+      }
+      if (seg.trans && seg.trans.type === 'flash' && t - seg.start < 0.17) {
+        const u = clamp((t - seg.start) / 0.17);
+        g.fillStyle = rgba(seg.trans.color || '#ffffff', 0.9 * (1 - u) * (1 - u));
+        g.fillRect(0, 0, W, H);
       }
       const sc = XYT.scenes[curScene.scene] || XYT.scenes.mist;
       this.overlays(g, t, c, sc);

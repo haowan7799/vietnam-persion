@@ -19,6 +19,9 @@ const sec = flag('--sec', 'verse');
 const dur = +flag('--dur', 12);
 const width = +flag('--width', 640);
 const out = flag('--out', 'shot-preview.png');
+// --song <音频> --lrc <歌词>：在真实歌曲时间轴上预览（时间相对于该镜头的起点，按分镜表 XYT.STORYBOARD 排镜）
+const song = flag('--song', null);
+const lrc = flag('--lrc', null);
 const ids = (args[0] || '').split(',').filter(Boolean);
 if (!ids.length) { console.error('用法：node tools/preview-shot.cjs <镜头id[,id2]> [--times ...] [--text ...] [--out sheet.png]'); process.exit(1); }
 
@@ -34,7 +37,14 @@ if (!ids.length) { console.error('用法：node tools/preview-shot.cjs <镜头id
   await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
   await page.waitForFunction(() => window.XYT && XYT.api && XYT.api.state().tl, null, { timeout: 30000 });
   await page.evaluate(() => XYT.api.fonts());
-  const res = await page.evaluate(async ({ ids, times, text, sec, dur, width }) => {
+  if (song) {
+    await page.setInputFiles('#audioFile', path.resolve(song));
+    await page.waitForFunction(() => XYT.api.state().an.source === 'audio' && document.getElementById('anaBox').hidden, null, { timeout: 180000 });
+    if (lrc) await page.evaluate((t) => XYT.api.setLyrics(t), fs.readFileSync(lrc, 'utf8'));
+    await page.evaluate(() => XYT.api.setStoryboard(XYT.STORYBOARD));
+    await page.evaluate(() => XYT.api.fonts());
+  }
+  const res = await page.evaluate(async ({ ids, times, text, sec, dur, width, real }) => {
     const known = ids.filter((id) => XYT.scenes[id]);
     const missing = ids.filter((id) => !XYT.scenes[id]);
     const h = Math.round(width * 9 / 16);
@@ -44,21 +54,25 @@ if (!ids.length) { console.error('用法：node tools/preview-shot.cjs <镜头id
     sg.fillStyle = '#111'; sg.fillRect(0, 0, sheet.width, sheet.height);
     const timing = {};
     for (let r = 0; r < known.length; r++) {
-      XYT.api.previewShot(known[r], { text, sec, dur });
+      let base = 0;
+      if (real) {
+        const seg = XYT.api.state().tl.segments.find((s) => s.scene === known[r]);
+        base = seg ? seg.start : 0;
+      } else XYT.api.previewShot(known[r], { text, sec, dur });
       await document.fonts.ready;
       let ms = 0;
       for (let c = 0; c < times.length; c++) {
         const t0 = performance.now();
-        XYT.api.renderAt(times[c]);
+        XYT.api.renderAt(base + times[c]);
         ms += performance.now() - t0;
         sg.drawImage(document.getElementById('stage'), c * width, r * (h + 24) + 24, width, h);
         sg.fillStyle = '#ffd84a'; sg.font = '14px sans-serif';
-        sg.fillText(`${known[r]} @ ${times[c]}s`, c * width + 6, r * (h + 24) + 17);
+        sg.fillText(`${known[r]} @ ${times[c]}s${real ? ` (歌曲 ${(base + times[c]).toFixed(2)}s)` : ''}`, c * width + 6, r * (h + 24) + 17);
       }
       timing[known[r]] = +(ms / times.length).toFixed(1);
     }
     return { url: sheet.toDataURL('image/png'), missing, timing };
-  }, { ids, times, text, sec, dur, width });
+  }, { ids, times, text, sec, dur, width, real: !!song });
   fs.writeFileSync(out, Buffer.from(res.url.split(',')[1], 'base64'));
   console.log(`已写入 ${out}`);
   if (res.missing.length) console.log('找不到镜头：', res.missing.join(', '));

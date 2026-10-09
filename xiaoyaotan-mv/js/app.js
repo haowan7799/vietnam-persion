@@ -8,6 +8,7 @@
     const m = Math.floor(t / 60), s = t - m * 60;
     return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`;
   };
+  const sceneName = (id) => (XYT.SCENES[id] && XYT.SCENES[id].name) || (XYT.STORYBOARD_NAMES && XYT.STORYBOARD_NAMES[id]) || id;
   const SEC_NAME = { intro: '前奏', verse: '主歌', chorus: '副歌', bridge: '间奏', outro: '尾声' };
 
   const st = {
@@ -256,7 +257,7 @@
     drawStrip(t);
     $('time').textContent = `${fmt(t)} / ${fmt(st.an ? st.an.duration : 0)}`;
     const seg = st.tl && st.tl.segments[R.segIndex(t)];
-    if (seg) $('nowScene').textContent = XYT.SCENES[seg.scene].name;
+    if (seg) $('nowScene').textContent = sceneName(seg.scene);
     if (st.recording) {
       const d = st.an.duration;
       $('recBar').style.width = `${Math.min(100, (t / d) * 100)}%`;
@@ -294,7 +295,7 @@
       g.fillStyle = k % 2 ? 'rgba(127,127,127,0.16)' : 'rgba(127,127,127,0.07)';
       g.fillRect(x0, 12, x1 - x0, 34);
       g.fillStyle = ink; g.font = '13px "Noto Serif SC", serif'; g.textBaseline = 'middle';
-      const name = XYT.SCENES[s.scene].name;
+      const name = sceneName(s.scene);
       if (x1 - x0 > 30) g.fillText(name, x0 + 4, 29);
     });
     const gr = st.an.grid;
