@@ -69,15 +69,17 @@
   // 墙头三级跌落（马头墙）：[x0, x1, 檐下沿 y]
   const STEPS = [[-60, 560, 150], [560, 812, 112], [812, WEND, 74]];
   // 墙上的字：[字, x, y, 字号, 旋转]
-  const WRIT = [['李', 300, 292, 128, -0.07], ['大', 388, 280, 152, 0.05], ['侠', 484, 302, 148, -0.05], ['到', 572, 298, 120, 0.07],
-    ['此', 646, 316, 114, -0.06], ['一', 712, 298, 104, 0.03], ['游', 778, 324, 128, 0.09]];
+  const WRIT = [['李', 276, 292, 128, -0.07], ['大', 364, 280, 152, 0.05], ['侠', 460, 302, 148, -0.05], ['到', 548, 298, 120, 0.07],
+    ['此', 622, 316, 114, -0.06], ['一', 688, 298, 104, 0.03], ['游', 754, 324, 128, 0.09]];
   const INK = '#15161b';
-  const BOY = { x: 914, y: GY, s: 2.0 };
+  const BOY = { x: 930, y: GY, s: 2.0 };
   const wallPath = (q, inset = 0) => {
     q.beginPath(); q.moveTo(-60, WB);
     for (const [x0, x1, y] of STEPS) { q.lineTo(x0, y + inset); q.lineTo(x1, y + inset); }
     q.lineTo(WEND, WB); q.closePath();
   };
+  // 旧瓦缺了几片的位置（老墙上雨痕从这里垂下）
+  const brokenTile = (si, xx) => h2(Math.round(xx) + 400, 31 + si) < 0.085;
 
   // 竹影：一簇簇竹叶的柔影（预先模糊），从左上方斜斜投在墙上
   function bambooShadow() {
@@ -146,7 +148,7 @@
       if (aged) bandV(q, 0, 0, W, 640, [[0, '#7f8f9a'], [0.55, '#b4bcbf'], [1, '#cfd2cd']]);
       else {
         bandV(q, 0, 0, W, 640, [[0, '#76a8c8'], [0.45, '#bcd6de'], [0.8, '#e9eee6'], [1, '#f4f0e2']]);
-        q.globalCompositeOperation = 'screen'; A.glow(q, 80, -60, 640, '#fff4d6', 0.7); q.globalCompositeOperation = 'source-over';
+        q.fillStyle = K.rad(q, 80, -60, 0, 640, [[0, 'rgba(255,244,214,0.7)'], [0.5, 'rgba(255,244,214,0.25)'], [1, 'rgba(255,244,214,0)']]); q.fillRect(0, 0, W, 640);
       }
       E.clouds(q, { t: 0, y: 80, color: aged ? '#d4d8d8' : '#ffffff', shade: aged ? '#76828a' : '#a8bccb', alpha: aged ? 0.75 : 0.6, scale: 0.75, n: 4, seed: aged ? 23 : 21, speed: 0, lightX: aged ? 640 : 120 });
       const haze = aged ? '#c6cbcb' : '#e6ece6';
@@ -180,16 +182,17 @@
     });
   }
   function inkGlyph(ch, col) {
-    return K.cache('g07|ig' + ch + col + fk(), 180, 180, 1, (q) => {
+    return K.cache('g07|ig2' + ch + col + fk(), 180, 180, 1, (q) => {
       q.drawImage(glyphTex(ch), 0, 0, 180, 180);
       q.globalCompositeOperation = 'source-in'; q.fillStyle = col; q.fillRect(0, 0, 180, 180);
-      // 飞白：笔画里几道擦痕
+      // 飞白：每个字按自己的运笔方向擦出两三道长长的干丝
       q.globalCompositeOperation = 'destination-out';
-      const r = A.rng(ch.charCodeAt(0));
-      for (let k = 0; k < 5; k++) {
-        const x = 30 + r() * 120, y = 30 + r() * 120, a = r() * PI, L = 30 + r() * 40;
+      const r = A.rng(ch.charCodeAt(0) * 7 + 3);
+      const base = (r() - 0.5) * 1.6;
+      for (let k = 0; k < 3; k++) {
+        const x = 50 + r() * 80, y = 45 + r() * 90, a = base + (r() - 0.5) * 0.9 + (k === 2 ? PI / 2 : 0), L = 70 + r() * 60;
         q.save(); q.translate(x, y); q.rotate(a);
-        for (let j = 0; j < 6; j++) { q.fillStyle = `rgba(0,0,0,${0.5 + r() * 0.5})`; q.fillRect(-L / 2 + r() * 10, -8 + j * 3 + r(), L * (0.4 + r() * 0.6), 0.9 + r() * 0.8); }
+        for (let j = 0; j < 5; j++) { q.fillStyle = `rgba(0,0,0,${0.45 + r() * 0.5})`; q.fillRect(-L / 2 + r() * 16, -7 + j * 3.3 + r() * 0.8, L * (0.55 + r() * 0.45), 0.8 + r() * 0.7); }
         q.restore();
       }
       q.globalCompositeOperation = 'source-over';
@@ -203,7 +206,7 @@
   }
   // 白墙（三级马头墙、墙基、青石板路，前五个字已写好）；aged 为几十年后的斑驳版
   function wallTex(aged) {
-    return K.cache('g07|wall' + (aged ? 'B' : 'A') + fk(), W, H, 1, (q) => {
+    return K.cache('g07|wall2' + (aged ? 'B' : 'A') + fk(), W, H, 1, (q) => {
       const r = A.rng(aged ? 2109 : 2101);
       const plaster = aged ? '#bfbbb0' : '#f7f1e3';
       q.save(); wallPath(q); q.clip();
@@ -216,25 +219,46 @@
       // 灰皮斑驳与补灰
       for (let k = 0; k < (aged ? 70 : 34); k++) { q.fillStyle = rgba(aged ? (k % 3 ? '#7e7a6c' : '#5e6458') : '#c8bfa8', (aged ? 0.07 : 0.05) + r() * 0.06); A.inkBlob(q, r() * WEND, 80 + r() * 520, 10 + r() * (aged ? 90 : 50), k, 0.55); q.fill(); }
       for (let k = 0; k < 16; k++) { q.fillStyle = rgba('#ffffff', (aged ? 0.02 : 0.12) + r() * (aged ? 0.03 : 0.08)); A.inkBlob(q, r() * WEND, 120 + r() * 400, 20 + r() * 40, k + 50, 0.45); q.fill(); }
-      // 雨痕：从檐下垂下的竖纹
-      for (let k = 0; k < (aged ? 120 : 24); k++) {
-        const x = r() * WEND, st = STEPS.find((s) => x >= s[0] && x < s[1]) || STEPS[0], y0 = st[2] + 4, L = 40 + r() * (aged ? 420 : 110);
-        q.fillStyle = K.lin(q, 0, y0, 0, y0 + L, [[0, rgba(aged ? '#3a382e' : '#a0977f', aged ? 0.22 + r() * 0.2 : 0.08)], [1, rgba('#a0977f', 0)]]);
-        q.fillRect(x, y0, 1 + r() * (aged ? 7 : 3), L);
+      // 雨痕：从檐下垂下的柔边竖纹；老墙上多从缺瓦处垂下，宽窄不一
+      const streak = (x, y0, w, L, col, a) => {
+        try { q.filter = `blur(${(Math.max(0.6, w * 0.3) * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+        q.fillStyle = K.lin(q, 0, y0, 0, y0 + L, [[0, rgba(col, a)], [0.35, rgba(col, a * 0.7)], [1, rgba(col, 0)]]);
+        q.beginPath(); q.moveTo(x - w / 2, y0); q.lineTo(x + w / 2, y0); q.quadraticCurveTo(x + w * 0.4, y0 + L * 0.6, x + w * 0.1, y0 + L); q.lineTo(x - w * 0.1, y0 + L); q.quadraticCurveTo(x - w * 0.5, y0 + L * 0.6, x - w / 2, y0); q.fill();
+      };
+      if (aged) {
+        const spots = [];
+        STEPS.forEach(([x0, x1, y], si) => { for (let xx = x0 - 8; xx < x1 + 10; xx += 8) if (brokenTile(si, xx)) spots.push([xx + 1, y + 4]); });
+        for (const [x, y] of spots) streak(x, y, 6 + r() * 16, 160 + r() * 300, '#3e3a2e', 0.2 + r() * 0.14);
+        for (let k = spots.length; k < 35; k++) {
+          const x = r() * WEND, st = STEPS.find((s) => x >= s[0] && x < s[1]) || STEPS[0];
+          streak(x, st[2] + 4, 2 + r() * 10, 60 + r() * 240, '#4a4636', 0.1 + r() * 0.12);
+        }
+      } else {
+        for (let k = 0; k < 18; k++) {
+          const x = r() * WEND, st = STEPS.find((s) => x >= s[0] && x < s[1]) || STEPS[0];
+          streak(x, st[2] + 4, 2 + r() * 5, 40 + r() * 110, '#a0977f', 0.08);
+        }
       }
+      q.filter = 'none';
       if (!aged) {
         // 桂树在墙头投下的斑驳碎影
         try { q.filter = `blur(${(4 * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
         for (let k = 0; k < 90; k++) { const x = 40 + r() * 600, y = 150 + Math.pow(r(), 1.6) * 90; q.fillStyle = `rgba(70,80,70,${0.05 + r() * 0.08})`; q.beginPath(); q.ellipse(x, y, 10 + r() * 22, 5 + r() * 8, r(), 0, TAU); q.fill(); }
         q.filter = 'none';
-        // 早先的涂鸦：一个持剑小人、一只酒葫芦
+        // 早先的涂鸦：一个持剑小人、一只拴着绳的酒葫芦
         q.strokeStyle = rgba(INK, 0.78); q.lineWidth = 3.2; q.lineCap = 'round'; q.lineJoin = 'round';
-        const sx = 150, sy = 470;
+        const sx = 130, sy = 470;
         q.beginPath(); q.arc(sx, sy - 52, 9, 0, TAU); q.stroke();
         q.beginPath(); q.moveTo(sx, sy - 43); q.lineTo(sx + 2, sy - 8); q.lineTo(sx - 14, sy + 18); q.moveTo(sx + 2, sy - 8); q.lineTo(sx + 18, sy + 14);
         q.moveTo(sx, sy - 32); q.lineTo(sx + 20, sy - 44); q.lineTo(sx + 56, sy - 82); q.moveTo(sx, sy - 32); q.lineTo(sx - 18, sy - 20); q.stroke();
         q.lineWidth = 2; q.beginPath(); q.moveTo(sx + 40, sy - 66); q.lineTo(sx + 48, sy - 59); q.stroke();
-        q.lineWidth = 2.6; q.beginPath(); q.arc(sx + 92, sy + 4, 11, 0, TAU); q.moveTo(sx + 99, sy - 16); q.arc(sx + 92, sy - 16, 7, 0, TAU); q.stroke();
+        // 葫芦：上小下大两瓣、束腰系绳、顶上一截柄
+        const gx = sx + 96, gy = sy + 6;
+        q.lineWidth = 2.6;
+        q.beginPath(); q.moveTo(gx - 4, gy - 14); q.bezierCurveTo(gx - 22, gy - 10, gx - 20, gy + 18, gx, gy + 18); q.bezierCurveTo(gx + 20, gy + 18, gx + 22, gy - 10, gx + 4, gy - 14); q.stroke();
+        q.beginPath(); q.moveTo(gx - 4, gy - 14); q.bezierCurveTo(gx - 12, gy - 18, gx - 9, gy - 31, gx, gy - 31); q.bezierCurveTo(gx + 9, gy - 31, gx + 12, gy - 18, gx + 4, gy - 14); q.stroke();
+        q.lineWidth = 2; q.beginPath(); q.moveTo(gx - 6, gy - 15); q.lineTo(gx + 6, gy - 13); q.moveTo(gx + 3, gy - 14); q.quadraticCurveTo(gx + 16, gy - 6, gx + 12, gy + 6); q.stroke();
+        q.lineWidth = 2.4; q.beginPath(); q.moveTo(gx, gy - 31); q.quadraticCurveTo(gx + 2, gy - 38, gx + 7, gy - 40); q.stroke();
         q.font = `30px ${XYT.FONT}`; q.fillStyle = rgba(INK, 0.7); q.textAlign = 'center'; q.fillText('剑', sx + 40, sy + 54);
       } else {
         // 剥落处露出青砖：小块、边缘参差
@@ -275,8 +299,8 @@
         for (const i of [1, 2]) putGlyph(tq, WRIT[i], '#2a2a2c', 0.8);
         tq.globalCompositeOperation = 'destination-out';
         const r2 = A.rng(404);
-        for (let i = 0; i < 80; i++) { tq.fillStyle = `rgba(0,0,0,${0.35 + r2() * 0.65})`; A.inkBlob(tq, 320 + r2() * 240, 210 + r2() * 180, 2 + r2() * 9, i, 0.5); tq.fill(); }
-        for (let i = 0; i < 50; i++) { tq.fillStyle = `rgba(0,0,0,${0.2 + r2() * 0.3})`; tq.fillRect(320 + r2() * 240, 200 + r2() * 200, 1 + r2() * 3, 20 + r2() * 60); }
+        for (let i = 0; i < 80; i++) { tq.fillStyle = `rgba(0,0,0,${0.35 + r2() * 0.65})`; A.inkBlob(tq, 296 + r2() * 240, 210 + r2() * 180, 2 + r2() * 9, i, 0.5); tq.fill(); }
+        for (let i = 0; i < 50; i++) { tq.fillStyle = `rgba(0,0,0,${0.2 + r2() * 0.3})`; tq.fillRect(296 + r2() * 240, 200 + r2() * 200, 1 + r2() * 3, 20 + r2() * 60); }
         q.drawImage(tmp, 0, 0, W, 520);
       }
       // 檐下阴影
@@ -289,13 +313,13 @@
       q.beginPath(); q.moveTo(-60, py + 20); q.lineTo(WEND, py + 20); q.stroke();
       for (let x = -40, k = 0; x < WEND; x += 60 + r() * 30, k++) { q.beginPath(); q.moveTo(x, py + (k % 2 ? 0 : 20)); q.lineTo(x, py + (k % 2 ? 20 : 40)); q.stroke(); }
       q.fillStyle = 'rgba(255,250,235,0.3)'; q.fillRect(-60, py, WEND + 60, 2);
-      // 墙头瓦檐：每级一道，端头起翘
-      for (const [x0, x1, y] of STEPS) {
+      // 墙头瓦檐：每级一道，端头起翘；老墙缺几片瓦
+      STEPS.forEach(([x0, x1, y], si) => {
         const cap = 30, ct = y - cap * 0.7, roofC = aged ? '#4a4c4e' : '#30343a';
         q.fillStyle = K.lin(q, 0, ct, 0, y + 4, [[0, mix(roofC, '#9aa4b0', 0.3)], [1, mix(roofC, '#000000', 0.2)]]);
         q.beginPath(); q.moveTo(x0 - 12, y + 4); q.lineTo(x1 + 14, y + 4); q.lineTo(x1 + 8, ct); q.lineTo(x0 - 6, ct); q.closePath(); q.fill();
         for (let xx = x0 - 8; xx < x1 + 10; xx += 8) {
-          if (aged && r() < 0.07) { q.fillStyle = 'rgba(200,200,190,0.5)'; q.fillRect(xx - 3, ct, 7, y - ct); continue; }
+          if (aged && brokenTile(si, xx)) { q.fillStyle = 'rgba(200,200,190,0.5)'; q.fillRect(xx - 3, ct, 7, y - ct); continue; }
           q.strokeStyle = rgba('#101114', 0.8); q.lineWidth = 2.2; q.beginPath(); q.moveTo(xx, ct); q.lineTo(xx, y + 2); q.stroke();
           q.strokeStyle = rgba(aged ? '#b8bcc0' : '#f0f4fa', aged ? 0.15 : 0.3); q.lineWidth = 1.1; q.beginPath(); q.moveTo(xx + 2.6, ct); q.lineTo(xx + 2.6, y + 2); q.stroke();
           q.fillStyle = '#1e2024'; q.beginPath(); q.arc(xx + 1, y + 5, 3.4, 0, TAU); q.fill();
@@ -305,11 +329,7 @@
         q.fillStyle = rgba('#f4f8fc', aged ? 0.15 : 0.5); q.fillRect(x0 - 8, rt, x1 - x0 + 18, 1.6);
         q.fillStyle = mix(roofC, '#000000', 0.3);
         q.beginPath(); q.moveTo(x1 + 10, rt); q.quadraticCurveTo(x1 + 22, rt - 4, x1 + 30, rt - 18); q.lineTo(x1 + 24, rt + cap * 0.32); q.lineTo(x1 + 10, rt + cap * 0.4); q.closePath(); q.fill();
-        if (aged) {
-          q.strokeStyle = rgba('#8a7a5a', 0.85); q.lineWidth = 1.2;
-          for (let k = 0; k < (x1 - x0) / 7; k++) { const gx = x0 + r() * (x1 - x0), gh = 8 + r() * 28; q.beginPath(); q.moveTo(gx, rt + 2); q.quadraticCurveTo(gx + 3, rt - gh * 0.5, gx + 6 + r() * 6, rt - gh); q.stroke(); }
-        }
-      }
+      });
       // 墙的右端：转角的一道竖影
       q.fillStyle = aged ? '#8f8e86' : '#d6cdb8'; q.fillRect(WEND - 6, 74, 6, WB - 74);
       q.fillStyle = 'rgba(0,0,0,0.12)'; q.fillRect(WEND - 2, 74, 2, WB - 74);
@@ -322,7 +342,7 @@
       // 墙脚的草
       q.strokeStyle = aged ? '#5a6a3a' : '#5f7a44'; q.lineWidth = 1.4;
       for (let k = 0; k < (aged ? 120 : 50); k++) { const gx = r() * WEND, gh = 6 + r() * (aged ? 30 : 16); q.beginPath(); q.moveTo(gx, WB + 2); q.quadraticCurveTo(gx + 2, WB - gh * 0.5, gx + (r() - 0.4) * 10, WB - gh); q.stroke(); }
-      if (aged) for (let k = 0; k < 40; k++) { q.fillStyle = rgba(k % 3 ? '#6a4a2e' : '#8a5a34', 0.75); q.beginPath(); q.ellipse(r() * W, WB + 6 + r() * 100, 6 + r() * 4, 2.5 + r() * 1.5, r() * 3, 0, TAU); q.fill(); }
+      if (aged) for (let k = 0; k < 40; k++) leafSprite(q, r() * W, WB + 6 + r() * 100, 0.32 + r() * 0.2, r() * TAU, r() < 0.5 ? -1 : 1, 0.85);
       else {
         // 晨光斜斜地从左上照进巷子（烘焙进墙面）
         q.globalCompositeOperation = 'screen';
@@ -396,21 +416,23 @@
     const lx = px * 78 * sc, ly = (py * 78 - 6) * sc;
     return [x + lx * Math.cos(rot) - ly * Math.sin(rot), y + lx * Math.sin(rot) + ly * Math.cos(rot)];
   }
-  // 笔干之后的一记拖笔：在墙上擦出长长的干丝（不受字形限制）
-  const DRAG = (u) => [lerp(806, 930, u), 350 + 34 * u - 22 * Math.sin(u * PI) + 4 * Math.sin(u * 7)];
+  // 笔干之后的一记拖笔：从“游”的末笔往右下拖出一截干丝（不受字形限制）
+  const D0 = brushTip(WRIT[6], 0.9, 3);
+  const DRAG = (u) => [D0[0] + 46 * u + 3 * Math.sin(u * 7), D0[1] + 58 * u - 10 * Math.sin(u * PI)];
   function dryDrag(g, u) {
     if (u <= 0) return;
     g.lineCap = 'round';
-    const n = Math.ceil(u * 50);
+    const n = Math.ceil(u * 50), nx = -0.78, ny = 0.62;
     for (let b = 0; b < 15; b++) {
-      const off = (b / 14 - 0.5) * 22;
+      const off = (b / 14 - 0.5) * 24;
       g.strokeStyle = rgba(INK, 0.4 + 0.5 * h2(b, 8)); g.lineWidth = 0.9 + 1.5 * h2(b, 9);
       g.beginPath(); let on = false;
       for (let i = 0; i <= n; i++) {
         const v = (u * i) / n, [px, py] = DRAG(v), w = 1 - 0.55 * v;
         // 丝越往后越断、越细：靠外的毫先断
-        const keep = h2(b * 97 + Math.floor(v * 26), 23) < 0.92 - v * (0.5 + 0.9 * Math.abs(off) / 11);
-        if (keep) { if (!on) { g.moveTo(px, py + off * w); on = true; } else g.lineTo(px, py + off * w); } else on = false;
+        const keep = h2(b * 97 + Math.floor(v * 26), 23) < 0.92 - v * (0.5 + 0.9 * Math.abs(off) / 12);
+        const X = px + nx * off * w, Y = py + ny * off * w;
+        if (keep) { if (!on) { g.moveTo(X, Y); on = true; } else g.lineTo(X, Y); } else on = false;
       }
       g.stroke();
     }
@@ -453,76 +475,18 @@
   function wProg(lt, k) {
     if (lt <= wStart) return 0;
     if (lt <= k[3]) return 0.86 * (lt - wStart) / (k[3] - wStart);
-    return 0.86 + 0.06 * easeOut(seg(lt, k[3], k[3] + 0.2));
+    return 0.86 + 0.04 * easeOut(seg(lt, k[3], k[3] + 0.2));
   }
   const wDry = (k) => 0.86 * (k[2] - wStart) / (k[3] - wStart);
-  const dragU = (lt, k) => easeOut(seg(lt, k[3] + 0.08, k[3] + 0.5));
-  function boyPose(lt, k) {
-    if (lt < k[3] + 0.55) return 'write';
-    if (lt < k[4]) return 'look';
-    if (lt < k[5]) return 'dip';
-    if (lt < k[6]) return 'flick';
-    if (lt < k[7]) return 'flick2';
-    return 'laugh';
-  }
+  const dragU = (lt, k) => easeOut(seg(lt, k[3] + 0.12, k[3] + 0.55));
   function curTip(lt, k) {
     if (lt < wStart) return brushTip(WRIT[5], clamp((lt + 0.25) / 0.45), 1);
-    if (lt > k[3] + 0.08) return DRAG(dragU(lt, k));
+    if (lt > k[3] + 0.12) return DRAG(dragU(lt, k));
     return brushTip(WRIT[6], wProg(lt, k), 3);
-  }
-  function boyState(lt, k, pose, t) {
-    const o = { stage: 'youth', facing: -1, wind: 0.3, seed: 3 };
-    let x = BOY.x, y = BOY.y;
-    if (pose === 'write') {
-      o.pose = 'reach'; o.lean = 0.06;
-      // 身子随笔尖移动：手跟着笔，脚跟踮起
-      const tip = curTip(lt, k);
-      const base = F.points('xiaoyao', BOY.x, BOY.y, BOY.s, t, o).handN;
-      x += clamp((tip[0] + 52 - base[0]) * 0.55, -26, 30);
-      y += clamp((tip[1] - 8 - base[1]) * 0.5, -10, 14) - 5;
-    } else if (pose === 'look') { o.pose = 'whisper'; o.head = 0.15; }
-    else if (pose === 'dip') { o.pose = 'kneel'; }
-    else if (pose === 'flick') { o.pose = 'swordUp'; o.head = 0.1; }
-    else if (pose === 'flick2') { o.pose = 'swordPoint'; }
-    else { o.pose = 'laugh'; }
-    // 换姿势时轻轻一顿（关键帧的缓冲）
-    const tc = { look: k[3] + 0.55, dip: k[4], flick: k[5], flick2: k[6], laugh: k[7] }[pose];
-    if (tc != null && lt >= tc) y -= Math.exp(-(lt - tc) / 0.09) * 6;
-    return { x, y, opts: o, pose };
-  }
-  function drawBoyBrush(g, lt, k, B, t, P) {
-    const hx = P.handN[0], hy = P.handN[1];
-    let ang, L = 78, wet = 1;
-    if (B.pose === 'write') {
-      const tip = curTip(lt, k);
-      ang = Math.atan2(tip[1] - hy, tip[0] - hx); L = clamp(Math.hypot(tip[0] - hx, tip[1] - hy) / 1.06, 60, 96);
-      wet = 1 - seg(lt, k[2] - 0.1, k[3]);
-    } else if (B.pose === 'look') { ang = -1.25 + 0.22 * Math.sin(lt * 9) * Math.exp(-(lt - k[3] - 0.55) / 0.5); wet = 0; }
-    else if (B.pose === 'dip') { ang = 1.75; wet = seg(lt, k[4] + 0.2, k[4] + 0.45); }
-    else if (B.pose === 'flick') { ang = -1.2 + 0.9 * Math.sin((lt - k[5]) * 22) * Math.exp(-(lt - k[5]) / 0.4); }
-    else if (B.pose === 'flick2') { ang = PI + 0.15 + 0.7 * Math.sin((lt - k[6]) * 24) * Math.exp(-(lt - k[6]) / 0.35); wet = 0.8; }
-    else { ang = PI * 0.92 + 0.08 * Math.sin(t * 44); wet = 0.6; }
-    const tip = bigBrush(g, hx, hy, ang, L, wet);
-    // 甩笔瞬间从笔尖抛出的墨点
-    for (const [t0, sd] of [[k[5] + 0.04, 3], [k[6] + 0.03, 4]]) {
-      const age = lt - t0;
-      if (age < 0 || age > 0.35) continue;
-      for (let i = 0; i < 30; i++) {
-        const an = (sd === 3 ? -2.4 : -2.9) + (h2(i, sd) - 0.5) * 1.6, v = 500 + 700 * h2(i, sd + 1);
-        const x = tip[0] + Math.cos(an) * v * age, y = tip[1] + Math.sin(an) * v * age + 600 * age * age;
-        g.fillStyle = rgba(INK, 0.9 * (1 - age / 0.35));
-        g.beginPath(); g.ellipse(x, y, 1.4 + 2.4 * h2(i, sd + 2), 1.2 + 1.6 * h2(i, sd + 2), an, 0, TAU); g.fill();
-      }
-    }
-    // 第二下甩笔，墨点回溅到自己肩上的抹布和脸上
-    if (lt > k[6] + 0.08) {
-      g.fillStyle = INK;
-      for (let i = 0; i < 8; i++) { const px = P.chest[0] + (h2(i, 9) - 0.3) * 26, py = P.chest[1] - 16 + h2(i, 10) * 26; g.beginPath(); g.arc(px, py, 1.4 + 1.8 * h2(i, 11), 0, TAU); g.fill(); }
-    }
   }
   function splats(k) {
     const out = [];
-    for (const [t0, n, cx, cy, sx, sy, sd] of [[k[5] + 0.12, 26, 650, 220, 250, 140, 1], [k[6] + 0.1, 22, 700, 380, 210, 150, 2]]) {
+    for (const [t0, n, cx, cy, sx, sy, sd] of [[k[5] + 0.12, 26, 640, 210, 250, 140, 1], [k[6] + 0.1, 22, 660, 380, 210, 150, 2]]) {
       for (let i = 0; i < n; i++) {
         const r = h2(i, sd * 7) < 0.15 ? 4 + h2(i, sd * 7 + 1) * 4 : 1.2 + h2(i, sd * 7 + 2) * 2.4;
         out.push({ t: t0 + h2(i, sd * 7 + 3) * 0.12, x: cx + (h2(i, sd * 7 + 4) - 0.5) * sx * 2, y: cy + (h2(i, sd * 7 + 5) - 0.5) * sy, r, a: h2(i, sd * 7 + 6) * 3 });
@@ -530,6 +494,26 @@
     }
     return out;
   }
+  function drawSplats(g, lt, k) {
+    g.fillStyle = rgba(INK, 0.9);
+    for (const sp of splats(k)) {
+      if (lt < sp.t) continue;
+      const e = easeOut(seg(lt, sp.t, sp.t + 0.08));
+      g.beginPath(); g.ellipse(sp.x, sp.y, sp.r * e, sp.r * e * 0.8, sp.a, 0, TAU); g.fill();
+      if (sp.r > 3) { g.beginPath(); g.ellipse(sp.x + Math.cos(sp.a) * sp.r * 1.7, sp.y + Math.sin(sp.a) * sp.r * 1.7, sp.r * 0.35 * e, sp.r * 0.3 * e, 0, 0, TAU); g.fill(); }
+    }
+  }
+  // 墨淌：几道细细的垂痕慢慢往下爬（lt 取到时间跳转为止）
+  function drips(g, lt) {
+    g.strokeStyle = rgba(INK, 0.8); g.lineWidth = 1.8; g.lineCap = 'round'; g.fillStyle = INK;
+    for (const [x, y0, born, sp, mx] of [[374, 346, -1.6, 9, 46], [446, 362, -1.2, 7, 30], [562, 350, -1.5, 8, 38], [776, 372, 0.9, 16, 44]]) {
+      const L = Math.min(mx, Math.max(0, lt - born) * sp * (1 - 0.3 * Math.max(0, lt - born) / 6));
+      if (L <= 0.5) continue;
+      g.beginPath(); g.moveTo(x - 1, y0 - 4); g.quadraticCurveTo(x + 1.5, y0 + L * 0.5, x + 0.4, y0 + L); g.stroke();
+      g.beginPath(); g.ellipse(x + 0.4, y0 + L + 1.2, 2.2, 2.9, 0, 0, TAU); g.fill();
+    }
+  }
+  const BOWL = [812, GY + 10];
   function inkBowl(g, x, y, lt, k) {
     g.fillStyle = 'rgba(40,30,20,0.25)'; g.beginPath(); g.ellipse(x + 8, y + 3, 40, 6, 0, 0, TAU); g.fill();
     g.fillStyle = K.lin(g, x - 34, 0, x + 34, 0, [[0, '#b8b4a6'], [0.4, '#f6f2e8'], [1, '#8a877c']]);
@@ -538,7 +522,7 @@
     g.lineWidth = 1; g.beginPath(); g.moveTo(x - 12, y - 6); g.quadraticCurveTo(x - 4, y - 12, x + 4, y - 6); g.stroke();
     g.fillStyle = '#ece8de'; g.beginPath(); g.ellipse(x, y - 22, 34, 7, 0, 0, TAU); g.fill();
     g.fillStyle = '#121216'; g.beginPath(); g.ellipse(x, y - 21, 29, 5.2, 0, 0, TAU); g.fill();
-    const age = lt - (k[4] + 0.2);
+    const age = lt - (k[4] + 0.12);
     if (age > 0 && age < 0.8) { g.strokeStyle = `rgba(210,220,236,${0.6 * (1 - age / 0.8)})`; g.lineWidth = 1; g.beginPath(); g.ellipse(x - 4, y - 21, 6 + age * 30, (6 + age * 30) * 0.18, 0, 0, TAU); g.stroke(); }
     g.fillStyle = 'rgba(255,255,255,0.4)'; g.beginPath(); g.ellipse(x - 10, y - 22.5, 9, 1.2, 0, 0, TAU); g.fill();
   }
@@ -551,11 +535,11 @@
         sparrow(g, x0 + Math.sin(t * 0.5 + i) * 3, y0 - hop, 1.5, dir, false, 0);
       } else if (age < 2.5) {
         const x = x0 + age * (260 + 60 * i) * (i === 1 ? -0.6 : 1), y = y0 - age * 170 + age * age * 10;
-        sparrow(g, x, y, 1.5, i === 1 ? -1 : 1, true, t * 40 + i);
+        if (y > -40) sparrow(g, x, y, 1.5, i === 1 ? -1 : 1, true, t * 40 + i);
       }
     }
   }
-  function fgLeaves(g, t) {
+  function fgLeaves(g, t, calm) {
     const tex = K.cache('g07|fgleaf', 380, 280, 0.5, (q) => {
       const r = A.rng(9);
       try { q.filter = `blur(${(5 * SS() * 0.5).toFixed(1)}px)`; } catch (e) { /* 无 */ }
@@ -567,74 +551,16 @@
         q.restore();
       }
     });
-    g.save(); g.translate(-90, -70); g.rotate(0.03 * Math.sin(t * 1.1) + 0.015 * Math.sin(t * 2.7));
+    g.save(); g.translate(-90, -70); g.rotate((0.03 * Math.sin(t * 1.1) + 0.015 * Math.sin(t * 2.7)) * calm);
     g.drawImage(tex, 0, 0, 380, 280);
     g.restore();
   }
-
-  // 回忆：晴朗上午的白墙与少年
-  function drawPast(g, c, lt, t, k, lite) {
-    g.drawImage(skyTex(false), 0, 0, W, 640);
-    // 桂树（随风轻摇）
-    g.save(); g.translate(360, 350); g.rotate(Math.sin(t * 0.9) * 0.006 + 0.004 * Math.sin(t * 2.1)); g.drawImage(osmanthus(false), -340, -350, 760, 320); g.restore();
-    g.drawImage(wallTex(false), 0, 0, W, H);
-    // 竹影在墙上摇
-    if (!lite) {
-    g.save(); wallPath(g, 2); g.clip();
-    g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.2;
-    g.drawImage(bambooShadow(), -80 + Math.sin(t * 0.8) * 10 + Math.sin(t * 2.3) * 3, 120 + Math.sin(t * 0.6) * 4, W + 200, 560);
-    g.restore();
-    }
-    // 墨淌：几道细细的垂痕慢慢往下爬
-    for (const [x, y0, born, sp, mx] of [[398, 346, -1.6, 9, 46], [470, 362, -1.2, 7, 30], [586, 350, -1.5, 8, 38], [800, 372, 0.9, 16, 44]]) {
-      const L = Math.min(mx, Math.max(0, lt - born) * sp * (1 - 0.3 * Math.max(0, lt - born) / 6));
-      if (L <= 0.5) continue;
-      g.strokeStyle = rgba(INK, 0.8); g.lineWidth = 1.8; g.lineCap = 'round';
-      g.beginPath(); g.moveTo(x - 1, y0 - 4); g.quadraticCurveTo(x + 1.5, y0 + L * 0.5, x + 0.4, y0 + L); g.stroke();
-      g.fillStyle = INK; g.beginPath(); g.ellipse(x + 0.4, y0 + L + 1.2, 2.2, 2.9, 0, 0, TAU); g.fill();
-    }
-    writeGlyph(g, WRIT[5], clamp((lt + 0.25) / 0.45), 1, 1);
-    writeGlyph(g, WRIT[6], wProg(lt, k), wDry(k), 3);
-    dryDrag(g, dragU(lt, k));
-    for (const sp of splats(k)) {
-      if (lt < sp.t) continue;
-      const e = easeOut(seg(lt, sp.t, sp.t + 0.08));
-      g.fillStyle = rgba(INK, 0.9);
-      g.beginPath(); g.ellipse(sp.x, sp.y, sp.r * e, sp.r * e * 0.8, sp.a, 0, TAU); g.fill();
-      if (sp.r > 3) { g.beginPath(); g.ellipse(sp.x + Math.cos(sp.a) * sp.r * 1.7, sp.y + Math.sin(sp.a) * sp.r * 1.7, sp.r * 0.35 * e, sp.r * 0.3 * e, 0, 0, TAU); g.fill(); }
-    }
-    inkBowl(g, 812, GY + 10, lt, k);
-    const B = boyState(lt, k, boyPose(lt, k), t);
-    const P = F.points('xiaoyao', B.x, B.y, BOY.s, t, B.opts);
-    // 少年投在墙上与地上的影
-    g.save();
-    g.beginPath(); g.rect(-60, 60, WEND + 60, WB - 60); g.clip();
-    g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.2;
-    g.translate(B.x + 64, B.y - 52); g.transform(1, 0, -0.2, 0.94, 0, 0);
-    F.draw(g, 'xiaoyao', 0, 0, BOY.s, t, Object.assign({}, B.opts, { tone: 'silhouette', ink: '#3f5262', rim: null, feibai: false }));
-    g.restore();
-    g.fillStyle = 'rgba(60,48,34,0.3)'; g.beginPath(); g.ellipse(B.x + 26, BOY.y + 2, 70, 9, 0, 0, TAU); g.fill();
-    F.draw(g, 'xiaoyao', B.x, B.y, BOY.s, t, B.opts);
-    drawBoyBrush(g, lt, k, B, t, P);
-    birds(g, c, lt, t, k);
-    // 桂花细瓣飘落（近大远小）
-    for (let i = 0; i < 50; i++) {
-      const z = h2(i, 5), sp = 16 + 30 * z, y0 = (h2(i, 6) * 780 + t * sp) % 780 - 30;
-      const x = 40 + h2(i, 7) * 760 + y0 * 0.3 + Math.sin(t * (0.7 + z) + i) * 16;
-      const r = 1.1 + z * 2.6;
-      g.fillStyle = rgba(i % 3 ? '#f6cf4a' : '#e8a040', 0.6 + 0.4 * z);
-      g.beginPath(); g.ellipse(x, y0, r, r * (0.45 + 0.55 * Math.abs(Math.sin(t * 3 + i))), t + i, 0, TAU); g.fill();
-    }
-    V.dust(g, c, { n: 36, area: [80, 140, 900, 600], color: '#fff3d0', size: [1, 2.6], alpha: 0.55, night: false });
-    willow(g, t, false);
-    fgLeaves(g, t);
-  }
   // 右上角垂下的柳丝（随风摆）；aged 时只剩枯丝
-  function willow(g, t, aged) {
+  function willow(g, t, aged, calm) {
     g.lineCap = 'round';
     for (let i = 0; i < 16; i++) {
-      const sx = 1050 + h2(i, 41) * 260, sy = -10, len = 70 + h2(i, 42) * 80 * (aged ? 0.7 : 1);
-      const ph = t * (1.2 + 0.5 * h2(i, 43)) + i, sw = Math.sin(ph) * 10 + 6;
+      const sx = 1050 + h2(i, 41) * 260, sy = -10, len = 50 + h2(i, 42) * 70 * (aged ? 0.7 : 1);
+      const ph = t * (1.2 + 0.5 * h2(i, 43)) + i, sw = Math.sin(ph) * 10 * calm + 6;
       const ex = sx + sw, ey = sy + len;
       g.strokeStyle = aged ? rgba('#6a5e4a', 0.55) : rgba(i % 3 ? '#7f9a50' : '#5a7a3a', 0.85); g.lineWidth = 1;
       g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo(sx + sw * 0.2, sy + len * 0.5, ex, ey); g.stroke();
@@ -645,35 +571,397 @@
       g.stroke();
     }
   }
-  // 几十年后：阴天冷光，墙皮剥落，只剩“大侠”
-  function drawAged(g, c, lt, t, k) {
-    // 天、枯枝、老墙合成一张（转场时只贴一次）
-    g.drawImage(K.cache('g07|agedAll' + fk(), W, H, 1, (q) => {
+
+  // ---------- 少年：套件里店小二的脸是墨色剪影，这里补一张晨光里的暖色侧脸 ----------
+  const corner = (p) => [p[0], p[1], 1];
+  const FACE_M = [[-1, -12.3], [-7.6, -11.4], [-11.3, -6], [-11.5, 0.4], [-9, 6.4], corner([-5.6, 9.4]), [-1.5, 9.8], [3.8, 11.7],
+    [6.8, 10.8], corner([7.6, 8.6]), [7.3, 7.4], corner([8.6, 6.2]), [8.1, 5.1], corner([8.8, 4.1]), corner([11.1, 1.7]), [8.9, -2.3], [9.5, -4.3], [8.4, -8.6], [4.6, -11.7]];
+  const CAP_Y = [[7.4, -8.4], corner([8.8, -5.8]), [6, -9.6], corner([6.4, -6.8]), [4, -11.8], [-2, -13.6], [-8.6, -11.6], [-12, -5.4], [-11.8, 2], corner([-8.6, 7.2]), [-5.6, 1], [-2.4, -3.6], [2.4, -6.4], corner([7.2, -6.2])];
+  function pathC(g, pts) {
+    const n = pts.length, at = (i) => pts[((i % n) + n) % n], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const p0 = at(0), st = p0[2] ? p0 : at(-1)[2] ? at(-1) : mid(at(-1), p0);
+    g.moveTo(st[0], st[1]);
+    for (let i = 0; i < n; i++) {
+      const p = at(i), q = at(i + 1);
+      if (p[2]) { if (i > 0) g.lineTo(p[0], p[1]); continue; }
+      const e = q[2] ? q : mid(p, q);
+      g.quadraticCurveTo(p[0], p[1], e[0], e[1]);
+    }
+    g.closePath();
+  }
+  // 脸上的墨点（头部局部坐标，鼻尖一大滴）
+  const FACE_SPOTS = [[10.1, 1.5, 2.3], [6.4, 3.8, 1.0], [4.2, 6.2, 0.8], [7.8, -1.2, 0.7], [2.6, 2.4, 0.6], [8.2, -5.0, 0.6]];
+  function boyFace(g, P, mood, spotT) {
+    const S = BOY.s * 176 / 180, f = -1;
+    const dx = P.top[0] - P.head[0], dy = P.top[1] - P.head[1], ang = Math.atan2(dx * f, -dy);
+    g.save(); g.translate(P.head[0], P.head[1]); g.scale(f * S, S); g.rotate(ang);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    // 颈
+    g.fillStyle = '#c9a283'; g.beginPath(); g.moveTo(-5.4, 6.2); g.lineTo(3.2, 9.2); g.lineTo(3.6, 16.5); g.lineTo(-5.6, 15.8); g.closePath(); g.fill();
+    // 脸：朝光的一侧亮，后脑一侧暗；颊上一点红
+    g.beginPath(); pathC(g, FACE_M);
+    g.fillStyle = K.lin(g, -11, 0, 11, 0, [[0, '#c79e7c'], [0.45, '#e5c6a6'], [1, '#f2dcc2']]); g.fill();
+    g.save(); g.clip();
+    g.fillStyle = 'rgba(224,128,104,0.22)'; g.beginPath(); g.ellipse(4.6, 3.6, 3.6, 2.6, 0, 0, TAU); g.fill();
+    if (mood === 'laugh') { g.fillStyle = 'rgba(224,128,104,0.18)'; g.beginPath(); g.ellipse(5.4, 2.4, 3, 2, 0, 0, TAU); g.fill(); }
+    g.restore();
+    g.strokeStyle = 'rgba(58,38,26,0.9)'; g.lineWidth = 0.65; g.beginPath(); pathC(g, FACE_M); g.stroke();
+    // 耳
+    g.fillStyle = '#d9b493'; g.beginPath(); g.ellipse(-3.2, 1.6, 2.3, 3.5, 0.15, 0, TAU); g.fill(); g.lineWidth = 0.45; g.stroke();
+    // 眉眼：平时一道短横；笑时眯成弯月；嘴角张开
+    g.strokeStyle = '#24180f';
+    g.lineWidth = 1.1; g.beginPath(); g.moveTo(4.2, -6.4); g.quadraticCurveTo(6.4, -7.6, 8.5, -6.6); g.stroke();
+    g.lineWidth = 0.9; g.beginPath();
+    if (mood === 'laugh') { g.moveTo(4.4, -2.7); g.quadraticCurveTo(6.1, -4.9, 7.9, -2.9); }
+    else { g.moveTo(4.8, -3.4); g.quadraticCurveTo(6.3, -3.9, 7.7, -3.3); }
+    g.stroke();
+    if (mood === 'laugh') { g.fillStyle = '#4a2018'; g.beginPath(); g.moveTo(8.8, 5.0); g.quadraticCurveTo(6.2, 5.6, 5.8, 6.7); g.quadraticCurveTo(7.4, 8.2, 8.3, 7.7); g.closePath(); g.fill(); }
+    // 发：盖住头顶、后脑与鬓角；顶上一个小髻
+    g.fillStyle = '#1d1a16'; g.beginPath(); pathC(g, CAP_Y); g.fill();
+    g.fillStyle = 'rgba(150,160,170,0.25)'; g.lineWidth = 0.5; g.strokeStyle = 'rgba(170,176,180,0.35)';
+    g.beginPath(); g.moveTo(3, -11.6); g.quadraticCurveTo(-4, -13, -9.6, -9.4); g.stroke();
+    g.fillStyle = '#8a7a62'; g.beginPath(); g.ellipse(-5.2, -14.2, 4.4, 3.8, -0.5, 0, TAU); g.fill();
+    g.strokeStyle = '#675a46'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(6.6, -10.4); g.quadraticCurveTo(-1, -13.6, -11.2, -7.6); g.stroke();
+    // 甩笔溅回来的墨点
+    if (spotT != null) {
+      g.fillStyle = INK;
+      FACE_SPOTS.forEach(([x, y, r], i) => {
+        const e = easeOut(seg(spotT, i * 0.015, 0.05 + i * 0.015));
+        if (e <= 0) return;
+        g.beginPath(); g.ellipse(x, y, r * e, r * e * 0.86, 0.4 * i, 0, TAU); g.fill();
+        if (i === 0) { g.beginPath(); g.arc(x - 1.6, y + 2.4 * e, 0.7 * e, 0, TAU); g.arc(x + 1.2, y - 2.6, 0.5 * e, 0, TAU); g.fill(); }
+      });
+    }
+    g.restore();
+  }
+  // 姿势时间表：写字 → 跪下蘸墨（千）→ 举笔甩墨（情）→ 向前再甩（万，墨溅回脸上）→ 挠头大笑（怨）
+  function poseList(k) { return [[-99, 'write'], [k[4] - 0.08, 'dip'], [k[5] - 0.1, 'flick'], [k[6] - 0.06, 'flick2'], [k[7] - 0.06, 'scratch']]; }
+  const XF = 0.06; // 换姿势的交叠半宽（共 0.12 秒）
+  function poseMix(lt, k) {
+    const L = poseList(k);
+    let i = 0;
+    while (i + 1 < L.length && lt >= L[i + 1][0]) i++;
+    if (i + 1 < L.length && lt > L[i + 1][0] - XF) return [L[i][1], L[i + 1][1], smooth((lt - L[i + 1][0] + XF) / (2 * XF))];
+    if (i > 0 && lt < L[i][0] + XF) return [L[i - 1][1], L[i][1], smooth((lt - L[i][0] + XF) / (2 * XF))];
+    return [L[i][1], null, 0];
+  }
+  function boyState(name, lt, k, t) {
+    const o = { stage: 'youth', facing: -1, wind: 0.3, seed: 3 };
+    let x = BOY.x, y = BOY.y;
+    if (name === 'write') {
+      // 踮着脚、身子随笔慢慢往右挪
+      o.pose = 'reach'; o.lean = 0.05;
+      const pr = clamp((lt - wStart) / (k[3] + 0.55 - wStart));
+      x = lerp(918, 964, smooth(pr)) + 3 * Math.sin(lt * 4.2);
+      y = GY - 7 - 1.5 * Math.sin(lt * 6.3);
+    } else if (name === 'dip') { o.pose = 'kneel'; o.head = 0.08; x = 932; }
+    else if (name === 'flick') { o.pose = 'swordUp'; o.head = 0.12; x = 936; }
+    else if (name === 'flick2') { o.pose = 'reach'; o.lean = 0.1; x = 940; y = GY - 3; }
+    else {
+      // 挠头大笑：手按在头顶来回挠，“怨”字上身往上一颠
+      o.pose = 'drink'; o.lean = 0.02;
+      const sc = seg(lt, k[7] - 0.06, k[8] + 0.2);
+      o.head = 0.5 + 0.09 * Math.sin(lt * TAU * 8) * Math.sin(PI * sc);
+      x = 934; y = GY - 9 * Math.sin(PI * clamp((lt - k[7]) / 0.26)) * (lt > k[7] ? 1 : 0);
+    }
+    return { x, y, opts: o, pose: name };
+  }
+  function drawBoyBrush(g, lt, k, B, t, P) {
+    const hx = P.handN[0], hy = P.handN[1];
+    let ang, L = 78, wet = 1;
+    if (B.pose === 'write') {
+      const tip = curTip(lt, k);
+      ang = Math.atan2(tip[1] - hy, tip[0] - hx); L = clamp(Math.hypot(tip[0] - hx, tip[1] - hy) / 1.06, 34, 100);
+      wet = 1 - seg(lt, k[2] - 0.1, k[3]);
+    } else if (B.pose === 'dip') {
+      const bx = BOWL[0] + 2, by = BOWL[1] - 20;
+      ang = Math.atan2(by - hy, bx - hx) + 0.06 * Math.sin(lt * 14) * Math.exp(-Math.max(0, lt - k[4]) / 0.3);
+      L = clamp(Math.hypot(bx - hx, by - hy) / 1.06, 50, 100);
+      wet = seg(lt, k[4] + 0.08, k[4] + 0.3);
+    } else if (B.pose === 'flick') {
+      ang = -1.25 + 0.85 * Math.sin((lt - k[5]) * 22) * Math.exp(-Math.max(0, lt - k[5]) / 0.4);
+      // 笔尖别越过 x=1030（右边是歌词）
+      const reach = L * 1.06;
+      if (hx + Math.cos(ang) * reach > 1030) ang = -Math.acos(clamp((1030 - hx) / reach, -1, 1));
+    } else if (B.pose === 'flick2') { ang = PI + 0.12 + 0.6 * Math.sin((lt - k[6]) * 24) * Math.exp(-Math.max(0, lt - k[6]) / 0.35); wet = 0.8; }
+    else { ang = -1.05 + 0.12 * Math.sin(lt * TAU * 8) * seg(lt, k[7] - 0.06, k[7] + 0.1); L = 70; wet = 0.6; }
+    const tip = bigBrush(g, hx, hy, ang, L, wet);
+    // 甩笔瞬间从笔尖抛出的墨点：只往左上（墙上）飞
+    for (const [t0, sd, a0, a1] of [[k[5] + 0.04, 3, -2.9, -2.2], [k[6] + 0.03, 4, -3.05, -2.55]]) {
+      const age = lt - t0;
+      if (age < 0 || age > 0.35) continue;
+      g.fillStyle = rgba(INK, 0.9 * (1 - age / 0.35));
+      for (let i = 0; i < 30; i++) {
+        const an = lerp(a0, a1, h2(i, sd)), v = 500 + 700 * h2(i, sd + 1);
+        const x = tip[0] + Math.cos(an) * v * age, y = tip[1] + Math.sin(an) * v * age + 600 * age * age;
+        g.beginPath(); g.ellipse(x, y, 1.4 + 2.4 * h2(i, sd + 2), 1.2 + 1.6 * h2(i, sd + 2), an, 0, TAU); g.fill();
+      }
+    }
+    // 第二下甩笔：几滴墨从笔杆上弹回，打在自己脸上
+    const ab = lt - k[6];
+    if (ab > 0 && ab < 0.08) {
+      g.fillStyle = INK;
+      for (let i = 0; i < 6; i++) {
+        const u = ab / 0.08, sx = lerp(tip[0], hx, 0.5), x = lerp(sx, P.mouth[0] + 4 * h2(i, 7), u), y = lerp(hy - 10, P.mouth[1] - 10 + 10 * h2(i, 8), u);
+        g.beginPath(); g.ellipse(x, y, 2.2, 1.2, 0.3, 0, TAU); g.fill();
+      }
+    }
+    // 肩上抹布也落了几点
+    if (lt > k[6] + 0.06) {
+      g.fillStyle = INK;
+      for (let i = 0; i < 5; i++) { const px = P.shoulderN[0] + (h2(i, 9) - 0.5) * 22, py = P.shoulderN[1] - 2 + h2(i, 10) * 18; g.beginPath(); g.arc(px, py, 1.2 + 1.6 * h2(i, 11), 0, TAU); g.fill(); }
+    }
+  }
+  function drawBoy(q, name, lt, k, t) {
+    const B = boyState(name, lt, k, t), o = B.opts;
+    F.draw(q, 'xiaoyao', B.x, B.y, BOY.s, t, Object.assign({ part: 'back' }, o));
+    const P = F.points('xiaoyao', B.x, B.y, BOY.s, t, o);
+    boyFace(q, P, name === 'scratch' ? 'laugh' : 'calm', lt > k[6] + 0.07 ? lt - k[6] - 0.07 : null);
+    F.draw(q, 'xiaoyao', B.x, B.y, BOY.s, t, Object.assign({ part: 'front' }, o));
+    drawBoyBrush(q, lt, k, B, t, P);
+    return B;
+  }
+  // 少年整层：先画进草稿层（换姿势时两张按 1-u / u 叠起来），地上投一道柔影，再整体贴回
+  const BOXB = [560, 120, 1120, 720];
+  function boyLayer(g, lt, k, t, alpha) {
+    if (alpha <= 0.01) return;
+    const [pa, pb, u] = poseMix(lt, k);
+    const m = g.getTransform(), D = devBox(g, BOXB);
+    const setT = (q) => q.setTransform(m.a, m.b, m.c, m.d, m.e - D.X0, m.f - D.Y0);
+    const Bf = scratch('g07boy', D.w, D.h);
+    let fx = 0;
+    if (!pb) { setT(Bf.q); fx = drawBoy(Bf.q, pa, lt, k, t).x - 20; }
+    else {
+      for (const [nm, a] of [[pa, 1 - u], [pb, u]]) {
+        const B2 = scratch('g07boy2', D.w, D.h);
+        setT(B2.q); const st = drawBoy(B2.q, nm, lt, k, t);
+        Bf.q.globalAlpha = a; Bf.q.drawImage(B2.cv, 0, 0, D.w, D.h, 0, 0, D.w, D.h);
+        fx += (st.x - 20) * a;
+      }
+      Bf.q.globalAlpha = 1;
+    }
+    // 地上的影：1/4 分辨率剪影（自然发虚），从脚下往右下铺开
+    const R4 = 4, SH = scratch('g07boysh', D.w / R4, D.h / R4);
+    SH.q.drawImage(Bf.cv, 0, 0, D.w, D.h, 0, 0, SH.w, SH.h);
+    SH.q.globalCompositeOperation = 'source-in'; SH.q.fillStyle = '#5a5040'; SH.q.fillRect(0, 0, SH.w + 2, SH.h + 2); SH.q.globalCompositeOperation = 'source-over';
+    const fdx = m.a * fx + m.c * GY + m.e, fdy = m.b * fx + m.d * GY + m.f;
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+    g.translate(fdx, fdy); g.transform(1, 0, -0.62, -0.24, 0, 0); g.translate(-fdx, -fdy);
+    g.globalAlpha = 0.42 * alpha; g.drawImage(SH.cv, 0, 0, SH.w, SH.h, D.X0, D.Y0, D.w, D.h);
+    g.restore();
+    // 脚下一团贴地的暗
+    g.save(); g.globalAlpha = alpha;
+    g.fillStyle = K.rad(g, fx + 10, GY + 2, 4, 90, [[0, 'rgba(60,48,34,0.32)'], [1, 'rgba(60,48,34,0)']]);
+    g.beginPath(); g.ellipse(fx + 10, GY + 2, 90, 11, 0, 0, TAU); g.fill();
+    g.restore();
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = alpha;
+    g.drawImage(Bf.cv, 0, 0, D.w, D.h, D.X0, D.Y0, D.w, D.h);
+    g.restore();
+  }
+
+  // 回忆（晴朗上午）：时间跳转前风慢慢停下（calm 0），好与定格的那一张接上
+  function drawPast(g, c, lt, t, k) {
+    const calm = 1 - smooth(seg(lt, k[8] - 0.5, k[8]));
+    g.drawImage(skyTex(false), 0, 0, W, 640);
+    g.save(); g.translate(360, 350); g.rotate((Math.sin(t * 0.9) * 0.006 + 0.004 * Math.sin(t * 2.1)) * calm); g.drawImage(osmanthus(false), -340, -350, 760, 320); g.restore();
+    g.drawImage(wallTex(false), 0, 0, W, H);
+    bambooOn(g, t, calm);
+    drips(g, lt);
+    writeGlyph(g, WRIT[5], clamp((lt + 0.25) / 0.45), 1, 1);
+    writeGlyph(g, WRIT[6], wProg(lt, k), wDry(k), 3);
+    dryDrag(g, dragU(lt, k));
+    drawSplats(g, lt, k);
+    inkBowl(g, BOWL[0], BOWL[1], lt, k);
+    boyLayer(g, lt, k, t, 1);
+    birds(g, c, lt, t, k);
+    petalsOsm(g, t, 1);
+    V.dust(g, c, { n: 36, area: [80, 140, 900, 600], color: '#fff3d0', size: [1, 2.6], alpha: 0.55 * (0.3 + 0.7 * calm), night: false });
+    willow(g, t, false, calm);
+    fgLeaves(g, t, calm);
+  }
+  // 竹影在墙上摇
+  function bambooOn(g, t, calm) {
+    g.save(); wallPath(g, 2); g.clip();
+    // 纯黑的正片叠底与普通叠一层 20% 黑完全等价，后者快得多
+    g.globalAlpha = 0.2;
+    g.drawImage(bambooShadow(), -80 + (Math.sin(t * 0.8) * 10 + Math.sin(t * 2.3) * 3) * calm, 120 + Math.sin(t * 0.6) * 4 * calm, W + 200, 560);
+    g.restore();
+  }
+  // 桂花细瓣飘落（近大远小）
+  function petalsOsm(g, t, a) {
+    if (a <= 0.01) return;
+    for (let i = 0; i < 50; i++) {
+      const z = h2(i, 5), sp = 16 + 30 * z, y0 = (h2(i, 6) * 780 + t * sp) % 780 - 30;
+      const x = 40 + h2(i, 7) * 760 + y0 * 0.3 + Math.sin(t * (0.7 + z) + i) * 16;
+      const r = 1.1 + z * 2.6;
+      g.fillStyle = rgba(i % 3 ? '#f6cf4a' : '#e8a040', (0.6 + 0.4 * z) * a);
+      g.beginPath(); g.ellipse(x, y0, r, r * (0.45 + 0.55 * Math.abs(Math.sin(t * 3 + i))), t + i, 0, TAU); g.fill();
+    }
+  }
+  // “英”字定格的那一张（风已停、字已写完、墨点都在）：时间跳转时整张贴，不再逐层画
+  function pastAll(k) {
+    const dk = wDry(k).toFixed(3);
+    return K.cache('g07|pastAll' + fk() + dk, W, H, 1, (q) => {
+      q.drawImage(skyTex(false), 0, 0, W, 640);
+      q.drawImage(osmanthus(false), 20, 0, 760, 320);
+      q.drawImage(wallTex(false), 0, 0, W, H);
+      bambooOn(q, 0, 0);
+      writeGlyph(q, WRIT[5], 1, 1, 1);
+      writeGlyph(q, WRIT[6], wProg(99, k), wDry(k), 3);
+      dryDrag(q, 1);
+      drawSplats(q, 99, k);
+      inkBowl(q, BOWL[0], BOWL[1], 99, k);
+      willow(q, 0, false, 0);
+      fgLeaves(q, 0, 0);
+    });
+  }
+  // 褪色版：去饱和、偏冷（岁月从这里开始）
+  function pastGrey(k) {
+    const dk = wDry(k).toFixed(3);
+    return K.cache('g07|pastGrey' + fk() + dk, W, H, 1, (q) => {
+      q.drawImage(pastAll(k), 0, 0, W, H);
+      q.globalCompositeOperation = 'saturation'; q.fillStyle = 'rgba(128,128,128,0.85)'; q.fillRect(0, 0, W, H);
+      q.globalCompositeOperation = 'source-over'; q.fillStyle = 'rgba(96,108,116,0.16)'; q.fillRect(0, 0, W, H);
+    });
+  }
+  // 水渍：一张预先模糊的柔边斑，边缘一圈深色水线
+  function stainSprite() {
+    return K.cache('g07|stain2', 256, 256, 0.5, (q) => {
+      try { q.filter = `blur(${(4 * SS() * 0.5).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+      // 洇湿的里面淡、偏冷；外缘一圈深色水线，里面还有两道退潮留下的细圈
+      q.fillStyle = 'rgba(128,132,116,0.24)'; A.inkBlob(q, 128, 128, 94, 17, 0.62); q.fill();
+      q.fillStyle = 'rgba(150,148,128,0.14)'; A.inkBlob(q, 124, 132, 70, 23, 0.6); q.fill();
+      q.strokeStyle = 'rgba(92,86,64,0.8)'; q.lineWidth = 4.5; A.inkBlob(q, 128, 128, 94, 17, 0.62); q.stroke();
+      q.strokeStyle = 'rgba(110,104,82,0.4)'; q.lineWidth = 2.2; A.inkBlob(q, 126, 130, 78, 17, 0.62); q.stroke();
+      q.strokeStyle = 'rgba(110,104,82,0.28)'; q.lineWidth = 1.6; A.inkBlob(q, 124, 132, 56, 29, 0.6); q.stroke();
+      q.filter = 'none';
+    });
+  }
+  // 七处水渍：从墙脚和檐下洇开
+  const STAINS = [[150, 600, 1.0, 0.7], [470, 604, 1.2, 0.62], [800, 598, 1.0, 0.7], [250, 160, 0.9, 1.2], [640, 124, 0.8, 1.25], [900, 88, 0.85, 1.3], [60, 330, 0.7, 1.0]];
+  function stains(g, lt, tJ) {
+    const img = stainSprite();
+    g.save(); wallPath(g); g.clip();
+    STAINS.forEach(([x, y, s, ay], i) => {
+      const e = easeOut(seg(lt, tJ - 0.06 + i * 0.035, tJ + 0.5 + i * 0.04));
+      if (e <= 0) return;
+      const R = (30 + 200 * e) * s;
+      g.globalAlpha = 0.85 * Math.min(1, e * 3);
+      g.save(); g.translate(x, y); g.rotate(i * 1.3); g.scale(1, ay); g.drawImage(img, -R, -R, R * 2, R * 2); g.restore();
+    });
+    g.restore();
+  }
+
+  // ---------- 几十年后：阴天冷光，墙皮剥落，只剩“大侠” ----------
+  function agedAll() {
+    return K.cache('g07|agedAll2' + fk(), W, H, 1, (q) => {
       q.drawImage(skyTex(true), 0, 0, W, 640);
       q.drawImage(osmanthus(true), 20, 0, 760, 320);
       q.drawImage(wallTex(true), 0, 0, W, H);
       bandV(q, 0, 540, W, H, [[0, 'rgba(200,206,206,0)'], [0.5, 'rgba(200,206,206,0.16)'], [1, 'rgba(200,206,206,0.05)']]);
       // 冷灰的天光，四角压暗
       q.fillStyle = K.rad(q, 520, 330, 200, 900, [[0, 'rgba(30,40,50,0)'], [1, 'rgba(30,40,50,0.28)']]); q.fillRect(0, 0, W, H);
-    }), 0, 0, W, H);
-    willow(g, t, true);
-    // 枯叶：在“愁”字落下，贴在“侠”上
-    const tl = k[10], u = seg(lt, tl - 1.4, tl);
-    const lx = lerp(700, 506, easeOut(u)) + Math.sin(u * 9) * 34 * (1 - u), ly = lerp(-30, 262, u);
-    deadLeaf(g, lx, ly, 1.3, u < 1 ? lt * 3 : 0.6 + 0.04 * Math.sin(t * 3), u < 1 ? Math.cos(lt * 5) : 1);
+    });
+  }
+  // 墙头的枯草：逐帧随风摆
+  function wallGrass(g, t) {
+    g.lineCap = 'round';
+    for (const [col, lw, sd] of [['rgba(138,122,90,0.85)', 1.2, 0], ['rgba(170,150,104,0.75)', 0.9, 1]]) {
+      g.strokeStyle = col; g.lineWidth = lw; g.beginPath();
+      STEPS.forEach(([x0, x1, y], si) => {
+        const rt = y - 30, n = Math.floor((x1 - x0) / 14);
+        for (let j = 0; j < n; j++) {
+          const gx = x0 + h2(j, si * 7 + sd + 50) * (x1 - x0), gh = 8 + 30 * h2(j, si * 7 + sd + 60);
+          const sw = (Math.sin(t * 1.7 + gx * 0.031) * 0.6 + Math.sin(t * 3.1 + gx * 0.07) * 0.3 + 0.4) * gh * 0.22;
+          g.moveTo(gx, rt + 2); g.quadraticCurveTo(gx + sw * 0.3, rt - gh * 0.5, gx + sw + 3 * h2(j, si + 70), rt - gh);
+        }
+      });
+      g.stroke();
+    }
+    // 几枝草穗
+    g.fillStyle = 'rgba(176,156,110,0.8)';
+    STEPS.forEach(([x0, x1, y], si) => {
+      for (let j = 0; j < 6; j++) {
+        const gx = x0 + h2(j, si + 80) * (x1 - x0), gh = 30 + 14 * h2(j, si + 81), sw = (Math.sin(t * 1.7 + gx * 0.031) * 0.6 + 0.4) * gh * 0.25;
+        g.save(); g.translate(gx + sw, y - 30 - gh); g.rotate(0.3 + sw * 0.03); g.beginPath(); g.ellipse(0, 0, 1.6, 5.5, 0, 0, TAU); g.fill(); g.restore();
+      }
+    });
+  }
+  // 枯叶贴图：歪的椭圆叶片，叶缘卷起焦黄，主脉与叶柄
+  function leafImg() {
+    return K.cache('g07|dleaf', 64, 40, 2, (q) => {
+      q.translate(32, 20);
+      const blade = () => { q.beginPath(); q.moveTo(-22, 1); q.bezierCurveTo(-15, -13, 9, -15, 24, -3); q.bezierCurveTo(14, 8, -8, 12, -22, 1); q.closePath(); };
+      q.fillStyle = K.rad(q, -2, -1, 2, 26, [[0, '#7a4a26'], [0.55, '#8a5a30'], [1, '#c08040']]); blade(); q.fill();
+      q.save(); blade(); q.clip();
+      // 卷起的上缘迎光
+      q.strokeStyle = 'rgba(232,180,110,0.7)'; q.lineWidth = 2.2; q.beginPath(); q.moveTo(-18, -5); q.bezierCurveTo(-10, -13, 9, -14, 22, -4); q.stroke();
+      q.fillStyle = 'rgba(60,34,16,0.35)'; q.beginPath(); q.ellipse(4, 6, 12, 4, -0.1, 0, TAU); q.fill();
+      q.fillStyle = 'rgba(70,40,20,0.5)'; for (const [x, y, r] of [[-6, -3, 1.6], [10, 1, 1.2], [2, 5, 0.9]]) { q.beginPath(); q.arc(x, y, r, 0, TAU); q.fill(); }
+      q.restore();
+      q.strokeStyle = 'rgba(80,46,22,0.9)'; q.lineWidth = 0.7; blade(); q.stroke();
+      q.strokeStyle = 'rgba(66,38,18,0.85)'; q.lineWidth = 1.1; q.beginPath(); q.moveTo(-22, 1); q.quadraticCurveTo(0, -3, 24, -3); q.stroke();
+      q.lineWidth = 0.6;
+      for (let j = 0; j < 4; j++) { const x = -14 + j * 9; q.beginPath(); q.moveTo(x, -1.6 + j * 0.1); q.lineTo(x + 5, -8 + j * 0.8); q.moveTo(x, -1.4); q.lineTo(x + 5, 5 - j * 0.6); q.stroke(); }
+      q.strokeStyle = '#4a2c14'; q.lineWidth = 1.5; q.beginPath(); q.moveTo(-22, 1); q.quadraticCurveTo(-27, 2, -30, 6); q.stroke();
+    });
+  }
+  function leafSprite(g, x, y, s, rot, fx, a) {
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * (Math.abs(fx) < 0.15 ? 0.15 * Math.sign(fx || 1) : fx), s);
+    if (a != null) g.globalAlpha *= a;
+    g.drawImage(leafImg(), -32, -20, 64, 40);
+    g.restore();
+  }
+  // 现在的逍遥（白发、背剑、腰挂葫芦）的长影：滑上墙，停在“大侠”旁
+  const SHS = 1.85, SHX0 = 1040;
+  const SHO = { stage: 'old', facing: -1, prop: 'gourd', tone: 'silhouette', ink: '#000000', rim: null, feibai: false, wind: 0.55, stride: 1.4, speed: 1.35, seed: 5 };
+  const tLeaf = (k) => k[10] + 0.45;
+  function presentShadow(g, lt, k, t, a) {
+    const t0 = k[8] + 0.3, tS = tLeaf(k);
+    if (lt < t0 || a <= 0.2) return;
+    const sp = F.walkSpeed('xiaoyao', SHS, SHO);
+    const x = SHX0 - sp * (Math.min(lt, tS) - t0);
+    const stop = smooth(seg(lt, tS - 0.12, tS + 0.18));
+    const m = g.getTransform(), D = devBox(g, [x - 180, 180, x + 160, WB + 10]), R = 4;
+    const B = scratch('g07psh', D.w / R, D.h / R);
+    B.q.setTransform(m.a / R, m.b / R, m.c / R, m.d / R, (m.e - D.X0) / R, (m.f - D.Y0) / R);
+    // 一张剪影里叠两种姿势（走→停），影子本来就虚，看不出接缝
+    if (stop < 1) F.draw(B.q, 'xiaoyao', x, WB, SHS, t, Object.assign({ pose: 'walk' }, SHO));
+    if (stop > 0) { B.q.globalAlpha = stop; F.draw(B.q, 'xiaoyao', x, WB, SHS, t, Object.assign({ pose: 'stand', head: -0.12 }, SHO)); B.q.globalAlpha = 1; }
+    // 白发、葫芦在剪影里也有颜色：统一染成冷灰的影
+    B.q.setTransform(1, 0, 0, 1, 0, 0); B.q.globalCompositeOperation = 'source-in'; B.q.fillStyle = '#28303a'; B.q.fillRect(0, 0, B.w + 2, B.h + 2); B.q.globalCompositeOperation = 'source-over';
+    g.save(); wallPath(g, 4); g.clip();
+    const fdx = m.a * x + m.c * WB + m.e, fdy = m.b * x + m.d * WB + m.f;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.translate(fdx, fdy); g.transform(1.04, 0, 0.17, 1.02, 0, 0); g.translate(-fdx, -fdy);
+    g.globalAlpha = 0.24 * a; g.drawImage(B.cv, 0, 0, B.w, B.h, D.X0, D.Y0, D.w, D.h);
+    g.restore();
+  }
+  function drawAged(g, c, lt, t, k, a) {
+    g.save(); g.globalAlpha = a;
+    g.drawImage(agedAll(), 0, 0, W, H);
+    // 云影慢慢掠过墙面
+    const cx = -500 + (lt - k[8]) * 45;
+    g.fillStyle = K.lin(g, cx, 0, cx + 900, 0, [[0, 'rgba(34,42,52,0)'], [0.3, 'rgba(34,42,52,0.13)'], [0.7, 'rgba(34,42,52,0.13)'], [1, 'rgba(34,42,52,0)']]);
+    g.fillRect(Math.max(-60, cx), 40, 900, 620);
+    g.restore();
+    presentShadow(g, lt, k, t, a);
+    g.save(); g.globalAlpha = a;
+    wallGrass(g, t);
+    willow(g, t, true, 1);
+    // 枯叶：从墙头飘下，打着转贴到“侠”上，落定时还轻轻一晃
+    const tl = tLeaf(k), u = seg(lt, tl - 1.7, tl), [lx1, ly1] = [WRIT[2][1] + 26, WRIT[2][2] - 14];
+    if (u > 0) {
+      const lx = lerp(700, lx1, easeOut(u)) + Math.sin(u * 9) * 34 * (1 - u), ly = lerp(-30, ly1, u);
+      const st = lt - tl, rot = u < 1 ? lt * 3 : 0.55 + 0.3 * Math.exp(-st / 0.25) * Math.sin(st * 16);
+      leafSprite(g, lx, ly, 1.1, rot, u < 1 ? Math.cos(lt * 5) : 1);
+    }
     for (let i = 0; i < 10; i++) {
       const sp = 40 + 30 * h2(i, 3), y = (h2(i, 4) * 800 + t * sp) % 800 - 40, x = (h2(i, 5) * 1400 + t * 50 + Math.sin(t + i) * 40) % 1400 - 60;
-      deadLeaf(g, x, y, 0.6 + 0.6 * h2(i, 6), t * (1 + h2(i, 7)) + i, Math.cos(t * 3 + i));
+      leafSprite(g, x, y, 0.42 + 0.4 * h2(i, 6), t * (1 + h2(i, 7)) + i, Math.cos(t * 3 + i));
     }
-  }
-  function deadLeaf(g, x, y, s, rot, fx) {
-    g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * (Math.abs(fx) < 0.15 ? 0.15 * Math.sign(fx || 1) : fx), s);
-    g.fillStyle = '#8a4a26';
-    g.beginPath();
-    for (let p = 0; p < 5; p++) { const a = (p / 5) * TAU - PI / 2; g.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); g.lineTo(Math.cos(a + 0.63) * 6, Math.sin(a + 0.63) * 6); }
-    g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(60,30,14,0.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 14); g.stroke();
     g.restore();
+    V.dust(g, c, { n: 22, area: [60, 120, 1000, 600], color: '#e2e6e6', size: [0.8, 2.2], alpha: 0.4 * a, night: false, seed: 7 });
   }
 
   XYT.registerShot('c1_wallink', {
@@ -681,36 +969,31 @@
     text: '#1a2026', shadow: 'rgba(250,246,236,0.95)', accent: '#b8862e', bloom: 0.2,
     draw(g, c) {
       const lt = c.lt, t = c.t, k = chars(c, T21);
-      // 几十年后的那张老墙提前分几帧建好，转场时不卡
+      const tJ = k[8];
+      // 几十年后的那张老墙、定格的那一张，提前分几帧建好，转场时不卡
       if (lt > 0.8) skyTex(true);
-      if (lt > 1.6) osmanthus(true);
-      if (lt > 2.4) wallTex(true);
-      const tJump = k[8], jump = smooth((lt - tJump) / 0.5);
-      // 时间跳转后慢慢推向“大侠”二字
-      const push = easeInOut(seg(lt, tJump, c.dur + 0.4));
+      if (lt > 1.4) osmanthus(true);
+      if (lt > 2.0) wallTex(true);
+      if (lt > 2.6) agedAll();
+      if (lt > 2.9) stainSprite();
+      if (lt > 3.5) pastAll(k);
+      if (lt > 3.62) pastGrey(k);
+      const jump = smooth(seg(lt, tJ + 0.12, tJ + 0.62));
+      // 时间跳转后慢慢推向“大侠”（以墙角左侧为中心推，墙角不压到歌词）
+      const push = easeInOut(seg(lt, tJ + 0.2, c.dur + 0.4));
       g.save();
-      if (push > 0) { const z = 1 + 0.1 * push; g.translate(440, 300); g.scale(z, z); g.translate(-440, -300 - 8 * push); }
-      const stain = seg(lt, tJump - 0.15, tJump + 0.45);
-      if (jump < 1) {
-        drawPast(g, c, lt, t, k, jump > 0.45);
-        // 岁月从墙上的斑痕处洇开：一团团灰绿的水渍越晕越大，墙色褪灰
-        if (stain > 0 && jump < 0.6) {
-          g.save(); g.globalCompositeOperation = 'multiply';
-          const spots = [[300, 380, 0], [760, 250, 1], [520, 540, 2], [960, 170, 3], [140, 180, 4], [640, 420, 5], [420, 160, 6]];
-          for (const [sx, sy, i] of spots) {
-            const e = easeOut(seg(stain, i * 0.06, 0.7 + i * 0.04));
-            if (e <= 0) continue;
-            // 两层由大到小叠出柔边，像水渍在灰墙上慢慢洇开
-            for (let j = 0; j < 2; j++) {
-              g.fillStyle = rgba(i % 2 ? '#a8a898' : '#9aa290', 0.22 * e);
-              A.inkBlob(g, sx, sy, (20 + e * 210) * (1 - j * 0.3), i * 3 + j + 11, 0.45); g.fill();
-            }
-          }
-          g.fillStyle = rgba('#b8b8b0', 0.5 * stain); g.fillRect(-40, -40, W + 80, H + 80);
-          g.restore();
-        }
+      if (push > 0) { const z = 1 + 0.07 * push; g.translate(860, 300); g.scale(z, z); g.translate(-860, -300); }
+      if (lt < tJ) drawPast(g, c, lt, t, k);
+      else if (jump < 1) {
+        // 定格、褪色、水渍从墙脚与檐下洇开；少年淡去
+        const desat = smooth(seg(lt, tJ, tJ + 0.45));
+        if (desat < 1) { g.drawImage(pastAll(k), 0, 0, W, H); drips(g, tJ); }
+        if (desat > 0) { g.globalAlpha = desat; g.drawImage(pastGrey(k), 0, 0, W, H); g.globalAlpha = 1; }
+        if (jump < 0.8) stains(g, lt, tJ);
+        petalsOsm(g, t, 1 - seg(lt, tJ, tJ + 0.2));
+        boyLayer(g, lt, k, t, 1 - smooth(seg(lt, tJ, tJ + 0.24)));
       }
-      if (jump > 0) { g.save(); g.globalAlpha = jump; drawAged(g, c, lt, t, k); g.restore(); }
+      if (jump > 0) drawAged(g, c, lt, t, k, jump);
       g.restore();
     },
   });
