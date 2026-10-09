@@ -20,6 +20,11 @@
     freedom: { name: '逍遥', zone: 'left' },
   };
   XYT.SCENES = SCENES;
+  // 分镜专用镜头：注册到渲染表，同时登记名称与歌词区位
+  XYT.registerShot = function (id, def) {
+    (XYT.scenes = XYT.scenes || {})[id] = def;
+    SCENES[id] = { name: def.name || id, zone: def.zone || 'bottom', shot: true };
+  };
 
   // 意象词典：词 → 权重
   const W = (s) => s.split(' ').map((p) => { const [w, v] = p.split(':'); return [w, +v]; });
@@ -101,13 +106,24 @@
     let timed = false;
     for (const row of text.split('\n')) {
       const tags = [...row.matchAll(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g)];
-      const body = row.replace(/\[[^\]]*\]/g, '').replace(/<\d+:\d+(?:\.\d+)?>/g, '').trim();
+      let body = row.replace(/\[[^\]]*\]/g, '').replace(/<\d+:\d+(?:\.\d+)?>/g, '').trim();
+      // 增强型 LRC：<mm:ss.xx>字 逐字时间
+      let charTimes = null;
+      const bodyRaw = row.replace(/\[[^\]]*\]/g, '');
+      if (/<\d+:\d+(?:\.\d+)?>/.test(bodyRaw)) {
+        const segs = [...bodyRaw.matchAll(/<(\d+):(\d+(?:\.\d+)?)>([^<]*)/g)];
+        const chars = [], times = [];
+        for (const sg of segs) for (const ch of Array.from(sg[3])) { chars.push(ch); times.push(+sg[1] * 60 + parseFloat(sg[2]) - offset); }
+        while (chars.length && /\s/.test(chars[chars.length - 1])) { chars.pop(); times.pop(); }
+        while (chars.length && /\s/.test(chars[0])) { chars.shift(); times.shift(); }
+        if (chars.length) { body = chars.join(''); charTimes = times; }
+      }
       if (tags.length) {
         timed = true;
         for (const tg of tags) {
           const t = +tg[1] * 60 + parseFloat(tg[2].replace(':', '.')) - offset;
           // 空白时间标签表示上一句到此结束
-          lines.push({ t: Math.max(0, t), text: body, kind: !body ? 'gap' : CREDIT.test(body) ? 'credit' : 'lyric' });
+          lines.push({ t: Math.max(0, t), text: body, charTimes, kind: !body ? 'gap' : CREDIT.test(body) ? 'credit' : 'lyric' });
         }
       } else if (body && !/^\[/.test(row.trim())) {
         lines.push({ t: null, text: body, kind: CREDIT.test(body) ? 'credit' : 'lyric' });
@@ -140,6 +156,7 @@
     outro: ['wine', 'mist'],
   };
   const NIGHT = new Set(['moon', 'wine', 'dream', 'sword', 'memory']);
+  const isNight = (id) => !!((XYT.scenes && XYT.scenes[id] && XYT.scenes[id].night) || NIGHT.has(id));
   const INTENSITY = { intro: 0.35, verse: 0.55, bridge: 0.45, chorus: 1, outro: 0.4 };
   const PUNCT = /[\s，。、！？,.!?；;：:“”"'‘’…—\-（）()《》·]/;
 
@@ -165,9 +182,51 @@
       const cls = classify(l.text);
       let end = next ? next.t : Math.min(dur - 0.3, l.t + Math.max(6, vis * 0.6 + 3));
       if (next && next.kind !== 'gap' && next.t - l.t > 14) end = l.t + Math.min(12, vis * 0.7 + 4);
-      return { t: l.t, end, text: l.text, chars, vis, cls, idx: k };
+      return { t: l.t, end, text: l.text, chars, vis, cls, idx: k, charTimes: l.charTimes && l.charTimes.length === chars.length ? l.charTimes : null };
     });
 
+    // 有分镜表时：每句歌词一个指定镜头，切点卡在这句第一个字开唱的那一拍
+    let segs = [];
+    let endStart = null;
+    const sb = opts.storyboard;
+    function storyboardSegs() {
+      // 器乐段可给多个镜头：在 [a, b) 内按小节均分
+      const span = (list, a, b, src, sec) => {
+        const ids = Array.isArray(list) ? list : [list];
+        const res = [];
+        ids.forEach((id, k) => {
+          const x = k === 0 ? a : g.nearestDown(a + ((b - a) * k) / ids.length);
+          res.push({ start: x, scene: id, src, sec });
+        });
+        return res;
+      };
+      const firstCut = (() => {
+        const ln = lines[0];
+        if (!ln) return dur;
+        const fi = ln.chars.findIndex((c) => !PUNCT.test(c));
+        return ln.charTimes && fi >= 0 ? ln.charTimes[fi] : ln.t;
+      })();
+      const out = span(sb.intro || 'mist', 0, firstCut, 'intro', 'intro');
+      let prevEnd = null;
+      lines.forEach((ln, k) => {
+        const shot = sb.lines && sb.lines[k + 1];
+        const fi = ln.chars.findIndex((c) => !PUNCT.test(c));
+        const first = ln.charTimes && fi >= 0 ? ln.charTimes[fi] : ln.t;
+        if (prevEnd != null && sb.interlude && first - prevEnd > 7) out.push(...span(sb.interlude, g.nearestDown(prevEnd + 0.4), first, 'interlude', 'bridge'));
+        if (shot) {
+          let cut = g.quant(first, 2);
+          if (cut > first + 0.02) cut -= g.per(g.idx(first)) / 2;
+          out.push({ start: Math.max(0.1, cut), scene: shot, src: 'lyric', line: k, sec: sectionAt(secs, first + 0.05).type });
+        }
+        prevEnd = ln.end;
+      });
+      if (sb.outro && prevEnd != null && dur - prevEnd > 4) out.push(...span(sb.outro, g.nearestDown(prevEnd + 0.4), dur - 2, 'end', 'outro'));
+      const res = [];
+      for (const s of out) { if (res.length && s.start < res[res.length - 1].start + 0.6) res[res.length - 1] = s.src === 'lyric' ? s : res[res.length - 1]; else res.push(s); }
+      return res;
+    }
+    if (sb) segs = storyboardSegs();
+    else {
     // 2) 场景请求
     const reqs = [];
     const counters = {};
@@ -214,7 +273,6 @@
 
     // 4) 赋予场景
     let prev = null;
-    const segs = [];
     // 没有歌词意象时按这一句（乐句）自身的响度选：响的用激昂画面，轻的用抒情画面
     const env = an.env;
     const meanRms = (a, b) => {
@@ -249,7 +307,7 @@
     // 结尾
     const lastLine = lines[lines.length - 1];
     const outro = secs.length > 1 && secs[secs.length - 1].type === 'outro' ? secs[secs.length - 1] : null;
-    let endStart = Math.max(lastLine ? lastLine.end + 0.2 : 0, outro ? outro.start + barAt(outro.start) : dur - 12);
+    endStart = Math.max(lastLine ? lastLine.end + 0.2 : 0, outro ? outro.start + barAt(outro.start) : dur - 12);
     endStart = Math.min(Math.max(endStart, dur * 0.6), dur - 3.5);
     endStart = Math.max(0, g.nearestDown(endStart));
     if (!lastLine || lastLine.end <= endStart) {
@@ -257,7 +315,14 @@
       if (segs[segs.length - 1].scene !== 'wine' && endStart - segs[segs.length - 1].start > barAt(endStart)) segs.push({ start: endStart, scene: 'wine', src: 'end', sec: 'outro' });
       else segs[segs.length - 1].src = 'end';
     }
+    }
 
+    if (endStart == null) {
+      const lastL = lines[lines.length - 1];
+      const outS = secs.length > 1 && secs[secs.length - 1].type === 'outro' ? secs[secs.length - 1] : null;
+      endStart = Math.max(lastL ? lastL.end + 0.2 : 0, outS ? outS.start + barAt(outS.start) : dur - 12);
+      endStart = Math.max(0, g.nearestDown(Math.min(Math.max(endStart, dur * 0.6), dur - 3.5)));
+    }
     segs.forEach((s, k) => {
       s.end = k + 1 < segs.length ? segs[k + 1].start : dur;
       s.key = s.start.toFixed(2);
@@ -268,7 +333,7 @@
       seen[s.scene] = (seen[s.scene] || 0) + 1;
       s.variant = seen[s.scene] - 1;
       // 同一画面第二次出现时左右镜像（含文字的醉月、诗卷除外）
-      s.mirror = s.variant % 2 === 1 && s.scene !== 'wine' && s.scene !== 'poem';
+      s.mirror = !sb && s.variant % 2 === 1 && s.scene !== 'wine' && s.scene !== 'poem';
       const sec = sectionAt(secs, (s.start + s.end) / 2);
       s.intensity = INTENSITY[sec.type] ?? 0.55;
       s.idx = k;
@@ -280,8 +345,9 @@
       const atSection = secs.some((x) => Math.abs(x.start - s.start) < per * 1.1);
       if (atSection && sec.type === 'chorus') type = 'slash';
       else if (s.scene === 'poem') type = 'ink';
-      else if (NIGHT.has(s.scene) !== NIGHT.has(prevS.scene)) type = 'iris';
-      const d = type === 'slash' ? Math.max(0.35, per * 0.6) : Math.min(1.4, Math.max(0.5, per));
+      else if (isNight(s.scene) !== isNight(prevS.scene)) type = 'iris';
+      if (sb && sb.trans && s.line != null && sb.trans[s.line + 1]) type = sb.trans[s.line + 1];
+      const d = type === 'cut' ? 0.001 : type === 'slash' ? Math.max(0.35, per * 0.6) : Math.min(1.4, Math.max(0.5, per));
       s.trans = { type, dur: d };
     });
 
@@ -297,12 +363,14 @@
       sp = Math.max(q, Math.round(sp / q) * q);
       const t0 = g.quant(ln.t, 4);
       let vi = 0;
-      ln.reveal = ln.chars.map((c) => {
+      ln.reveal = ln.chars.map((c, ci) => {
         if (PUNCT.test(c)) return null;
+        if (ln.charTimes) return Math.max(ln.t, ln.charTimes[ci] - 0.06);
         return t0 + sp * vi++;
       });
       const seg = sceneAt(ln.t + 0.05);
       let zone = (SCENES[seg.scene] || {}).zone || 'bottom';
+      if (sb && sb.zones && sb.zones[ln.idx + 1]) zone = sb.zones[ln.idx + 1];
       if (seg.mirror) zone = zone === 'left' ? 'right' : zone === 'right' ? 'left' : zone;
       if (ln.vis > 14 && zone !== 'top') zone = 'bottom';
       ln.zone = zone;

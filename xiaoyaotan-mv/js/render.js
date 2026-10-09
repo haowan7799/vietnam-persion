@@ -387,6 +387,19 @@
     }
 
     post(g, t, sc) {
+      // 柔光：缩小到 1/8 再自乘（压暗暗部、保留亮部），放大后以“滤色”叠回，亮处泛起光晕
+      const bw = Math.max(16, Math.round(this.cv.width / 8)), bh = Math.max(9, Math.round(this.cv.height / 8));
+      if (!this.bloom) this.bloom = mkBuf();
+      if (this.bloom.c.width !== bw) { this.bloom.c.width = bw; this.bloom.c.height = bh; }
+      const bgx = this.bloom.g;
+      bgx.setTransform(1, 0, 0, 1, 0, 0); bgx.globalAlpha = 1;
+      bgx.globalCompositeOperation = 'copy'; bgx.drawImage(this.cv, 0, 0, bw, bh);
+      bgx.globalCompositeOperation = 'multiply'; bgx.drawImage(this.bloom.c, 0, 0);
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalCompositeOperation = 'screen'; g.globalAlpha = sc.bloom != null ? sc.bloom : sc.night ? 0.5 : 0.28;
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(this.bloom.c, 0, 0, this.cv.width, this.cv.height);
+      g.restore();
       g.globalAlpha = sc.night ? 0.8 : 0.45;
       g.drawImage(XYT.sprites.vignette, 0, 0, W, H);
       g.globalAlpha = sc.night ? 0.06 : 0.16;

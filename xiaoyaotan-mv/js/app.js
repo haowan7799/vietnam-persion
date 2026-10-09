@@ -110,7 +110,7 @@
 
   // ---------- 数据流 ----------
   function rebuild(keepPos) {
-    st.tl = XYT.buildTimeline(st.an, st.lyr, { overrides: st.overrides });
+    st.tl = XYT.buildTimeline(st.an, st.lyr, { overrides: st.overrides, storyboard: st.storyboard });
     decorate(st.tl);
     R.setData(st.an, st.tl);
     drawStripStatic();
@@ -565,6 +565,20 @@
     setResolution(w) { R.setSize(w); R.layouts.clear(); },
     fonts: loadFonts,
     renderAt(t) { R.frame(t); },
+    setStoryboard(sb) { st.storyboard = sb; if (st.an) rebuild(true); return st.tl ? st.tl.segments.length : 0; },
+    // 单个镜头预览：合成 72 BPM 节拍网格，可带一句示例歌词
+    previewShot(id, o = {}) {
+      const dur = o.dur || 12;
+      const an = XYT.audio.synthetic(dur, 72, [[o.sec || 'verse', Math.ceil(dur / 3.3334) + 1]]);
+      const text = o.text || '';
+      const lyr = text ? XYT.parseLyrics(`[00:00.83]${text}\n[00:${String(Math.min(59, Math.floor(dur - 1))).padStart(2, '0')}.00]`) : null;
+      const sb = { intro: id, lines: text ? { 1: id } : {} };
+      const tl = XYT.buildTimeline(an, lyr, { storyboard: sb });
+      tl.segments.forEach((sg) => { sg.trans = null; });
+      tl.title = null; tl.end = null;
+      R.setData(an, tl);
+      return tl.segments.map((sg) => sg.scene);
+    },
     state: () => st,
   };
   boot();

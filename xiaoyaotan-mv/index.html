@@ -236,6 +236,24 @@
 <script src="js/art.js"></script>
 <script src="js/scenes-a.js"></script>
 <script src="js/scenes-b.js"></script>
+<script src="js/kit/core.js"></script>
+<script src="js/kit/figures.js"></script>
+<script src="js/kit/env.js"></script>
+<script src="js/kit/vfx.js"></script>
+<script src="js/shots/shots.js"></script>
+<script src="js/shots/g01.js"></script>
+<script src="js/shots/g02.js"></script>
+<script src="js/shots/g03.js"></script>
+<script src="js/shots/g04.js"></script>
+<script src="js/shots/g05.js"></script>
+<script src="js/shots/g06.js"></script>
+<script src="js/shots/g07.js"></script>
+<script src="js/shots/g08.js"></script>
+<script src="js/shots/g09.js"></script>
+<script src="js/shots/g10.js"></script>
+<script src="js/shots/g11.js"></script>
+<script src="js/shots/g12.js"></script>
+<script src="js/shots/storyboard.js"></script>
 <script src="js/render.js"></script>
 <script>
   (function () {
@@ -246,6 +264,7 @@
     };
     const box = document.getElementById('vocab');
     for (const id in XYT.SCENES) {
+      if (XYT.SCENES[id].shot || !XYT.SCENE_WORDS[id]) continue;
       const d = document.createElement('div');
       const words = XYT.SCENE_WORDS[id].slice().sort((a, b) => b[1] - a[1]).map((w) => w[0]).join('、');
       d.innerHTML = '<b></b><small></small><p></p>';
