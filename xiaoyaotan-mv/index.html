@@ -52,6 +52,9 @@
   .big-play svg { width: 16px; height: 16px; fill: currentColor; }
   .big-play:hover { background: rgba(179,53,42,0.8); }
   .big-play:disabled { opacity: 0.4; cursor: wait; }
+  .badge { position: absolute; top: 12px; left: 12px; padding: 3px 10px; border-radius: 999px; background: rgba(179,53,42,0.92); color: #fbf1e6; font-size: 13px; pointer-events: none; }
+  .stage.drop { outline: 3px dashed var(--accent); outline-offset: -3px; }
+  .demo-note { margin: 0; padding: 10px 14px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--accent); font-size: 14px; }
   .rec { position: absolute; inset: auto 0 0 0; padding: 12px 14px; background: linear-gradient(transparent, rgba(0,0,0,0.75)); color: #fff; display: grid; gap: 6px; }
   .rec-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
   .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #e2412f; animation: blink 1s infinite; }
@@ -133,6 +136,7 @@
     <section class="stage-col" aria-label="预览">
       <div class="stage">
         <canvas id="stage" width="1280" height="720" aria-label="音乐动画画面"></canvas>
+        <span id="demoBadge" class="badge">演示配乐 · 不是原曲</span>
         <button id="bigPlay" class="big-play" type="button" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg><span id="bigPlayLabel">准备演示配乐…</span></button>
         <div id="recOverlay" class="rec" hidden>
           <div class="rec-row"><span class="rec-dot"></span><span>正在录制视频，请保持此页在前台</span><span id="recTime" class="time" style="color:#ddd">00:00.0</span><button id="recCancel" type="button">取消</button></div>
@@ -145,6 +149,7 @@
         <span id="nowScene" class="chip scene">云山</span>
         <span id="srcLabel" class="src">演示：合成配乐 + 自拟示例歌词</span>
       </div>
+      <p id="demoNote" class="demo-note">现在播放的是程序合成的演示配乐和自拟歌词，所以音乐和时长都和原曲不一样。要做胡歌《逍遥叹》的视频，请在「壹 · 歌曲」里载入原曲音频文件，或直接把文件拖到画面上。载入后，配乐、时长、节拍和分镜都会换成原曲的。</p>
       <canvas id="strip" aria-label="时间线：段落、镜头、节拍与歌词位置，可拖动跳转"></canvas>
       <div class="legend">
         <span style="--c:#4f6f8a">主歌</span><span style="--c:#b23a27">副歌</span><span style="--c:#6b5aa0">间奏</span><span style="--c:#8c8a83">前奏 / 尾声</span><span class="dot" style="--c:#c0392b">歌词起句</span><span class="plain">竖线：节拍（长线为强拍）</span>
@@ -166,7 +171,7 @@
         <h2><b>壹</b>歌曲</h2>
         <label class="file big"><input id="audioFile" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg"><span>选择《逍遥叹》音频文件</span></label>
         <div id="anaBox" class="progress" hidden><span id="anaLabel">分析中</span><div class="bar"><i id="anaBar"></i></div></div>
-        <p class="hint">支持 mp3、m4a、wav、flac。音频只在你的浏览器里分析和渲染，不会上传到任何地方。</p>
+        <p class="hint">支持 mp3、m4a、flac、wav。音乐 App 下载的 .ncm、.qmc、.mflac、.kgm 等是加密格式，浏览器读不了。音频只在你的浏览器里处理，不会上传。</p>
       </section>
 
       <section class="step">

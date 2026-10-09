@@ -190,11 +190,13 @@
       if ($('lyrics').value.trim() === st.demoLRC.trim()) { $('lyrics').value = ''; st.lyr = null; setLyricsHint('换成你的歌之后，示例歌词已清空。导入或粘贴《逍遥叹》的 LRC 歌词，画面会按每句意象切换。'); }
       $('srcLabel').textContent = name ? `音频：${name}` : '音频已载入';
       $('play').disabled = false; $('bigPlay').disabled = false; $('bigPlayLabel').textContent = '播放';
+      $('demoBadge').hidden = true; $('demoNote').hidden = true;
       $('srcLabel').dataset.kind = 'user';
       setTimeout(() => { box.hidden = true; }, 900);
       if (st.lyr) setLyricsFromText($('lyrics').value, { silent: true }); else rebuild();
     } catch (e) {
-      setProgress(0, '无法读取这个文件：请换成 mp3、m4a、wav 或 flac 格式。');
+      const enc = /\.(ncm|qmc\w*|mflac\w*|mgg\w*|kgm|kgma|kwm|vpr|tkm|bkc\w*)$/i.test(name || '');
+      setProgress(0, enc ? '这是音乐 App 的加密下载格式，浏览器读不了。请换成普通的 mp3、m4a、flac 或 wav 文件。' : '读不了这个文件。请换成 mp3、m4a、flac 或 wav 格式的音频。');
       console.error(e);
     }
   }
@@ -424,7 +426,7 @@
     const vstream = $('stage').captureStream(fps);
     const dest = st.actx.createMediaStreamDestination();
     const stream = new MediaStream([...vstream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-    const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: res === 1080 ? 14e6 : 8e6, audioBitsPerSecond: 192000 });
+    const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: res === 1080 ? 9e6 : 5e6, audioBitsPerSecond: 192000 });
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     st.recording = { rec, dest, chunks, mime: rec.mimeType || mime, cancelled: false };
@@ -500,6 +502,17 @@
     setLyricsFromText($('lyrics').value);
   });
   $('applyLyrics').addEventListener('click', () => setLyricsFromText($('lyrics').value));
+  const stageBox = document.querySelector('.stage');
+  stageBox.addEventListener('dragover', (e) => { e.preventDefault(); stageBox.classList.add('drop'); });
+  stageBox.addEventListener('dragleave', () => stageBox.classList.remove('drop'));
+  stageBox.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    stageBox.classList.remove('drop');
+    const f = e.dataTransfer && e.dataTransfer.files[0];
+    if (!f || st.recording) return;
+    if (/\.(lrc|txt)$/i.test(f.name)) { $('lyrics').value = await f.text(); setLyricsFromText($('lyrics').value); }
+    else loadAudioFile(f);
+  });
   $('tapStart').addEventListener('click', startTap);
   $('tapBtn').addEventListener('click', tap);
   $('tapUndo').addEventListener('click', undoTap);
@@ -541,7 +554,7 @@
     try {
       st.buffer = await synthDemo();
       $('play').disabled = false; $('bigPlay').disabled = false;
-      if (st.demo) $('bigPlayLabel').textContent = '播放演示';
+      if (st.demo) $('bigPlayLabel').textContent = '播放演示（合成配乐）';
     } catch (e) { console.error(e); }
   }
 
