@@ -186,6 +186,18 @@
           g.beginPath(); g.arc(x, y, 1 + h2(i, 74) * 2.4, 0, TAU); g.fill();
         }
       }
+      if (ln.cls.overlays.includes('maple')) {
+        for (let i = 0; i < 34; i++) {
+          const x = ((h2(i, 91) * (W + 200) + t * (40 + h2(i, 92) * 50)) % (W + 200)) - 100;
+          const y = ((h2(i, 93) * (H + 80) + t * (55 + h2(i, 94) * 45)) % (H + 80)) - 40;
+          g.save(); g.translate(x, y); g.rotate(t * (1 + h2(i, 95)) + i); g.scale(Math.cos(t * 2.5 + i), 1);
+          g.fillStyle = rgba(i % 3 ? '#c4472b' : '#d9822b', 0.85 * k);
+          g.beginPath();
+          for (let p = 0; p < 5; p++) { const a = (p / 5) * TAU - Math.PI / 2; g.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); g.lineTo(Math.cos(a + 0.63) * 4, Math.sin(a + 0.63) * 4); }
+          g.closePath(); g.fill();
+          g.restore();
+        }
+      }
       if (ln.cls.overlays.includes('wind')) {
         const gx = t * 260 + 140 * (c.b.i - Math.exp(-c.b.since / 0.3));
         for (let i = 0; i < 26; i++) {
@@ -223,10 +235,18 @@
       } else {
         const n = vis.length, two = n > 9;
         const size = two ? 46 : 52;
+        // 两列时优先在空格处断开；断开后某列超过 9 字就改为从中间断开
         let split = Math.ceil(n / 2);
         if (two) {
-          const sp = ln.chars.findIndex((ch, i) => i > 2 && /[\s，,、]/.test(ch));
-          if (sp > 0) split = vis.filter((i) => i < sp).length;
+          let best = null;
+          ln.chars.forEach((ch, i) => {
+            if (!/[\s，,、]/.test(ch)) return;
+            const k = vis.filter((v) => v < i).length;
+            if (k < 2 || n - k < 2) return;
+            const m = Math.max(k, n - k);
+            if (!best || m < best.m) best = { k, m };
+          });
+          if (best && best.m <= 9) split = best.k;
         }
         const baseX = ln.zone === 'right' ? 1150 : 132;
         const colX = (col) => (ln.zone === 'right' ? baseX - col * size * 1.3 : baseX + (two ? (1 - col) * size * 1.3 : 0));
@@ -247,6 +267,22 @@
         if (t < ln.t - 0.2 || t > ln.out + 0.9) continue;
         const sc = XYT.scenes[ln.scene] || XYT.scenes.mist;
         const L = this.layout(ln);
+        if (ln.zone === 'bottom' || ln.zone === 'top') {
+          // 横排歌词垫一条两端渐隐的淡墨底，复杂背景上也看得清
+          const ps = L.pos.filter(Boolean);
+          const t0 = ln.reveal.find((v) => v != null) ?? ln.t;
+          const vis = easeOut(clamp((t - t0) / 0.4)) * (1 - clamp((t - ln.out) / 0.6));
+          if (ps.length && vis > 0.01) {
+            const x0 = ps[0].x - ps[0].size, x1 = ps[ps.length - 1].x + ps[0].size, y = ps[0].y, hh = ps[0].size * 1.7;
+            const tc = parseInt(sc.text.slice(1), 16), lum = (0.3 * (tc >> 16) + 0.59 * ((tc >> 8) & 255) + 0.11 * (tc & 255)) / 255;
+            const col = lum > 0.55 ? '10,8,16' : '250,245,234';
+            const gr = g.createLinearGradient(x0 - 90, 0, x1 + 90, 0);
+            gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.18, `rgba(${col},${0.62 * vis})`);
+            gr.addColorStop(0.82, `rgba(${col},${0.62 * vis})`); gr.addColorStop(1, `rgba(${col},0)`);
+            g.fillStyle = gr;
+            g.beginPath(); g.ellipse((x0 + x1) / 2, y, (x1 - x0) / 2 + 90, hh / 2, 0, 0, TAU); g.fill();
+          }
+        }
         ln.chars.forEach((ch, i) => {
           const p = L.pos[i], tau = ln.reveal[i];
           if (!p || tau == null || t < tau) return;

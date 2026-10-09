@@ -132,7 +132,7 @@
     }
     beatAtOrBefore(t) { return this.time(Math.floor(this.pos(t + 1e-6))); }
     quant(t, div) { return this.timeAt(Math.round(this.pos(t) * div) / div); }
-    barDur(t) { return this.per(this.idx(t)) * 4; }
+    barDur(t) { const i = this.idx(t); return this.time(i + 2) - this.time(i - 2); }
   }
   XYT.Grid = Grid;
 

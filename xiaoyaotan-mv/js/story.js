@@ -24,18 +24,18 @@
   // 意象词典：词 → 权重
   const W = (s) => s.split(' ').map((p) => { const [w, v] = p.split(':'); return [w, +v]; });
   const SCENE_WORDS = {
-    mist: W('江湖:2 天涯:2 远方:1.5 山:1.2 峰:1.2 崖:1.2 路:1 途:1 漂泊:1.5 浪迹:1.5 人间:1 归:0.8 万里:1.2 千山:1.5 雾:1.2 行:0.5 走:0.5'),
-    boat: W('舟:2 船:2 江:1.2 河:1.2 湖:1.2 水:1 流:0.8 波:1 浪:1 渡:1.2 岸:1.2 海:1'),
+    mist: W('江湖:2 天涯:2 远方:1.5 山:1.2 峰:1.2 崖:1.2 路:1 途:1 漂泊:1.5 浪迹:1.5 人间:1 归:0.8 万里:1.2 千山:1.5 雾:1.2 足迹:1.5 行:0.5 走:0.5'),
+    boat: W('舟:2 船:2 夕阳:2 江:1.2 河:1.2 湖:1.2 水:1 流:0.8 东流:1.5 潮:1.5 波:1 浪:1 渡:1.2 岸:1.2 海:1'),
     moon: W('月:2 夜:1.2 星:1.2 寒:0.8 霜:1 宵:1 夕:0.8 晚:0.8 荷:1.5 莲:1.5 静:0.6'),
-    wine: W('酒:2.5 醉:2.5 杯:2 壶:2 饮:1.5 酌:1.5 浊:1 盏:1.5 觞:1.5'),
+    wine: W('酒:2.5 醉:2.5 杯:2 壶:2 饮:1.5 酌:1.5 浊:1 盏:1.5 觞:1.5 知己:2'),
     dream: W('梦:2.5 幻:1.5 蝶:2 恍惚:1.5 虚:0.8 痴:1 迷:1 醒:1.2 魂:1.2'),
     poem: W('诗:2.5 词:1.5 书:1.2 笔:2 墨:2 字:1.2 写:1.5 纸:1.2 画:1.2 题:1'),
-    sword: W('剑:2.5 侠:2 刀:2 锋:1.5 战:1.5 斩:1.5 肝胆:2 英雄:2 豪:1.2 血:1.2 傲:1 狂:1 闯:1.2'),
-    flight: W('飞:2 翔:1.5 御:1.2 腾:1.2 九天:2 青云:2 云霄:2 乘风:2 苍穹:1.5 天际:1.5'),
-    petals: W('红尘:3 花:2 落:1 春:1.2 桃:2 红:1 芳:1.2 谢:0.8 缘:1.2 繁华:1.5 凡尘:2 尘:1 樱:1.5'),
-    rain: W('雨:2.5 泪:2 哭:1.5 伤:1.2 痛:1.2 别:1.2 离:1.2 散:1 悲:1.2 苦:1 愁:1.2 孤:1 寂:1 冷:0.8'),
-    love: W('红线:3 情:1.2 爱:1.2 心:0.8 相:0.8 恋:1.2 思:1 念:1 誓:1.5 牵:1.5 守:1 伴:1 依:0.8 你:0.4'),
-    memory: W('往事:3 回忆:2.5 记忆:2 忆:1.5 曾:1 当年:2 岁月:2 时光:2 年:0.8 过去:1.5 从前:1.5 忘:1.2 回首:2 旧:1 昨:1 流年:2 如烟:1.5 灯:1.5'),
+    sword: W('剑:2.5 侠:2 刀:2 刃:2 锋:1.5 战:1.5 斩:1.5 肝胆:2 英雄:2 英杰:1.5 豪:1.2 血:1.2 傲:1 狂:1 闯:1.2'),
+    flight: W('飞:2 翔:1.5 御:1.2 腾:1.2 九天:2 青云:2 云霄:2 凌云:2 乘风:2 苍穹:1.5 天际:1.5'),
+    petals: W('红尘:3 花:2 落:1 春:1.2 桃:2 枫:2 红:1 芳:1.2 谢:0.8 缘:1.2 繁华:1.5 凡尘:2 尘:1 樱:1.5 纷飞:0.5'),
+    rain: W('雨:2.5 泪:2 哭:1.5 伤:1.2 痛:1.2 别:1.2 离:1.2 散:1 人散:2 悲:1.2 苦:1 愁:1.2 恨:1.2 殁:1.5 孤:1 寂:1 冷:0.8'),
+    love: W('红线:3 伊人:2 情:1.2 爱:1.2 心:0.8 相:0.8 恋:1.2 思:1 念:1 誓:1.5 牵:1.5 守:1 伴:1 依:0.8 你:0.4'),
+    memory: W('往事:3 回忆:2.5 记忆:2 忆:1.5 曾:1 当年:2 岁月:2 时光:2 多年:1.5 年:0.8 过去:1.5 从前:1.5 忘:1.2 回首:2 旧:1 昨:1 流年:2 如烟:1.5 灯:1.5 烛:2'),
     freedom: W('逍遥:3 自由:2 潇洒:2.5 天地:2 笑:1.5 鹤:2 自在:2 无忧:2 洒脱:2 一生:1 随风:1.5 放下:1.5 看淡:1.5 快意:1.5 叹:0.8'),
   };
   XYT.SCENE_WORDS = SCENE_WORDS;
@@ -50,7 +50,11 @@
   };
   const norm = (s) => Array.from(s, (c) => T2S[c] || c).join('');
 
-  const OVERLAY_WORDS = { snow: ['雪', '冬', '白头'], wind: ['风', '飘', '吹', '叶', '秋'] };
+  const OVERLAY_WORDS = { snow: ['雪', '冬', '白头'], wind: ['风', '飘', '吹', '叶', '秋'], maple: ['枫'] };
+  // 所有意象词按长度从长到短：长词先占用字，避免「岁月」里的「月」被算进月夜
+  const ALL_WORDS = [];
+  for (const id in SCENE_WORDS) for (const [w, v] of SCENE_WORDS[id]) ALL_WORDS.push([w, v, id]);
+  ALL_WORDS.sort((a, b) => b[0].length - a[0].length);
   const FX_CHARS = {
     剑: 'slash', 刀: 'slash', 泪: 'tear', 梦: 'ring', 花: 'petal', 桃: 'petal', 樱: 'petal', 雨: 'rain',
     心: 'pulse', 情: 'pulse', 爱: 'pulse', 恋: 'pulse', 月: 'halo', 风: 'gust', 雪: 'snow', 笑: 'sparkle',
@@ -59,22 +63,22 @@
 
   function classify(text) {
     const s = norm(text);
+    const used = new Array(s.length).fill(false), scores = {}, hits = {};
+    for (const [w, v, id] of ALL_WORDS) {
+      let at = s.indexOf(w);
+      while (at >= 0) {
+        let free = true;
+        for (let k = 0; k < w.length; k++) if (used[at + k]) free = false;
+        if (free) {
+          for (let k = 0; k < w.length; k++) { used[at + k] = true; (hits[id] = hits[id] || []).push(at + k); }
+          scores[id] = (scores[id] || 0) + v;
+        }
+        at = s.indexOf(w, at + 1);
+      }
+    }
     let best = null, bs = 0;
-    const accents = new Set();
-    for (const id in SCENE_WORDS) {
-      let sc = 0;
-      for (const [w, v] of SCENE_WORDS[id]) {
-        let at = s.indexOf(w);
-        while (at >= 0) { sc += v; at = s.indexOf(w, at + w.length); }
-      }
-      if (sc > bs) { bs = sc; best = id; }
-    }
-    if (best) {
-      for (const [w] of SCENE_WORDS[best]) {
-        let at = s.indexOf(w);
-        while (at >= 0) { for (let k = 0; k < w.length; k++) accents.add(at + k); at = s.indexOf(w, at + 1); }
-      }
-    }
+    for (const id in SCENE_WORDS) if ((scores[id] || 0) > bs) { bs = scores[id]; best = id; }
+    const accents = new Set(best ? hits[best] : []);
     const overlays = Object.keys(OVERLAY_WORDS).filter((k) => OVERLAY_WORDS[k].some((w) => s.includes(w)));
     const fx = [];
     const seen = new Set();
@@ -102,7 +106,8 @@
         timed = true;
         for (const tg of tags) {
           const t = +tg[1] * 60 + parseFloat(tg[2].replace(':', '.')) - offset;
-          if (body) lines.push({ t: Math.max(0, t), text: body, kind: CREDIT.test(body) ? 'credit' : 'lyric' });
+          // 空白时间标签表示上一句到此结束
+          lines.push({ t: Math.max(0, t), text: body, kind: !body ? 'gap' : CREDIT.test(body) ? 'credit' : 'lyric' });
         }
       } else if (body && !/^\[/.test(row.trim())) {
         lines.push({ t: null, text: body, kind: CREDIT.test(body) ? 'credit' : 'lyric' });
@@ -110,6 +115,7 @@
     }
     if (timed) {
       lines.sort((a, b) => a.t - b.t);
+      while (lines.length && lines[0].kind === 'gap') lines.shift();
       return { lines: lines.filter((l) => l.t != null), timed: true };
     }
     return { lines, timed: false };
@@ -147,17 +153,18 @@
     const g = an.grid, dur = an.duration, secs = an.sections;
     const overrides = opts.overrides || {};
     const barAt = (t) => g.barDur(t);
-    const lyricLines = (lyr && lyr.timed ? lyr.lines : []).filter((l) => l.kind === 'lyric' && l.t < dur - 0.5);
+    const timedAll = (lyr && lyr.timed ? lyr.lines : []).filter((l) => l.kind !== 'credit' && l.t < dur - 0.5);
+    const lyricLines = timedAll.filter((l) => l.kind === 'lyric');
     const credits = (lyr && lyr.lines ? lyr.lines : []).filter((l) => l.kind === 'credit').map((l) => l.text);
 
     // 1) 歌词行
     const lines = lyricLines.map((l, k) => {
-      const next = lyricLines[k + 1];
+      const next = timedAll[timedAll.indexOf(l) + 1];
       const chars = Array.from(l.text);
       const vis = chars.filter((c) => !PUNCT.test(c)).length || 1;
       const cls = classify(l.text);
       let end = next ? next.t : Math.min(dur - 0.3, l.t + Math.max(6, vis * 0.6 + 3));
-      if (next && next.t - l.t > 14) end = l.t + Math.min(12, vis * 0.7 + 4);
+      if (next && next.kind !== 'gap' && next.t - l.t > 14) end = l.t + Math.min(12, vis * 0.7 + 4);
       return { t: l.t, end, text: l.text, chars, vis, cls, idx: k };
     });
 
@@ -187,7 +194,7 @@
       for (let x = s.start + step; x < s.end - step * 0.6; x += step) reqs.push({ t: g.nearestDown(x), pri: 1, src: 'phrase', type: s.type });
       if (len <= 0) return;
     });
-    for (const ln of lines) if (ln.cls.scene) reqs.push({ t: snap(ln.t), pri: 3, src: 'lyric', scene: ln.cls.scene, line: ln.idx });
+    for (const ln of lines) if (ln.cls.scene) reqs.push({ t: snap(ln.t), pri: 3, src: 'lyric', scene: ln.cls.scene, line: ln.idx, score: ln.cls.score });
     reqs.sort((a, b) => a.t - b.t || b.pri - a.pri);
 
     // 3) 合并：间隔过近时保留优先级高者
@@ -198,7 +205,7 @@
       while (acc.length) {
         const last = acc[acc.length - 1];
         if (r.t - last.t >= minGap) break;
-        if (r.pri > last.pri && last.pri < 9) { acc.pop(); continue; }
+        if (last.pri < 9 && (r.pri > last.pri || (r.pri === last.pri && (r.score || 0) > (last.score || 0) + 1))) { acc.pop(); continue; }
         r.skip = true;
         break;
       }
@@ -286,7 +293,7 @@
       const per = g.per(g.idx(ln.t));
       const q = per / 4;
       const span = Math.max(0.3, ln.end - ln.t);
-      let sp = Math.min(2 * q, Math.max(q, (span * 0.55) / ln.vis));
+      let sp = Math.min(2 * q, Math.max(q, (span * 0.75) / ln.vis));
       sp = Math.max(q, Math.round(sp / q) * q);
       const t0 = g.quant(ln.t, 4);
       let vi = 0;
