@@ -8,7 +8,8 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, spawnSync } = require('child_process');
 
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (e) {
@@ -29,6 +30,16 @@ if (!audio) {
 const out = outArg || '逍遥叹-音乐动画.mp4';
 const page = 'file://' + path.resolve(__dirname, '..', 'index.html');
 
+// 先用 ffmpeg 转成临时 WAV：Playwright 自带的 Chromium 解不了 AAC（m4a），
+// 而且上传非 ASCII 文件名时不会触发 change 事件
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xyt-'));
+const wav = path.join(tmpDir, 'song.wav');
+const conv = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', path.resolve(audio), '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', wav], { stdio: 'inherit' });
+if (conv.status !== 0 || !fs.existsSync(wav)) {
+  console.error('ffmpeg 读不了这个音频。请换成普通的 mp3、m4a、flac 或 wav（音乐 App 的 .ncm/.qmc/.kgm 是加密格式）。');
+  process.exit(1);
+}
+
 (async () => {
   const launch = { args: ['--autoplay-policy=no-user-gesture-required'] };
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
@@ -40,7 +51,7 @@ const page = 'file://' + path.resolve(__dirname, '..', 'index.html');
   await tab.waitForFunction(() => window.XYT && XYT.api && XYT.api.state().tl, null, { timeout: 30000 });
 
   console.log('分析音频…');
-  await tab.setInputFiles('#audioFile', path.resolve(audio));
+  await tab.setInputFiles('#audioFile', wav);
   await tab.waitForFunction(() => XYT.api.state().an.source === 'audio' && document.getElementById('anaBox').hidden, null, { timeout: 180000 });
   if (lyricsPath) {
     const text = fs.readFileSync(lyricsPath, 'utf8');
@@ -56,7 +67,7 @@ const page = 'file://' + path.resolve(__dirname, '..', 'index.html');
   const ff = spawn('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
-    '-i', path.resolve(audio),
+    '-i', wav,
     '-map', '0:v', '-map', '1:a', '-t', total.toFixed(3),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
@@ -73,5 +84,6 @@ const page = 'file://' + path.resolve(__dirname, '..', 'index.html');
   ff.stdin.end();
   await new Promise((r) => ff.on('close', r));
   await browser.close();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
   console.log(`\n完成：${out}`);
 })().catch((e) => { console.error(e); process.exit(1); });
