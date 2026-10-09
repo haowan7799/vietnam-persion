@@ -396,8 +396,17 @@
     }
     if (lit > 0) add(q, () => { const c = P(17, -12), d = P(-17, -12); glo(q, c[0], c[1], 7 * s, '#ffffff', 0.18 * lit); glo(q, d[0], d[1], 6 * s, '#ffffff', 0.12 * lit); });
   }
+  // 复用的草稿缓冲：尺寸按 128 像素分档（同一尺寸的请求总拿到同一档，结果只取决于这一帧，不受之前画过多大的影响）
+  const scrPool = new Map();
+  function scratchCv(slot, w, h) {
+    const BW = Math.max(128, Math.ceil(w / 128) * 128), BH = Math.max(128, Math.ceil(h / 128) * 128), key = slot + BW + 'x' + BH;
+    let cv = scrPool.get(key);
+    if (cv) { scrPool.delete(key); scrPool.set(key, cv); return cv; }
+    cv = document.createElement('canvas'); cv.width = BW; cv.height = BH; scrPool.set(key, cv);
+    if (scrPool.size > 8) { const [k0, c0] = scrPool.entries().next().value; scrPool.delete(k0); c0.width = c0.height = 1; }
+    return cv;
+  }
   // 整个人画进复用的全分辨率缓冲（每次清空），可以在缓冲里擦改（比如擦掉银角），再贴回
-  let figCv = null;
   // 缓冲在屏幕坐标里：连同镜头的转角一起画进去，再 1:1 不旋转地贴回（转着贴整块图很贵）
   function figBuf(g, box, draw) {
     const [bx0, by0, bw, bh] = box, m = g.getTransform();
@@ -407,11 +416,10 @@
     x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(cw, Math.ceil(x1)); y1 = Math.min(ch, Math.ceil(y1));
     const pw = x1 - x0, ph = y1 - y0;
     if (pw <= 0 || ph <= 0) return;
-    if (!figCv) figCv = document.createElement('canvas');
-    if (figCv.width < pw || figCv.height < ph) { figCv.width = Math.max(figCv.width, pw); figCv.height = Math.max(figCv.height, ph); }
+    const figCv = scratchCv('fig', pw, ph);
     const q = figCv.getContext('2d');
     q.setTransform(1, 0, 0, 1, 0, 0); q.globalAlpha = 1; q.globalCompositeOperation = 'source-over';
-    q.clearRect(0, 0, pw + 2, ph + 2);
+    q.clearRect(0, 0, figCv.width, figCv.height);
     q.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
     draw(q);
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(figCv, 0, 0, pw, ph, x0, y0, pw, ph); g.restore();
@@ -434,14 +442,12 @@
   // 屏幕坐标里整屏铺一层色（不受镜头转角影响，便宜）
   function screenFill(g, col) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = col; g.fillRect(0, 0, g.canvas.width, g.canvas.height); g.restore(); }
   // 低分辨率草稿缓冲：每次用前清空，画完放大贴回（浪、水雾这类软边的大块头）
-  let scrCv = null;
   function soft(g, res, rect, fn) {
     const [x0, y0, x1, y1] = rect;
     const m = g.getTransform(), k = res * Math.max(0.3, Math.hypot(m.a, m.b)), w = Math.ceil((x1 - x0) * k), h = Math.ceil((y1 - y0) * k);
-    if (!scrCv) scrCv = document.createElement('canvas');
-    if (scrCv.width < w || scrCv.height < h) { scrCv.width = Math.max(scrCv.width, w); scrCv.height = Math.max(scrCv.height, h); }
+    const scrCv = scratchCv('soft', w, h);
     const q = scrCv.getContext('2d');
-    q.setTransform(1, 0, 0, 1, 0, 0); q.globalAlpha = 1; q.globalCompositeOperation = 'source-over'; q.clearRect(0, 0, w + 1, h + 1);
+    q.setTransform(1, 0, 0, 1, 0, 0); q.globalAlpha = 1; q.globalCompositeOperation = 'source-over'; q.clearRect(0, 0, scrCv.width, scrCv.height);
     q.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
     fn(q);
     g.drawImage(scrCv, 0, 0, w, h, x0, y0, w / k, h / k);
@@ -636,35 +642,21 @@
       q.stroke();
     }
     q.restore();
-    // 浪爪：浪唇上垂下的一排尖爪，前倾、尖细
-    q.globalAlpha = al * 0.6; q.fillStyle = o.foam || '#efd6d8';
-    q.beginPath();
-    for (let k = 0; k < 8; k++) {
-      const i = 2 + Math.floor(k * 1.3), p = hook[i], nx = p[0] - cx, ny = p[1] - cy, nl = Math.hypot(nx, ny) || 1;
-      const ux = nx / nl, uy = ny / nl, L2 = R * (0.22 + 0.22 * h2(k, seed + 31)) * (1 + 0.15 * Math.sin(t * 4 + k));
-      const tx = p[0] + ux * L2 * 0.6 + L2 * 0.5, ty = p[1] + uy * L2 * 0.6 + L2 * 0.55, w = R * 0.05;
-      q.moveTo(p[0] - uy * w, p[1] + ux * w); q.quadraticCurveTo(p[0] + ux * L2 * 0.5, p[1] + uy * L2 * 0.5 - L2 * 0.1, tx, ty); q.quadraticCurveTo(p[0] + ux * L2 * 0.2, p[1] + uy * L2 * 0.2 + L2 * 0.2, p[0] + uy * w, p[1] - ux * w); q.closePath();
-    }
-    q.fill();
-    // 浪头一笔飞白浪沫：只在浪尖到浪舌一小段，尖起尖收
-    const path = crest.slice(n - 4).concat(hook.slice(1, 9));
-    const N = path.length, wmax = o.foamW ?? Math.max(4, R * 0.14), foam = o.foam || '#efd6d8';
-    const side = (sg) => path.map((p, i) => {
-      const a = path[Math.max(0, i - 1)], b = path[Math.min(N - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
-      const v = i / (N - 1), w = wmax * Math.pow(Math.sin(PI * clamp(v * 0.95 + 0.03)), 1.1) * (0.6 + 0.4 * noise1(i * 0.9, seed + 5));
-      return [p[0] - (dy / l) * w * sg, p[1] + (dx / l) * w * sg];
-    });
-    const up = side(1), dn = side(-1);
-    q.globalAlpha = al * 0.4; q.fillStyle = foam;
-    q.beginPath(); up.forEach((p, i) => (i ? q.lineTo(p[0], p[1]) : q.moveTo(p[0], p[1]))); for (let i = N - 1; i >= 0; i--) q.lineTo(dn[i][0], dn[i][1]); q.closePath(); q.fill();
-    q.strokeStyle = foam; q.lineCap = 'butt';
-    for (let k = 0; k < 3; k++) {
-      const f = (k / 2 - 0.5) * 1.3;
-      q.globalAlpha = al * (0.35 + 0.3 * h2(k, seed + 7)); q.lineWidth = 0.8 + 0.8 * h2(k, seed + 8);
-      q.setLineDash([6 + 18 * h2(k, seed + 9), 4 + 10 * h2(k, seed + 10)]); q.lineDashOffset = -t * 40 * (1 + k * 0.2);
-      q.beginPath(); path.forEach((p, i) => { const x = lerp(dn[i][0], up[i][0], 0.5 + f * 0.5), y = lerp(dn[i][1], up[i][1], 0.5 + f * 0.5); i ? q.lineTo(x, y) : q.moveTo(x, y); }); q.stroke();
-    }
-    q.setLineDash([]);
+    // 浪唇的白沫：顺着浪尖到浪舌外沿一整笔飞白（浪尖处最宽，往卷里收细）——一层淡沫托底，上面九道长短不一的干笔丝
+    { const fp = crest.slice(n - 7).concat(hook.slice(1, 12)), m = fp.length, foam = o.foam || '#efd6d8', wmax = o.foamW ?? Math.max(5, R * 0.26);
+      const nrm = fp.map((p, i) => { const pa = fp[Math.max(0, i - 1)], pb = fp[Math.min(m - 1, i + 1)], dx = pb[0] - pa[0], dy = pb[1] - pa[1], l = Math.hypot(dx, dy) || 1; return [-dy / l, dx / l]; });
+      const wid = fp.map((p, i) => { const v = i / (m - 1); return wmax * Math.pow(Math.sin(PI * Math.min(1, v * 1.25 + 0.04)), 0.8) * (v < 0.8 ? 1 : 1 - (v - 0.8) * 3) * (0.75 + 0.25 * noise1(i * 0.8 + t * 0.6, seed + 5)); });
+      const at = (i, f) => [fp[i][0] + nrm[i][0] * wid[i] * f, fp[i][1] + nrm[i][1] * wid[i] * f];
+      q.globalAlpha = al * 0.32; q.fillStyle = foam;
+      q.beginPath(); for (let i = 0; i < m; i++) { const p = at(i, 1); i ? q.lineTo(p[0], p[1]) : q.moveTo(p[0], p[1]); } for (let i = m - 1; i >= 0; i--) { const p = at(i, -0.6); q.lineTo(p[0], p[1]); } q.closePath(); q.fill();
+      q.strokeStyle = foam; q.lineCap = 'round'; q.lineJoin = 'round';
+      for (let k = 0; k < 9; k++) {
+        const f = -0.55 + 1.45 * (k / 8) + 0.08 * (h2(k, seed + 7) - 0.5), i0 = Math.floor(h2(k, seed + 11) * 3), i1 = m - 1 - Math.floor(h2(k, seed + 12) * 5);
+        q.globalAlpha = al * (0.35 + 0.45 * h2(k, seed + 8)); q.lineWidth = Math.max(0.8, R * (0.012 + 0.03 * h2(k, seed + 9)));
+        q.setLineDash([R * (0.25 + 0.7 * h2(k, seed + 10)), R * (0.03 + 0.1 * h2(k, seed + 13))]); q.lineDashOffset = -t * 30 * (1 + k * 0.1);
+        q.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, f); i > i0 ? q.lineTo(p[0], p[1]) : q.moveTo(p[0], p[1]); } q.stroke();
+      }
+      q.setLineDash([]); }
     // 飞沫：从浪舌抛向前上方、落下
     q.globalCompositeOperation = 'lighter';
     for (let i = 0; i < (o.nSpray ?? 20); i++) {
@@ -684,16 +676,14 @@
     return o.x1 > o.x0 ? [o.x0 - 70, top, o.x1 + R2 * 2.6 + 150, bot] : [o.x1 - R2 * 2.6 - 150, top, o.x0 + 70, bot];
   }
   // 化灰：draw(q) 先画进复用缓冲（每次清空），自上而下按噪声边擦掉，擦口烧成金红，再贴回；返回擦口的 y
-  let ashCv = null;
   function ashDraw(g, box, t, prog, seed, draw) {
     const [bx0, by0, bw, bh] = box;
     const m = g.getTransform(), S = Math.max(0.5, Math.hypot(m.a, m.b));
     const pw = Math.ceil(bw * S) + 2, ph = Math.ceil(bh * S) + 2;
-    if (!ashCv) ashCv = document.createElement('canvas');
-    if (ashCv.width < pw || ashCv.height < ph) { ashCv.width = Math.max(ashCv.width, pw); ashCv.height = Math.max(ashCv.height, ph); }
+    const ashCv = scratchCv('ash', pw, ph);
     const q = ashCv.getContext('2d');
     q.setTransform(1, 0, 0, 1, 0, 0); q.globalAlpha = 1; q.globalCompositeOperation = 'source-over';
-    q.clearRect(0, 0, pw + 2, ph + 2);
+    q.clearRect(0, 0, ashCv.width, ashCv.height);
     q.setTransform(S, 0, 0, S, -bx0 * S, -by0 * S);
     draw(q);
     const fy = lerp(by0 + bh * 0.05, by0 + bh * 1.02, clamp(prog)), J = bh * 0.06;
@@ -1445,6 +1435,14 @@
     if (gp && state > 0) { q.fillStyle = '#120f18'; q.beginPath(); q.ellipse(gp[0] + 1, gp[1] + 12, 11, 16, 0, 0, TAU); q.fill(); }
     if (state < 2) { const p = F.points('jiujianxian', jx, jy, AN2.js, t, o); anSword(q, t, p.handN[0], p.handN[1], PI / 2 + 0.3, 118, 1.25); }
   }
+  // 弯身的八张过渡定格（与她的升格一样一格一格地动）
+  const foldSpr = (qf) => rotSprite('an-fold-' + qf, -0.2, 1.39, [-190, -300, 190, 30], (q) => {
+    const jx = AN2.jx, jy = anFoot(jx), f = easeInOut((qf + 0.5) / 8), o = anJo({ head: 0.35 + 0.4 * f, lean: 0.02 + 0.25 * f });
+    q.translate(-jx, -jy); F.draw(q, 'jiujianxian', jx, jy, AN2.js, 3.3, o);
+    const p = F.points('jiujianxian', jx, jy, AN2.js, 3.3, o);
+    if (p.gourdMouth) { q.fillStyle = '#120f18'; q.beginPath(); q.ellipse(p.gourdMouth[0] + 1, p.gourdMouth[1] + 12, 11, 16, 0, 0, TAU); q.fill(); }
+    anSword(q, 3.3, p.handN[0], p.handN[1], PI / 2 + 0.3, 118, 1.25);
+  });
   const fatherSpr = (state) => rotSprite('an-father-' + state, -0.2, 1.39, [-190, -300, 190, 30], (q) => { q.translate(-AN2.jx, -anFoot(AN2.jx)); anFather(q, state, 3.3); });
   // 她扑刺的定格：升格时身形每 0.045 秒（片内时间）换一张缓存
   const AN_AO2 = Object.assign({ pose: 'swordPoint', facing: 1, prop: 'none', light: AN.sun, tone: 'silhouette', ink: '#120f18', rim: '#d8c8ff', rimAlpha: 1, rimWidth: 1.3, lean: 0.05 }, AN_WIND);
@@ -1479,13 +1477,8 @@
     const fold = clamp((lt - t5) / 0.5), kneel = clamp((lt - t6) / 0.32);
     const fy0 = anFoot(AN2.jx);
     if (lt < t5) blitRot(g, fatherSpr(0), AN2.jx, fy0);
-    else if (fold < 1) {
-      const jx = AN2.jx, jy = anFoot(jx), o = anJo({ head: 0.35 + 0.4 * easeInOut(fold), lean: 0.02 + 0.25 * easeInOut(fold) });
-      F.draw(g, 'jiujianxian', jx, jy, AN2.js, ts, o);
-      const p = F.points('jiujianxian', jx, jy, AN2.js, ts, o);
-      if (p.gourdMouth) { g.fillStyle = '#120f18'; g.beginPath(); g.ellipse(p.gourdMouth[0] + 1, p.gourdMouth[1] + 12, 11, 16, 0, 0, TAU); g.fill(); }
-      anSword(g, ts, p.handN[0], p.handN[1], PI / 2 + 0.3, 118, 1.25);
-    } else if (kneel <= 0) blitRot(g, fatherSpr(1), AN2.jx, fy0);
+    else if (fold < 1) blitRot(g, foldSpr(Math.min(7, Math.floor(fold * 8))), AN2.jx, fy0);
+    else if (kneel <= 0) blitRot(g, fatherSpr(1), AN2.jx, fy0);
     else {
       // 跪下：新的定格先画实，旧的定格一边下沉一边淡掉（不会两张都半透明）
       const e = easeInOut(kneel);
@@ -2439,9 +2432,12 @@
     return F.points('linger', xB, CH.y, s, 3, bo);
   }
   // 两人的怀抱（缓存两张）：k 0 他埋着头，1 他抬起头望着她；只有他有轮廓光，她不亮
-  const chPairTex = (k) => C('ch-pair2-' + k, CH_BOX[2], CH_BOX[3], 1.25, (q) => {
+  // 他抬头的四张定格：k = 0 低头看她，k = 3 抬头望向远处
+  const CH_UPN = 4;
+  const chPairTex = (k) => C('ch-pair3-' + k, CH_BOX[2], CH_BOX[3], 1.25, (q) => {
     q.translate(-CH_BOX[0], -CH_BOX[1]);
-    F.cradle(q, CH.x, CH.y, CH.s, 3, { wind: 0.15, facing: 1, a: k ? { head: -0.3, lean: -0.2, rim: '#ff7a6a', light: CH.light, rimAlpha: 0.75 } : { head: 0.1, rim: '#ff7a6a', light: CH.light, rimAlpha: 0.75 }, b: {} });
+    const f = easeInOut(k / (CH_UPN - 1));
+    F.cradle(q, CH.x, CH.y, CH.s, 3, { wind: 0.15, facing: 1, a: { head: lerp(0.1, -0.3, f), lean: -0.2 * f, rim: '#ff7a6a', light: CH.light, rimAlpha: 0.75 }, b: {} });
     // 她的脸：仰着、眼闭着，枕在他臂弯里
     const lp = chLinger(), fo = { x: lp.head[0] + 4, y: lp.head[1] - 2, s: 0.5, rot: -PI / 2 - 0.25 };
     gongbi(q, Object.assign({}, fo, { eye: 0, t: 3, hair: capLinger, neck: 70 }));
@@ -2532,10 +2528,10 @@
     redDust(g, t, 0, dust);
     const lp = chLinger(), sw = Math.sin(t * 0.8) * 4;
     for (const [x0, y0, x1, y1, sag, s] of chChains(lp)) chain(g, x0, y0, x1, y1, sag + sw, s, { hi: '#ff9a8a', hiA: 0.45 });
-    // 两人：“望”字他抬起头（新的一张先画实，旧的一张淡掉，只有头在变）
-    const up = easeInOut(clamp((lt - T(2) + 0.05) / 0.45));
-    g.drawImage(chPairTex(1), CH_BOX[0], CH_BOX[1], CH_BOX[2], CH_BOX[3]);
-    if (up < 1) { g.globalAlpha = 1 - up; g.drawImage(chPairTex(0), CH_BOX[0], CH_BOX[1], CH_BOX[2], CH_BOX[3]); g.globalAlpha = 1; }
+    // 两人：“望”字他抬起头——四张定格依次换，相邻两张之间短短一叠（新的一张先画实，旧的淡掉）
+    const up = clamp((lt - T(2) + 0.05) / 0.5) * (CH_UPN - 1), uk = Math.min(CH_UPN - 2, Math.floor(up)), uf = up - uk;
+    if (up <= 0 || up >= CH_UPN - 1) g.drawImage(chPairTex(up <= 0 ? 0 : CH_UPN - 1), CH_BOX[0], CH_BOX[1], CH_BOX[2], CH_BOX[3]);
+    else { g.drawImage(chPairTex(uk + 1), CH_BOX[0], CH_BOX[1], CH_BOX[2], CH_BOX[3]); g.globalAlpha = 1 - easeInOut(uf); g.drawImage(chPairTex(uk), CH_BOX[0], CH_BOX[1], CH_BOX[2], CH_BOX[3]); g.globalAlpha = 1; }
     chain(g, lp.chest[0] - 30, lp.chest[1] - 18, lp.chest[0] + 40, lp.waist[1] + 12, 14, 1.4, { hi: '#ff9a8a', hiA: 0.5 });
     chain(g, lp.waist[0] - 20, lp.waist[1] - 14, lp.waist[0] + 120, CH.y - 6, 10, 1.4, { hi: '#ff9a8a', hiA: 0.45 });
     chain(g, lp.waist[0] + 120, CH.y - 4, lp.waist[0] + 330, CH.y - 2, 6, 1.4, { hi: '#ff9a8a', hiA: 0.35 });
@@ -2648,9 +2644,9 @@
     const g = dryCv.getContext('2d'); g.setTransform(S, 0, 0, S, 0, 0);
     g.save(); XYT.scenes[id].draw(g, c); g.restore();
   }
-  const WARM = [moonBrush, () => moonBase(112), () => moonBase(176), () => moonFull(176), () => moonFull(104), islandTex, () => bmPlate('bm1', BM1), bmP2Plate, () => bmPlate('bm3', BM3), () => [0, 1, 2].forEach(fatherSpr)];
+  const WARM = [moonBrush, () => moonBase(112), () => moonBase(176), () => moonFull(176), () => moonFull(104), islandTex, () => bmPlate('bm1', BM1), bmP2Plate, () => bmPlate('bm3', BM3), () => [0, 1, 2].forEach(fatherSpr), () => [0, 1, 2, 3].forEach(foldSpr), () => [4, 5, 6, 7].forEach(foldSpr)];
   for (let q = 0; q <= 8; q += 3) WARM.push(() => { for (let k = q; k < q + 3; k++) anuP2(k); });
-  WARM.push(() => twGatePlate(), () => [0, 1, 2].forEach(twHero), () => [0, 1, 2].forEach(twShadowTex), () => { chPairTex(0); chPairTex(1); chMemoryTex(); });
+  WARM.push(() => twGatePlate(), () => [0, 1, 2].forEach(twHero), () => [0, 1, 2].forEach(twShadowTex), () => { chPairTex(0); chPairTex(1); }, () => { chPairTex(2); chPairTex(3); chMemoryTex(); });
   for (const [id, ts] of [['c2_bloodmoon', [0.3, 2.5, 3.9, 4.05, 4.5, 5.6, 6.3]], ['c2_anu', [0.3, 2.0, 3.0, 3.6, 4.4, 5.5]], ['c2_tower', [0.3, 2.3, 2.8, 3.3, 3.7, 4.5, 5.5]], ['c2_chains', [0.3, 1.5, 4.8, 6.4]]])
     for (const lt of ts) WARM.push(() => dryDraw(id, lt));
   WARM.push(() => { dryCv = null; });

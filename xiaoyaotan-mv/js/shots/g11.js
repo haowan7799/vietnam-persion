@@ -597,7 +597,7 @@
   // 月如（全身）：门光在左，轮廓镶金，身后一团金色背光，长影子拖到右边地上
   function yrFigure(g, x, st, pose, a, o) {
     const p0 = g.globalAlpha;
-    if (a < 0.02) return;
+    if (a < 0.12) return;
     g.globalAlpha = p0 * a;
     if (a > 0.3) {
       g.fillStyle = K.lin(g, x, 0, x + 560, 0, [[0, 'rgba(0,0,0,0.6)'], [1, 'rgba(0,0,0,0)']]);
@@ -614,7 +614,7 @@
   function sandStream(g, lt, x, y0, y1, w, a, seed) {
     if (a <= 0.01) return;
     add(g, () => {
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 12; i++) {
         const ph = (lt * (0.42 + 0.12 * h2(i, seed)) + h2(i, seed + 1)) % 1, y = lerp(y0, y1, ph * ph * 0.7 + ph * 0.3);
         const ww = w * (0.5 + noise1(i * 0.7 + lt * 0.8, seed)), L = 30 + 50 * h2(i, seed + 2) * (0.4 + ph);
         gloE(g, x + Math.sin(lt * 1.3 + i) * 2, y, L, ww, '#ffd890', 0.16 * a * (0.5 + h2(i, seed + 3)), PI / 2);
@@ -1036,8 +1036,8 @@
     g.strokeStyle = rgba('#9a9ab8', 0.4); g.lineWidth = lw1(g) * 2.2;
     g.beginPath(); g.moveTo(-56, -110); g.bezierCurveTo(-88, -98, -98, -52, -90, -12); g.bezierCurveTo(-86, 16, -74, 34, -56, 40); g.stroke();
     // 后脑边缘几缕翘起的碎发
-    g.strokeStyle = rgba(HAIR, 0.9); g.lineWidth = lw1(g) * 0.8;
-    for (let k = 0; k < 7; k++) { const a = PI * (0.62 + 0.09 * k), x0 = -42 + Math.cos(a) * 52, y0 = -38 + Math.sin(a) * 74, sw = Math.sin(t * 2 + k) * 1.2; g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(x0 - 4 + sw, y0 + 2, x0 - 7 + sw * 1.5, y0 + 6 + (k % 2) * 3); g.stroke(); }
+    g.strokeStyle = rgba(HAIR, 0.55); g.lineWidth = lw1(g) * 0.6;
+    for (let k = 0; k < 7; k++) { const a = PI * (0.62 + 0.09 * k), x0 = -44 + Math.cos(a) * 50, y0 = -38 + Math.sin(a) * 72, sw = Math.sin(t * 2 + k) * 0.6; g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(x0 - 2 + sw, y0 + 1.5, x0 - 3.5 + sw, y0 + 3.5 + (k % 2) * 1.5); g.stroke(); }
     g.fillStyle = HAIR; g.beginPath(); g.ellipse(-46, -112, 19, 12, -0.35, 0, TAU); g.fill();
     g.fillStyle = '#3b6db3'; g.save(); g.translate(-38, -110); g.rotate(-0.35); g.fillRect(-3, -11, 6, 22); g.restore();
     g.save(); g.translate(-40, -104); g.rotate(1.2 + Math.sin(t * 1.4) * 0.12);
@@ -1078,9 +1078,9 @@
   // 颊上的灰、一道干了的泪痕（本地坐标，画在脸的裁切里）
   function xyFaceFx(g) {
     A.softBlob(g, 14, 20, 10, 0.3, '#7a6a5c'); A.softBlob(g, 20, 26, 5, 0.25, '#6a5a50');
-    g.strokeStyle = rgba('#fff8ee', 0.16); g.lineWidth = 1.4; g.lineCap = 'round';
+    g.strokeStyle = rgba('#fff8ee', 0.07); g.lineWidth = 3.2; g.lineCap = 'round';
     g.beginPath(); g.moveTo(31, -8); g.bezierCurveTo(30, 4, 27, 16, 25, 30); g.stroke();
-    g.strokeStyle = rgba('#a07a6c', 0.25); g.lineWidth = 0.6; g.beginPath(); g.moveTo(28, -6); g.quadraticCurveTo(26, 8, 22, 22); g.stroke();
+    g.strokeStyle = rgba('#fff8ee', 0.08); g.lineWidth = 1.1; g.stroke();
   }
   const XYH = { x: 640, y: 392, s: 4.4, rot: 0.16 };
   const xyW = (lx, ly) => { const c0 = Math.cos(XYH.rot), s0 = Math.sin(XYH.rot); return [XYH.x + XYH.s * (lx * c0 - ly * s0), XYH.y + XYH.s * (lx * s0 + ly * c0)]; };
@@ -1549,7 +1549,7 @@
     // ②五色光暴涨
     // 辉：一记暖白的满屏辉光，边上一圈虹彩，0.15 秒后褪（与五色光一起画进低分辨率缓冲）
     const ba = lt - tPeak, bf = ba < -0.06 || ba > 0.9 ? 0 : ba < 0 ? clamp(1 + ba / 0.06) : ba < 0.1 ? 1 : Math.exp(-(ba - 0.1) / 0.1);
-    if ((L > 0.02 && lt < tOut + 0.5) || bf > 0.01) add(g, () => soft(g, 0.22, (q) => {
+    if ((L > 0.02 && lt < tOut + 0.5) || bf > 0.01) add(g, () => soft(g, 0.16, (q) => {
       if (L > 0.02) fiveLight(q, chest[0], chest[1], t, r0, L, peak * (1 - 0.7 * bf));
       if (bf > 0.01) { q.globalCompositeOperation = 'lighter'; for (let k = 0; k < 5; k++) glo(q, chest[0], chest[1], 860 - k * 80, FIVE[k], 0.2 * bf); glo(q, chest[0], chest[1], 520, '#fff6e8', 0.9 * bf); glo(q, chest[0], chest[1], 240, '#ffffff', bf); }
     }));
