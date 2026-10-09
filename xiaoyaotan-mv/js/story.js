@@ -15,7 +15,7 @@
     flight: { name: '御剑', zone: 'right' },
     petals: { name: '红尘', zone: 'right' },
     rain: { name: '烟雨', zone: 'left' },
-    love: { name: '情丝', zone: 'bottom' },
+    love: { name: '情丝', zone: 'top' },
     memory: { name: '往事', zone: 'right' },
     freedom: { name: '逍遥', zone: 'left' },
   };
@@ -272,7 +272,7 @@
       });
       const seg = sceneAt(ln.t + 0.05);
       let zone = (SCENES[seg.scene] || {}).zone || 'bottom';
-      if (ln.vis > 14) zone = 'bottom';
+      if (ln.vis > 14 && zone !== 'top') zone = 'bottom';
       ln.zone = zone;
       ln.side = side++;
       ln.scene = seg.scene;

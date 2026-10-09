@@ -209,14 +209,15 @@
       const vis = [];
       ln.chars.forEach((ch, i) => { if (!PUNCT.test(ch)) vis.push(i); });
       const pos = new Array(ln.chars.length).fill(null);
-      if (ln.zone === 'bottom') {
+      if (ln.zone === 'bottom' || ln.zone === 'top') {
+        const yy = ln.zone === 'top' ? 92 : 650;
         const n = vis.length, size = Math.min(48, 1080 / Math.max(1, n + 1));
         const gaps = ln.chars.reduce((s, ch, i) => s + (i > 0 && /[\s，,、]/.test(ch) ? 1 : 0), 0);
         const total = (n + gaps * 0.6) * size * 1.08;
         let x = 640 - total / 2 + size * 0.54;
         ln.chars.forEach((ch, i) => {
           if (PUNCT.test(ch)) { if (/[\s，,、]/.test(ch)) x += size * 0.65; return; }
-          pos[i] = { x, y: 650, size }; x += size * 1.08;
+          pos[i] = { x, y: yy, size }; x += size * 1.08;
         });
       } else {
         const n = vis.length, two = n > 9;
