@@ -61,6 +61,7 @@
       if (sc.shake) { const k = 7 * Math.exp(-b.sinceDown / 0.12) * c.inten; dx += k * Math.sin(t * 93); dy += k * Math.cos(t * 71); }
       g.save();
       g.translate(W / 2 + dx, H / 2 + dy); g.scale(z, z); g.rotate(rot); g.translate(-W / 2, -H / 2);
+      if (seg.mirror) { g.translate(W, 0); g.scale(-1, 1); }
       sc.draw(g, c);
       g.restore();
       if (dk > 0.05) {

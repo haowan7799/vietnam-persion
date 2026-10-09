@@ -3,7 +3,7 @@
  * 逍遥叹 · 音乐动画 —— 离线逐帧渲染（H.264 + AAC 的 MP4，不受实时录制掉帧影响）
  *
  * 依赖：Node 18+、ffmpeg、playwright（npm i playwright && npx playwright install chromium）
- * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--seconds 20]
+ * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--crf 18] [--seconds 20]
  */
 'use strict';
 const path = require('path');
@@ -22,6 +22,7 @@ const flag = (name, def) => { const i = args.indexOf(name); if (i < 0) return de
 const res = +flag('--res', 1080);
 const fps = +flag('--fps', 30);
 const limit = flag('--seconds', null);
+const crf = flag('--crf', '18');
 const [audio, lyricsPath, outArg] = args;
 if (!audio) {
   console.error('用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--seconds 20]');
@@ -69,7 +70,7 @@ if (conv.status !== 0 || !fs.existsSync(wav)) {
     '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
     '-i', wav,
     '-map', '0:v', '-map', '1:a', '-t', total.toFixed(3),
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });
 

@@ -128,8 +128,8 @@
   // ---------- 分镜构建 ----------
   const POOLS = {
     intro: ['mist'],
-    verse: ['boat', 'moon', 'memory', 'dream', 'love', 'poem', 'rain'],
-    chorus: ['flight', 'petals', 'sword', 'freedom', 'wine'],
+    verse: ['boat', 'moon', 'dream', 'love', 'memory', 'poem', 'rain', 'wine'],
+    chorus: ['flight', 'petals', 'sword', 'freedom'],
     bridge: ['rain', 'dream', 'memory'],
     outro: ['wine', 'mist'],
   };
@@ -208,11 +208,33 @@
     // 4) 赋予场景
     let prev = null;
     const segs = [];
+    // 没有歌词意象时按这一句（乐句）自身的响度选：响的用激昂画面，轻的用抒情画面
+    const env = an.env;
+    const meanRms = (a, b) => {
+      if (!env || !env.rms) return null;
+      let sum = 0, n = 0;
+      for (let f = Math.max(0, Math.floor(a * env.fps)); f < Math.min(env.rms.length, Math.floor(b * env.fps)); f++) { sum += env.rms[f]; n++; }
+      return n ? sum / n : null;
+    };
+    const songMean = meanRms(0, dur);
+    let songSd = 0;
+    if (songMean != null) {
+      let v = 0, n = 0;
+      for (let f = 0; f < env.rms.length; f += 4) { v += (env.rms[f] - songMean) ** 2; n++; }
+      songSd = Math.sqrt(v / Math.max(1, n)) || 1;
+    }
+    const moodType = (sec, a, b) => {
+      if (sec.type === 'intro' || sec.type === 'outro' || songMean == null) return sec.type;
+      const z = (meanRms(a, b) - songMean) / songSd;
+      if (z > 0.25) return 'chorus';
+      return sec.type === 'bridge' ? 'bridge' : 'verse';
+    };
     acc.forEach((r, k) => {
       const sec = sectionAt(secs, r.t + 0.01);
+      const mood = moodType(sec, r.t, k + 1 < acc.length ? acc[k + 1].t : dur);
       let scene = r.scene;
-      if (!scene) scene = r.src === 'intro' ? 'mist' : poolPick(sec.type, prev);
-      if (scene === prev && r.src !== 'lyric') scene = poolPick(sec.type, prev);
+      if (!scene) scene = r.src === 'intro' ? 'mist' : poolPick(mood, prev);
+      if (scene === prev && r.src !== 'lyric') scene = poolPick(mood, prev);
       if (scene === prev && segs.length) return;
       segs.push({ start: r.t, scene, src: r.src, line: r.line, sec: sec.type });
       prev = scene;
@@ -238,6 +260,8 @@
     segs.forEach((s, k) => {
       seen[s.scene] = (seen[s.scene] || 0) + 1;
       s.variant = seen[s.scene] - 1;
+      // 同一画面第二次出现时左右镜像（含文字的醉月、诗卷除外）
+      s.mirror = s.variant % 2 === 1 && s.scene !== 'wine' && s.scene !== 'poem';
       const sec = sectionAt(secs, (s.start + s.end) / 2);
       s.intensity = INTENSITY[sec.type] ?? 0.55;
       s.idx = k;
@@ -272,6 +296,7 @@
       });
       const seg = sceneAt(ln.t + 0.05);
       let zone = (SCENES[seg.scene] || {}).zone || 'bottom';
+      if (seg.mirror) zone = zone === 'left' ? 'right' : zone === 'right' ? 'left' : zone;
       if (ln.vis > 14 && zone !== 'top') zone = 'bottom';
       ln.zone = zone;
       ln.side = side++;
