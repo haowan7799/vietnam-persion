@@ -389,6 +389,8 @@
       if (ln.cls.drunk) drunk.push([ln.t, ln.end]);
     }
     fxEvents.sort((a, b) => a.t - b.t);
+    // 分镜模式：画面由镜头自己设计，关掉旧的关键字字效、天气叠层和醉酒摇晃
+    if (sb) { fxEvents.length = 0; drunk.length = 0; }
 
     // 6) 片头标题
     const firstLyric = lines.length ? lines[0].t : dur;
@@ -403,7 +405,7 @@
     const title = { start: tStart, stamps, seal: g.time(b0 + 3 * stepB), sub: g.time(b0 + 4 * stepB), end: Math.max(titleEnd, g.time(b0 + 5 * stepB)), credits };
 
     return {
-      duration: dur, segments: segs, lines, fx: fxEvents, drunk, title: sb && sb.titleCard === false ? null : title,
+      storyboard: !!sb, duration: dur, segments: segs, lines, fx: fxEvents, drunk, title: sb && sb.titleCard === false ? null : title,
       end: sb && sb.endCard === false ? null : { start: endStart, fade: dur - 1.6 },
       sections: secs,
       sceneAt,

@@ -2055,7 +2055,7 @@
   const shot = (id, def) => XYT.registerShot('kit_vfx_' + id, Object.assign({ zone: 'bottom', text: '#fff', shadow: 'rgba(0,0,0,.8)', accent: '#fc6' }, def));
   const E = () => XYT.env, F = () => XYT.fig;
 
-  // 客栈：窗里斜进来的光柱与浮尘（岁月难得沉默）
+  // 客栈：窗里斜进来的光柱与浮尘（第1句）
   shot('rays', {
     name: '特效·光柱浮尘', night: true, bloom: 0.5,
     draw(g, c) {
@@ -2089,7 +2089,7 @@
     },
   });
 
-  // 秋：红枫一片片落，雁阵南飞（也随枫叶一片片落）
+  // 秋：红枫一片片落，雁阵南飞（第8句）
   shot('maple', {
     name: '特效·枫叶雁阵', night: false, bloom: 0.4,
     draw(g, c) {

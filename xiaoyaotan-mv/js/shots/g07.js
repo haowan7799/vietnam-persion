@@ -1,2 +1,1778 @@
-/* 分镜镜头 第 07 组：由镜头构建流程生成 */
-(function () { 'use strict'; })();
+/* 分镜镜头 第 07 组：副歌1 后四句 —— 题壁墨枯、彩依还蝶、蝶绕残烛、枫天初雪 */
+(function () {
+  'use strict';
+  const XYT = window.XYT;
+  if (!XYT || !XYT.registerShot) return;
+  const A = XYT.art, K = XYT.kit, E = XYT.env, V = XYT.vfx, F = XYT.fig;
+  const { W, H, TAU, clamp, lerp, smooth, easeOut, easeIn, easeInOut, h2, noise1, rgba, mix } = A;
+  const PI = Math.PI;
+
+  // ---------- 通用小工具 ----------
+  const seg = (x, a, b) => clamp((x - a) / (b - a));
+  const tintS = (col) => XYT.sprites.tint(XYT.sprites.glow, col);
+  // 本句第 k 字相对镜头起点的时间；取不到时用实测表
+  function charAt(c, k, table) {
+    const v = c.charT ? c.charT(k) : null;
+    return v == null ? table[Math.min(k, table.length - 1)] : v - (c.t - c.lt);
+  }
+  function chars(c, table) { const out = []; for (let k = 0; k < table.length; k++) out.push(charAt(c, k, table)); return out; }
+  // 柔光点
+  function dot(g, x, y, r, col, a, op) {
+    if (!(a > 0.003) || r <= 0) return;
+    const o = g.globalCompositeOperation, ga = g.globalAlpha;
+    g.globalCompositeOperation = op || 'lighter'; g.globalAlpha = ga * Math.min(1, a);
+    g.drawImage(tintS(col), x - r, y - r, r * 2, r * 2);
+    g.globalCompositeOperation = o; g.globalAlpha = ga;
+  }
+  // 每帧复用的草稿缓冲（设备分辨率），用前清空，不跨帧保存内容
+  const bufs = {};
+  function scratch(name, w, h) {
+    let cv = bufs[name];
+    if (!cv) cv = bufs[name] = document.createElement('canvas');
+    w = Math.max(2, Math.ceil(w)); h = Math.max(2, Math.ceil(h));
+    if (cv.width < w || cv.height < h) { cv.width = Math.max(cv.width, w); cv.height = Math.max(cv.height, h); }
+    const q = cv.getContext('2d');
+    q.setTransform(1, 0, 0, 1, 0, 0); q.globalAlpha = 1; q.globalCompositeOperation = 'source-over';
+    q.clearRect(0, 0, w + 2, h + 2);
+    return { cv, q, w, h };
+  }
+  // 当前变换下逻辑区域 box 对应的设备像素范围（草稿层只开这么大）
+  function devBox(g, box) {
+    const m = g.getTransform(), xs = [], ys = [];
+    for (const [x, y] of [[box[0], box[1]], [box[2], box[1]], [box[0], box[3]], [box[2], box[3]]]) { xs.push(m.a * x + m.c * y + m.e); ys.push(m.b * x + m.d * y + m.f); }
+    const cw = g.canvas.width, ch = g.canvas.height;
+    const X0 = Math.max(0, Math.floor(Math.min(...xs))), Y0 = Math.max(0, Math.floor(Math.min(...ys)));
+    const X1 = Math.min(cw, Math.ceil(Math.max(...xs))), Y1 = Math.min(ch, Math.ceil(Math.max(...ys)));
+    return { X0, Y0, w: Math.max(2, X1 - X0), h: Math.max(2, Y1 - Y0) };
+  }
+  const SS = () => (XYT.sprites && XYT.sprites.S) || 1;
+  // 书法字：先请求本组用到的字形；没加载好时缓存键不同，加载后自动重画
+  const MY_GLYPHS = '李大侠到此一游囍';
+  try { if (document.fonts && document.fonts.load) document.fonts.load('64px "Ma Shan Zheng"', MY_GLYPHS).catch(() => {}); } catch (e) { /* 无字体接口 */ }
+  let fontReady = false;
+  const fk = () => {
+    if (fontReady) return 'f';
+    try { if (document.fonts && document.fonts.check('32px "Ma Shan Zheng"', MY_GLYPHS)) { fontReady = true; return 'f'; } } catch (e) { /* 无 */ }
+    return 'n';
+  };
+  // 填一条从 (x0,y0) 到 (x1,y1) 的柔边光带
+  function bandV(g, x0, y0, x1, y1, stops) { g.fillStyle = K.lin(g, 0, y0, 0, y1, stops); g.fillRect(x0, y0, x1 - x0, y1 - y0); }
+
+
+  // =====================================================================
+  // 第21句 题壁墨枯：自嘲墨尽｜千情万怨｜英杰愁
+  // =====================================================================
+  const T21 = [0.26, 0.54, 1.04, 1.28, 2.02, 2.64, 3.16, 3.6, 3.96, 4.34, 4.88];
+  const WB = 612;           // 墙脚
+  const GY = 664;           // 少年脚下
+  const WEND = 1012;        // 墙的右端
+  // 墙头三级跌落（马头墙）：[x0, x1, 檐下沿 y]
+  const STEPS = [[-60, 560, 150], [560, 812, 112], [812, WEND, 74]];
+  // 墙上的字：[字, x, y, 字号, 旋转]
+  const WRIT = [['李', 300, 292, 128, -0.07], ['大', 388, 280, 152, 0.05], ['侠', 484, 302, 148, -0.05], ['到', 572, 298, 120, 0.07],
+    ['此', 646, 316, 114, -0.06], ['一', 712, 298, 104, 0.03], ['游', 778, 324, 128, 0.09]];
+  const INK = '#15161b';
+  const BOY = { x: 914, y: GY, s: 2.0 };
+  const wallPath = (q, inset = 0) => {
+    q.beginPath(); q.moveTo(-60, WB);
+    for (const [x0, x1, y] of STEPS) { q.lineTo(x0, y + inset); q.lineTo(x1, y + inset); }
+    q.lineTo(WEND, WB); q.closePath();
+  };
+
+  // 竹影：一簇簇竹叶的柔影（预先模糊），从左上方斜斜投在墙上
+  function bambooShadow() {
+    return K.cache('g07|bshadow', W + 200, 560, 0.5, (q) => {
+      const r = A.rng(31);
+      try { q.filter = `blur(${(2.6 * SS() * 0.5).toFixed(1)}px)`; } catch (e) { /* 无滤镜 */ }
+      const twig = (x0, y0, ang, len, n, a) => {
+        q.fillStyle = q.strokeStyle = `rgba(0,0,0,${a})`; q.lineWidth = 2.4;
+        q.beginPath(); q.moveTo(x0, y0); q.quadraticCurveTo(x0 + Math.cos(ang) * len * 0.5, y0 + Math.sin(ang) * len * 0.5 + 10, x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len); q.stroke();
+        for (let k = 0; k < n; k++) {
+          const u = 0.3 + (k / n) * 0.75, px = x0 + Math.cos(ang) * len * u, py = y0 + Math.sin(ang) * len * u + 10 * Math.sin(u * PI);
+          const m = 3 + Math.floor(r() * 3);
+          for (let j = 0; j < m; j++) {
+            const la = ang + 0.7 + (j - (m - 1) / 2) * 0.38 + (r() - 0.5) * 0.3, L = 50 + r() * 38, wd = 6.5 + r() * 3;
+            q.save(); q.translate(px, py); q.rotate(la);
+            q.beginPath(); q.moveTo(0, 0); q.quadraticCurveTo(L * 0.3, -wd, L, 1); q.quadraticCurveTo(L * 0.35, wd, 0, 0); q.fill();
+            q.restore();
+          }
+        }
+      };
+      for (let k = 0; k < 6; k++) twig(-60 + r() * 420, -10 + r() * 150, 0.3 + r() * 0.45, 200 + r() * 160, 4 + Math.floor(r() * 3), 0.85);
+      for (let k = 0; k < 4; k++) twig(-80 + r() * 260, 170 + r() * 220, 0.15 + r() * 0.35, 150 + r() * 120, 3, 0.55);
+    });
+  }
+  // 桂树：墨绿叶团里缀着细碎金黄的桂花；墙后探出来。bare 为几十年后的枯枝
+  function osmanthus(bare) {
+    return K.cache('g07|osm' + (bare ? 'B' : 'A'), 760, 320, 1, (q) => {
+      const r = A.rng(bare ? 77 : 71);
+      q.strokeStyle = bare ? '#4c4842' : '#3a2e26'; q.lineCap = 'round';
+      const branch = (x, y, a, L, w, d) => {
+        if (d <= 0 || L < 8) return;
+        const x1 = x + Math.cos(a) * L, y1 = y + Math.sin(a) * L;
+        q.lineWidth = w; q.beginPath(); q.moveTo(x, y); q.quadraticCurveTo((x + x1) / 2 + (r() - 0.5) * L * 0.3, (y + y1) / 2, x1, y1); q.stroke();
+        for (let k = 0; k < 2; k++) branch(x1, y1, a + (k ? 0.5 : -0.55) + (r() - 0.5) * 0.4, L * (0.62 + r() * 0.2), w * 0.66, d - 1);
+      };
+      branch(250, 350, -1.45, 120, 22, 6);
+      branch(530, 350, -1.75, 105, 18, 6);
+      if (bare) {
+        for (let k = 0; k < 22; k++) { q.fillStyle = rgba(k % 2 ? '#7a5a3a' : '#5a4a3a', 0.8); q.beginPath(); q.ellipse(100 + r() * 560, 40 + r() * 200, 5, 2.4, r() * 3, 0, TAU); q.fill(); }
+        return;
+      }
+      const clusters = [[140, 170, 120], [262, 96, 130], [392, 130, 124], [520, 86, 124], [636, 160, 104], [330, 214, 110], [474, 210, 104], [80, 232, 80]];
+      for (const pass of [0, 1, 2, 3]) {
+        for (const [cx, cy, R] of clusters) {
+          const n = pass === 0 ? 130 : pass === 3 ? 40 : 80;
+          for (let k = 0; k < n; k++) {
+            const a = r() * TAU, d = Math.sqrt(r()) * R, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.72;
+            const top = clamp((cy - y) / R + 0.5);
+            q.fillStyle = pass === 0 ? '#1d3a2c' : pass === 1 ? mix('#2a5240', '#3f6a48', top) : pass === 2 ? rgba('#7aa66a', 0.25 + 0.5 * top) : rgba('#d8e8b0', 0.35 * top);
+            q.beginPath(); q.ellipse(x, y, (9 + r() * 5) * (pass === 3 ? 0.6 : 1), (4 + r() * 2) * (pass === 3 ? 0.6 : 1), r() * PI, 0, TAU); q.fill();
+          }
+        }
+      }
+      for (let k = 0; k < 300; k++) {
+        const [cx, cy, R] = clusters[k % clusters.length];
+        const a = r() * TAU, d = Math.sqrt(r()) * R * 0.95, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.72;
+        q.fillStyle = r() < 0.55 ? '#f6cf4a' : '#e8a040';
+        for (let j = 0; j < 4; j++) { q.beginPath(); q.arc(x + (r() - 0.5) * 7, y + (r() - 0.5) * 5, 1.2 + r() * 1.2, 0, TAU); q.fill(); }
+      }
+    });
+  }
+  // 墙外远景：雾里一层层马头墙、远塔与柳烟
+  function skyTex(aged) {
+    return K.cache('g07|sky' + (aged ? 'B' : 'A'), W, 640, 1, (q) => {
+      const r = A.rng(aged ? 61 : 60);
+      if (aged) bandV(q, 0, 0, W, 640, [[0, '#7f8f9a'], [0.55, '#b4bcbf'], [1, '#cfd2cd']]);
+      else {
+        bandV(q, 0, 0, W, 640, [[0, '#76a8c8'], [0.45, '#bcd6de'], [0.8, '#e9eee6'], [1, '#f4f0e2']]);
+        q.globalCompositeOperation = 'screen'; A.glow(q, 80, -60, 640, '#fff4d6', 0.7); q.globalCompositeOperation = 'source-over';
+      }
+      E.clouds(q, { t: 0, y: 80, color: aged ? '#d4d8d8' : '#ffffff', shade: aged ? '#76828a' : '#a8bccb', alpha: aged ? 0.75 : 0.6, scale: 0.75, n: 4, seed: aged ? 23 : 21, speed: 0, lightX: aged ? 640 : 120 });
+      const haze = aged ? '#c6cbcb' : '#e6ece6';
+      // 远山
+      q.fillStyle = mix(aged ? '#8a969c' : '#9fb6c0', haze, 0.35);
+      q.beginPath(); q.moveTo(WEND - 40, 470);
+      for (let x = WEND - 40; x <= W + 20; x += 20) q.lineTo(x, 430 - 40 * Math.sin((x - 900) / 90) - 20 * noise1(x / 60, 3));
+      q.lineTo(W + 20, 640); q.lineTo(WEND - 40, 640); q.closePath(); q.fill();
+      // 远塔
+      const px = 1190, py = 452;
+      q.fillStyle = mix(aged ? '#7c8890' : '#8ea4ae', haze, 0.3);
+      for (let k = 0; k < 6; k++) { const w = 24 - k * 2.6, y = py - k * 15; q.fillRect(px - w / 2, y - 12, w, 12); q.beginPath(); q.moveTo(px - w / 2 - 7, y - 10); q.quadraticCurveTo(px, y - 15, px + w / 2 + 7, y - 10); q.lineTo(px + w / 2, y - 13); q.lineTo(px - w / 2, y - 13); q.closePath(); q.fill(); }
+      q.fillRect(px - 1, py - 104, 2, 16);
+      bandV(q, WEND - 40, 380, W, 520, [[0, rgba(haze, 0)], [1, rgba(haze, 0.6)]]);
+      // 两排白墙黛瓦（马头墙），远排更淡
+      E.jiangnanTown(q, { t: 0, y: 560, x0: WEND - 40, x1: W + 40, scale: 0.45, seed: 12, color: aged ? '#c8c8c0' : '#f4f0e6', roof: aged ? '#55585c' : '#3e434a', haze, hazeA: 0.55, bank: false, smoke: 0 });
+      bandV(q, WEND - 40, 470, W, 580, [[0, rgba(haze, 0)], [0.7, rgba(haze, 0.5)], [1, rgba(haze, 0.2)]]);
+      E.jiangnanTown(q, { t: 0, y: 614, x0: WEND - 30, x1: W + 40, scale: 0.7, seed: 5, color: aged ? '#c4c2b8' : '#f6f2e8', roof: aged ? '#4a4c50' : '#33373e', haze, hazeA: aged ? 0.3 : 0.18, bank: false, smoke: 0 });
+      // 柳烟：几株虚虚的柳
+      for (const [wx, wy, s] of [[1060, 540, 0.8], [1250, 560, 1]]) {
+        q.strokeStyle = rgba(aged ? '#7a8478' : '#8faa78', 0.35); q.lineWidth = 1.2;
+        for (let k = 0; k < 26; k++) { const sx = wx + (r() - 0.5) * 70 * s, sy = wy - 110 * s + r() * 30 * s; q.beginPath(); q.moveTo(sx, sy); q.quadraticCurveTo(sx + 6, sy + 50 * s, sx + 2 + r() * 8, sy + (70 + r() * 60) * s); q.stroke(); }
+      }
+    });
+  }
+  // 字形与墨字
+  function glyphTex(ch) {
+    return K.cache('g07|gl' + ch + fk(), 180, 180, 1, (q) => {
+      q.fillStyle = '#000'; q.font = `150px ${XYT.FONT}`; q.textAlign = 'center'; q.textBaseline = 'middle';
+      q.fillText(ch, 90, 96);
+    });
+  }
+  function inkGlyph(ch, col) {
+    return K.cache('g07|ig' + ch + col + fk(), 180, 180, 1, (q) => {
+      q.drawImage(glyphTex(ch), 0, 0, 180, 180);
+      q.globalCompositeOperation = 'source-in'; q.fillStyle = col; q.fillRect(0, 0, 180, 180);
+      // 飞白：笔画里几道擦痕
+      q.globalCompositeOperation = 'destination-out';
+      const r = A.rng(ch.charCodeAt(0));
+      for (let k = 0; k < 5; k++) {
+        const x = 30 + r() * 120, y = 30 + r() * 120, a = r() * PI, L = 30 + r() * 40;
+        q.save(); q.translate(x, y); q.rotate(a);
+        for (let j = 0; j < 6; j++) { q.fillStyle = `rgba(0,0,0,${0.5 + r() * 0.5})`; q.fillRect(-L / 2 + r() * 10, -8 + j * 3 + r(), L * (0.4 + r() * 0.6), 0.9 + r() * 0.8); }
+        q.restore();
+      }
+      q.globalCompositeOperation = 'source-over';
+    });
+  }
+  function putGlyph(q, w, col, alpha) {
+    const [ch, x, y, size, rot] = w;
+    q.save(); q.translate(x, y); q.rotate(rot); q.scale(size / 150, size / 150);
+    q.globalAlpha = alpha; q.drawImage(inkGlyph(ch, col), -90, -96, 180, 180); q.globalAlpha = 1;
+    q.restore();
+  }
+  // 白墙（三级马头墙、墙基、青石板路，前五个字已写好）；aged 为几十年后的斑驳版
+  function wallTex(aged) {
+    return K.cache('g07|wall' + (aged ? 'B' : 'A') + fk(), W, H, 1, (q) => {
+      const r = A.rng(aged ? 2109 : 2101);
+      const plaster = aged ? '#bfbbb0' : '#f7f1e3';
+      q.save(); wallPath(q); q.clip();
+      q.fillStyle = K.lin(q, 0, 60, 0, WB, aged ? [[0, '#b9b8b0'], [0.5, plaster], [1, '#a8a89c']] : [[0, '#efe6d2'], [0.25, plaster], [0.75, '#f1eadb'], [1, '#d9d0bd']]);
+      q.fillRect(-60, 0, WEND + 60, WB);
+      if (!aged) {
+        // 晨光从左上斜照：暖白一片，右下渐冷
+        q.fillStyle = K.lin(q, 0, 80, WEND, 560, [[0, 'rgba(255,244,214,0.55)'], [0.55, 'rgba(255,244,214,0)'], [1, 'rgba(150,170,190,0.18)']]); q.fillRect(-60, 0, WEND + 60, WB);
+      }
+      // 灰皮斑驳与补灰
+      for (let k = 0; k < (aged ? 70 : 34); k++) { q.fillStyle = rgba(aged ? (k % 3 ? '#7e7a6c' : '#5e6458') : '#c8bfa8', (aged ? 0.07 : 0.05) + r() * 0.06); A.inkBlob(q, r() * WEND, 80 + r() * 520, 10 + r() * (aged ? 90 : 50), k, 0.55); q.fill(); }
+      for (let k = 0; k < 16; k++) { q.fillStyle = rgba('#ffffff', (aged ? 0.02 : 0.12) + r() * (aged ? 0.03 : 0.08)); A.inkBlob(q, r() * WEND, 120 + r() * 400, 20 + r() * 40, k + 50, 0.45); q.fill(); }
+      // 雨痕：从檐下垂下的竖纹
+      for (let k = 0; k < (aged ? 120 : 24); k++) {
+        const x = r() * WEND, st = STEPS.find((s) => x >= s[0] && x < s[1]) || STEPS[0], y0 = st[2] + 4, L = 40 + r() * (aged ? 420 : 110);
+        q.fillStyle = K.lin(q, 0, y0, 0, y0 + L, [[0, rgba(aged ? '#3a382e' : '#a0977f', aged ? 0.22 + r() * 0.2 : 0.08)], [1, rgba('#a0977f', 0)]]);
+        q.fillRect(x, y0, 1 + r() * (aged ? 7 : 3), L);
+      }
+      if (!aged) {
+        // 桂树在墙头投下的斑驳碎影
+        try { q.filter = `blur(${(4 * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+        for (let k = 0; k < 90; k++) { const x = 40 + r() * 600, y = 150 + Math.pow(r(), 1.6) * 90; q.fillStyle = `rgba(70,80,70,${0.05 + r() * 0.08})`; q.beginPath(); q.ellipse(x, y, 10 + r() * 22, 5 + r() * 8, r(), 0, TAU); q.fill(); }
+        q.filter = 'none';
+        // 早先的涂鸦：一个持剑小人、一只酒葫芦
+        q.strokeStyle = rgba(INK, 0.78); q.lineWidth = 3.2; q.lineCap = 'round'; q.lineJoin = 'round';
+        const sx = 150, sy = 470;
+        q.beginPath(); q.arc(sx, sy - 52, 9, 0, TAU); q.stroke();
+        q.beginPath(); q.moveTo(sx, sy - 43); q.lineTo(sx + 2, sy - 8); q.lineTo(sx - 14, sy + 18); q.moveTo(sx + 2, sy - 8); q.lineTo(sx + 18, sy + 14);
+        q.moveTo(sx, sy - 32); q.lineTo(sx + 20, sy - 44); q.lineTo(sx + 56, sy - 82); q.moveTo(sx, sy - 32); q.lineTo(sx - 18, sy - 20); q.stroke();
+        q.lineWidth = 2; q.beginPath(); q.moveTo(sx + 40, sy - 66); q.lineTo(sx + 48, sy - 59); q.stroke();
+        q.lineWidth = 2.6; q.beginPath(); q.arc(sx + 92, sy + 4, 11, 0, TAU); q.moveTo(sx + 99, sy - 16); q.arc(sx + 92, sy - 16, 7, 0, TAU); q.stroke();
+        q.font = `30px ${XYT.FONT}`; q.fillStyle = rgba(INK, 0.7); q.textAlign = 'center'; q.fillText('剑', sx + 40, sy + 54);
+      } else {
+        // 剥落处露出青砖：小块、边缘参差
+        for (let k = 0; k < 3; k++) {
+          const px = [130, 720, 960][k], py = [220, 200, 430][k], R = 12 + r() * 14;
+          q.save(); A.inkBlob(q, px, py, R, k + 90, 0.62); q.clip();
+          q.fillStyle = '#8e8c84'; q.fillRect(px - R * 1.6, py - R * 1.6, R * 3.2, R * 3.2);
+          q.strokeStyle = 'rgba(70,70,66,0.35)'; q.lineWidth = 1;
+          for (let yy = py - R * 1.6, j = 0; yy < py + R * 1.6; yy += 12, j++) {
+            q.beginPath(); q.moveTo(px - R * 1.6, yy); q.lineTo(px + R * 1.6, yy); q.stroke();
+            for (let xx = px - R * 1.6 + (j % 2) * 15; xx < px + R * 1.6; xx += 30) { q.beginPath(); q.moveTo(xx, yy); q.lineTo(xx, yy + 12); q.stroke(); }
+          }
+          q.fillStyle = K.lin(q, 0, py - R, 0, py + R, [[0, 'rgba(40,40,36,0.35)'], [1, 'rgba(40,40,36,0)']]); q.fillRect(px - R * 1.6, py - R * 1.6, R * 3.2, R * 3.2);
+          q.restore();
+          q.strokeStyle = 'rgba(90,84,70,0.35)'; q.lineWidth = 1; A.inkBlob(q, px, py, R, k + 90, 0.62); q.stroke();
+        }
+        // 细裂缝
+        q.strokeStyle = 'rgba(60,56,48,0.4)'; q.lineCap = 'round';
+        for (let k = 0; k < 3; k++) {
+          let x = 80 + r() * (WEND - 160), y = 150 + r() * 100;
+          q.lineWidth = 0.9; q.beginPath(); q.moveTo(x, y);
+          for (let j = 0; j < 8; j++) { x += (r() - 0.5) * 26; y += 12 + r() * 22; q.lineTo(x, y); }
+          q.stroke();
+        }
+        // 墙脚潮痕与青苔：一抹墨绿往上洇
+        q.fillStyle = K.lin(q, 0, WB - 200, 0, WB, [[0, 'rgba(70,90,60,0)'], [0.6, 'rgba(70,90,60,0.22)'], [1, 'rgba(50,70,46,0.5)']]); q.fillRect(-60, WB - 200, WEND + 60, 200);
+        try { q.filter = `blur(${(2.5 * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+        for (let k = 0; k < 70; k++) { const x = r() * WEND, y = WB - Math.pow(r(), 2.2) * 150; q.fillStyle = rgba(r() < 0.5 ? '#4f6b3e' : '#6f8a4a', 0.1 + r() * 0.16); A.inkBlob(q, x, y, 6 + r() * 20, k + 200, 0.5); q.fill(); }
+        q.filter = 'none';
+        // 枯藤
+        q.strokeStyle = 'rgba(70,58,44,0.7)'; q.lineWidth = 1.6;
+        for (let k = 0; k < 3; k++) { let x = 30 + k * 60 + r() * 40, y = WB - 30; q.beginPath(); q.moveTo(x, y); for (let j = 0; j < 14; j++) { x += (r() - 0.45) * 22; y -= 14 + r() * 12; q.lineTo(x, y); } q.stroke(); }
+        // 只剩“大侠”：其余几字淡成影子；字上剥掉一块块
+        const tmp = document.createElement('canvas'), S = SS();
+        tmp.width = Math.ceil(W * S); tmp.height = Math.ceil(520 * S);
+        const tq = tmp.getContext('2d'); tq.scale(S, S);
+        for (const i of [0, 3, 4, 5, 6]) putGlyph(tq, WRIT[i], '#3a3a38', 0.08);
+        for (const i of [1, 2]) putGlyph(tq, WRIT[i], '#2a2a2c', 0.8);
+        tq.globalCompositeOperation = 'destination-out';
+        const r2 = A.rng(404);
+        for (let i = 0; i < 80; i++) { tq.fillStyle = `rgba(0,0,0,${0.35 + r2() * 0.65})`; A.inkBlob(tq, 320 + r2() * 240, 210 + r2() * 180, 2 + r2() * 9, i, 0.5); tq.fill(); }
+        for (let i = 0; i < 50; i++) { tq.fillStyle = `rgba(0,0,0,${0.2 + r2() * 0.3})`; tq.fillRect(320 + r2() * 240, 200 + r2() * 200, 1 + r2() * 3, 20 + r2() * 60); }
+        q.drawImage(tmp, 0, 0, W, 520);
+      }
+      // 檐下阴影
+      for (const [x0, x1, y] of STEPS) bandV(q, x0, y, x1, y + 44, [[0, aged ? 'rgba(30,30,28,0.3)' : 'rgba(60,50,36,0.3)'], [1, 'rgba(40,36,30,0)']]);
+      q.restore();
+      // 墙基：青石
+      const py = WB - 40;
+      q.fillStyle = K.lin(q, 0, py, 0, WB, [[0, aged ? '#6a6c64' : '#9a968a'], [1, aged ? '#3e403a' : '#625f55']]); q.fillRect(-60, py, WEND + 60, 40);
+      q.strokeStyle = 'rgba(30,30,28,0.45)'; q.lineWidth = 1;
+      q.beginPath(); q.moveTo(-60, py + 20); q.lineTo(WEND, py + 20); q.stroke();
+      for (let x = -40, k = 0; x < WEND; x += 60 + r() * 30, k++) { q.beginPath(); q.moveTo(x, py + (k % 2 ? 0 : 20)); q.lineTo(x, py + (k % 2 ? 20 : 40)); q.stroke(); }
+      q.fillStyle = 'rgba(255,250,235,0.3)'; q.fillRect(-60, py, WEND + 60, 2);
+      // 墙头瓦檐：每级一道，端头起翘
+      for (const [x0, x1, y] of STEPS) {
+        const cap = 30, ct = y - cap * 0.7, roofC = aged ? '#4a4c4e' : '#30343a';
+        q.fillStyle = K.lin(q, 0, ct, 0, y + 4, [[0, mix(roofC, '#9aa4b0', 0.3)], [1, mix(roofC, '#000000', 0.2)]]);
+        q.beginPath(); q.moveTo(x0 - 12, y + 4); q.lineTo(x1 + 14, y + 4); q.lineTo(x1 + 8, ct); q.lineTo(x0 - 6, ct); q.closePath(); q.fill();
+        for (let xx = x0 - 8; xx < x1 + 10; xx += 8) {
+          if (aged && r() < 0.07) { q.fillStyle = 'rgba(200,200,190,0.5)'; q.fillRect(xx - 3, ct, 7, y - ct); continue; }
+          q.strokeStyle = rgba('#101114', 0.8); q.lineWidth = 2.2; q.beginPath(); q.moveTo(xx, ct); q.lineTo(xx, y + 2); q.stroke();
+          q.strokeStyle = rgba(aged ? '#b8bcc0' : '#f0f4fa', aged ? 0.15 : 0.3); q.lineWidth = 1.1; q.beginPath(); q.moveTo(xx + 2.6, ct); q.lineTo(xx + 2.6, y + 2); q.stroke();
+          q.fillStyle = '#1e2024'; q.beginPath(); q.arc(xx + 1, y + 5, 3.4, 0, TAU); q.fill();
+        }
+        const rt = y - cap;
+        q.fillStyle = mix(roofC, '#000000', 0.3); q.fillRect(x0 - 8, rt, x1 - x0 + 18, cap * 0.32);
+        q.fillStyle = rgba('#f4f8fc', aged ? 0.15 : 0.5); q.fillRect(x0 - 8, rt, x1 - x0 + 18, 1.6);
+        q.fillStyle = mix(roofC, '#000000', 0.3);
+        q.beginPath(); q.moveTo(x1 + 10, rt); q.quadraticCurveTo(x1 + 22, rt - 4, x1 + 30, rt - 18); q.lineTo(x1 + 24, rt + cap * 0.32); q.lineTo(x1 + 10, rt + cap * 0.4); q.closePath(); q.fill();
+        if (aged) {
+          q.strokeStyle = rgba('#8a7a5a', 0.85); q.lineWidth = 1.2;
+          for (let k = 0; k < (x1 - x0) / 7; k++) { const gx = x0 + r() * (x1 - x0), gh = 8 + r() * 28; q.beginPath(); q.moveTo(gx, rt + 2); q.quadraticCurveTo(gx + 3, rt - gh * 0.5, gx + 6 + r() * 6, rt - gh); q.stroke(); }
+        }
+      }
+      // 墙的右端：转角的一道竖影
+      q.fillStyle = aged ? '#8f8e86' : '#d6cdb8'; q.fillRect(WEND - 6, 74, 6, WB - 74);
+      q.fillStyle = 'rgba(0,0,0,0.12)'; q.fillRect(WEND - 2, 74, 2, WB - 74);
+      // 青石板路
+      q.fillStyle = K.lin(q, 0, WB, 0, H, aged ? [[0, '#70726c'], [1, '#3c3e3a']] : [[0, '#b2ab98'], [0.5, '#958e7c'], [1, '#6a6458']]); q.fillRect(-60, WB, W + 120, H - WB);
+      q.strokeStyle = aged ? 'rgba(30,34,30,0.5)' : 'rgba(60,54,44,0.32)'; q.lineWidth = 1.2;
+      for (let k = 0; k < 5; k++) { const yy = WB + 10 + Math.pow(k / 5, 1.5) * 108; q.beginPath(); q.moveTo(-60, yy); q.lineTo(W + 60, yy); q.stroke(); }
+      for (let k = -12; k <= 14; k++) { const x0 = 620 + k * 70; q.beginPath(); q.moveTo(x0, WB); q.lineTo(620 + k * 150, H + 40); q.stroke(); }
+      if (!aged) { q.fillStyle = K.lin(q, 0, WB, W, H, [[0, 'rgba(255,240,205,0.25)'], [1, 'rgba(255,240,205,0)']]); q.fillRect(-60, WB, W + 120, H - WB); }
+      // 墙脚的草
+      q.strokeStyle = aged ? '#5a6a3a' : '#5f7a44'; q.lineWidth = 1.4;
+      for (let k = 0; k < (aged ? 120 : 50); k++) { const gx = r() * WEND, gh = 6 + r() * (aged ? 30 : 16); q.beginPath(); q.moveTo(gx, WB + 2); q.quadraticCurveTo(gx + 2, WB - gh * 0.5, gx + (r() - 0.4) * 10, WB - gh); q.stroke(); }
+      if (aged) for (let k = 0; k < 40; k++) { q.fillStyle = rgba(k % 3 ? '#6a4a2e' : '#8a5a34', 0.75); q.beginPath(); q.ellipse(r() * W, WB + 6 + r() * 100, 6 + r() * 4, 2.5 + r() * 1.5, r() * 3, 0, TAU); q.fill(); }
+      else {
+        // 晨光斜斜地从左上照进巷子（烘焙进墙面）
+        q.globalCompositeOperation = 'screen';
+        try { q.filter = `blur(${(10 * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+        for (let i = 0; i < 6; i++) {
+          const a = 0.62 + i * 0.075 + (h2(i, 3) - 0.5) * 0.04, w0 = 18 + 30 * h2(i, 4), w1 = 70 + 110 * h2(i, 5), L = 1500;
+          q.fillStyle = K.lin(q, -160, -200, -160 + Math.cos(a) * L, -200 + Math.sin(a) * L, [[0, 'rgba(255,240,200,0.26)'], [0.5, 'rgba(255,240,200,0.11)'], [1, 'rgba(255,240,200,0)']]);
+          const nx = -Math.sin(a), ny = Math.cos(a);
+          q.beginPath(); q.moveTo(-160 + nx * w0, -200 + ny * w0); q.lineTo(-160 + Math.cos(a) * L + nx * w1, -200 + Math.sin(a) * L + ny * w1);
+          q.lineTo(-160 + Math.cos(a) * L - nx * w1, -200 + Math.sin(a) * L - ny * w1); q.lineTo(-160 - nx * w0, -200 - ny * w0); q.closePath(); q.fill();
+        }
+        q.filter = 'none'; q.globalCompositeOperation = 'source-over';
+        // 前五个字（墨已写好，压在光上，保持浓黑）
+        for (let i = 0; i < 5; i++) putGlyph(q, WRIT[i], INK, 1);
+      }
+    });
+  }
+  // 写字的扫笔路径：字内局部坐标（-1..1），u 0..1；rows 往返几趟
+  function sweep(u, rows) {
+    if (rows === 1) return [lerp(-0.62, 0.66, u), 0.02 + 0.05 * Math.sin(u * PI)];
+    const k = u * rows, i = Math.min(rows - 1, Math.floor(k)), f = k - i, dir = i % 2 ? -1 : 1;
+    return [dir * lerp(-0.58, 0.58, smooth(f)), lerp(-0.6, 0.62, (i + f) / rows)];
+  }
+  // 局部写出：prog 写到哪；dry 之后只剩一丝丝断续的飞白
+  function writeGlyph(g, w, prog, dry, rows) {
+    const [ch, x, y, size, rot] = w, sc = size / 150, S = SS();
+    if (prog <= 0) return;
+    const img = inkGlyph(ch, INK);
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(sc, sc);
+    if (prog >= 1 && dry >= 1) { g.drawImage(img, -90, -96, 180, 180); g.restore(); return; }
+    const k = S * sc, side = Math.ceil(180 * k);
+    const B = scratch('g07w', side, side), q = B.q;
+    q.setTransform(k, 0, 0, k, 0, 0);
+    const P = (u) => { const [px, py] = sweep(u, rows); return [90 + px * 78, 96 + py * 78]; };
+    const wetEnd = Math.min(prog, dry);
+    if (wetEnd > 0) {
+      q.strokeStyle = '#000'; q.lineWidth = rows === 1 ? 70 : 54; q.lineCap = 'round'; q.lineJoin = 'round';
+      q.beginPath();
+      const n = Math.max(2, Math.ceil(wetEnd * 60));
+      for (let i = 0; i <= n; i++) { const [px, py] = P((wetEnd * i) / n); i ? q.lineTo(px, py) : q.moveTo(px, py); }
+      q.stroke();
+    }
+    if (prog > dry) {
+      q.lineCap = 'butt';
+      const n = Math.max(2, Math.ceil((prog - dry) * 90));
+      for (let b = 0; b < 9; b++) {
+        const off = (b / 8 - 0.5) * 48;
+        q.lineWidth = 1.3 + 1.6 * h2(b, 5);
+        q.beginPath();
+        let on = false;
+        for (let i = 0; i <= n; i++) {
+          const u = dry + ((prog - dry) * i) / n, [px, py] = P(u), [qx, qy] = P(Math.min(1, u + 0.01));
+          const tx = qx - px, ty = qy - py, l = Math.hypot(tx, ty) || 1;
+          const dens = 1 - smooth(((u - dry) / Math.max(0.05, 1 - dry)) * 2.2);
+          const keep = h2(b * 131 + Math.floor(u * 90), 17) < 0.15 + 0.6 * dens;
+          const X = px - (ty / l) * off, Y = py + (tx / l) * off;
+          if (keep) { if (!on) { q.moveTo(X, Y); on = true; } else q.lineTo(X, Y); } else on = false;
+        }
+        q.strokeStyle = `rgba(0,0,0,${0.5 + 0.5 * h2(b, 3)})`;
+        q.stroke();
+      }
+    }
+    q.globalCompositeOperation = 'source-in';
+    q.drawImage(img, 0, 0, 180, 180);
+    q.globalCompositeOperation = 'source-over';
+    g.drawImage(B.cv, 0, 0, side, side, -90, -96, 180, 180);
+    g.restore();
+  }
+  function brushTip(w, prog, rows) {
+    const [, x, y, size, rot] = w, sc = size / 150, [px, py] = sweep(clamp(prog), rows);
+    const lx = px * 78 * sc, ly = (py * 78 - 6) * sc;
+    return [x + lx * Math.cos(rot) - ly * Math.sin(rot), y + lx * Math.sin(rot) + ly * Math.cos(rot)];
+  }
+  // 笔干之后的一记拖笔：在墙上擦出长长的干丝（不受字形限制）
+  const DRAG = (u) => [lerp(806, 930, u), 350 + 34 * u - 22 * Math.sin(u * PI) + 4 * Math.sin(u * 7)];
+  function dryDrag(g, u) {
+    if (u <= 0) return;
+    g.lineCap = 'round';
+    const n = Math.ceil(u * 50);
+    for (let b = 0; b < 15; b++) {
+      const off = (b / 14 - 0.5) * 22;
+      g.strokeStyle = rgba(INK, 0.4 + 0.5 * h2(b, 8)); g.lineWidth = 0.9 + 1.5 * h2(b, 9);
+      g.beginPath(); let on = false;
+      for (let i = 0; i <= n; i++) {
+        const v = (u * i) / n, [px, py] = DRAG(v), w = 1 - 0.55 * v;
+        // 丝越往后越断、越细：靠外的毫先断
+        const keep = h2(b * 97 + Math.floor(v * 26), 23) < 0.92 - v * (0.5 + 0.9 * Math.abs(off) / 11);
+        if (keep) { if (!on) { g.moveTo(px, py + off * w); on = true; } else g.lineTo(px, py + off * w); } else on = false;
+      }
+      g.stroke();
+    }
+  }
+  // 大毛笔：从握笔处 (hx, hy) 指向 ang，长 L；wet 笔头湿度
+  function bigBrush(g, hx, hy, ang, L, wet) {
+    g.save(); g.translate(hx, hy); g.rotate(ang);
+    g.fillStyle = K.lin(g, 0, -3, 0, 3, [[0, '#ecd696'], [0.5, '#b89654'], [1, '#7a5e30']]);
+    g.fillRect(-L * 0.42, -2.7, L * 0.42 + L * 0.62, 5.4);
+    g.fillStyle = 'rgba(90,60,30,0.6)'; for (const u of [-0.28, 0.1, 0.42]) g.fillRect(u * L, -2.9, 2, 5.8);
+    const b0 = L * 0.62;
+    g.fillStyle = '#3a2a1e'; g.fillRect(b0 - 4, -3.7, 8, 7.4);
+    g.fillStyle = mix('#e8dcc0', '#121218', 0.25 + 0.75 * wet);
+    g.beginPath(); g.moveTo(b0 + 3, -4.4); g.quadraticCurveTo(b0 + L * 0.28, -3.8, b0 + L * 0.44, 0); g.quadraticCurveTo(b0 + L * 0.28, 3.8, b0 + 3, 4.4); g.closePath(); g.fill();
+    if (wet < 0.5) { g.strokeStyle = 'rgba(40,36,30,0.6)'; g.lineWidth = 0.7; for (let j = -2; j <= 2; j++) { g.beginPath(); g.moveTo(b0 + 6, j * 1.2); g.lineTo(b0 + L * 0.44 + 2 * Math.abs(j), j * 2.2); g.stroke(); } }
+    else { g.fillStyle = `rgba(255,255,255,${0.3 * wet})`; g.beginPath(); g.ellipse(b0 + L * 0.18, -1.7, L * 0.1, 0.9, 0, 0, TAU); g.fill(); }
+    g.restore();
+    return [hx + Math.cos(ang) * (b0 + L * 0.44), hy + Math.sin(ang) * (b0 + L * 0.44)];
+  }
+  // 麻雀：x, y 脚下；dir 朝向；fly 起飞；ph 振翅相位
+  function sparrow(g, x, y, s, dir, fly, ph) {
+    g.save(); g.translate(x, y); g.scale(dir * s, s);
+    if (fly) {
+      const f = Math.sin(ph);
+      g.fillStyle = '#5a4030';
+      g.beginPath(); g.moveTo(-2, -6); g.quadraticCurveTo(-8, -14 - f * 10, -16, -8 - f * 14); g.quadraticCurveTo(-8, -6, -2, -4); g.fill();
+      g.beginPath(); g.moveTo(2, -6); g.quadraticCurveTo(8, -14 - f * 10, 14, -6 - f * 12); g.quadraticCurveTo(8, -5, 2, -4); g.fill();
+    }
+    g.fillStyle = '#8a6646'; g.beginPath(); g.ellipse(0, -6, 7, 4.6, -0.2, 0, TAU); g.fill();
+    g.fillStyle = '#5a3c28'; g.beginPath(); g.moveTo(-6, -6); g.lineTo(-13, -9); g.lineTo(-12, -5); g.closePath(); g.fill();
+    g.fillStyle = '#6a4630'; g.beginPath(); g.arc(5.5, -10, 3.6, 0, TAU); g.fill();
+    g.fillStyle = '#efe6d6'; g.beginPath(); g.ellipse(6.4, -9, 1.8, 1.4, 0, 0, TAU); g.fill();
+    g.fillStyle = '#e8dcc4'; g.beginPath(); g.ellipse(1, -3.6, 4.5, 2, 0, 0, TAU); g.fill();
+    g.fillStyle = '#1a1210'; g.beginPath(); g.moveTo(8.6, -10.5); g.lineTo(11.4, -9.6); g.lineTo(8.6, -8.8); g.fill();
+    if (!fly) { g.strokeStyle = '#4a3020'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(0, -2); g.lineTo(-0.5, 0); g.moveTo(2, -2); g.lineTo(2, 0); g.stroke(); }
+    g.restore();
+  }
+  // 时间点：写字从 wStart 起；“墨”字起笔干，“尽”字笔尽，再干拖一笔
+  const wStart = 0.22;
+  function wProg(lt, k) {
+    if (lt <= wStart) return 0;
+    if (lt <= k[3]) return 0.86 * (lt - wStart) / (k[3] - wStart);
+    return 0.86 + 0.06 * easeOut(seg(lt, k[3], k[3] + 0.2));
+  }
+  const wDry = (k) => 0.86 * (k[2] - wStart) / (k[3] - wStart);
+  const dragU = (lt, k) => easeOut(seg(lt, k[3] + 0.08, k[3] + 0.5));
+  function boyPose(lt, k) {
+    if (lt < k[3] + 0.55) return 'write';
+    if (lt < k[4]) return 'look';
+    if (lt < k[5]) return 'dip';
+    if (lt < k[6]) return 'flick';
+    if (lt < k[7]) return 'flick2';
+    return 'laugh';
+  }
+  function curTip(lt, k) {
+    if (lt < wStart) return brushTip(WRIT[5], clamp((lt + 0.25) / 0.45), 1);
+    if (lt > k[3] + 0.08) return DRAG(dragU(lt, k));
+    return brushTip(WRIT[6], wProg(lt, k), 3);
+  }
+  function boyState(lt, k, pose, t) {
+    const o = { stage: 'youth', facing: -1, wind: 0.3, seed: 3 };
+    let x = BOY.x, y = BOY.y;
+    if (pose === 'write') {
+      o.pose = 'reach'; o.lean = 0.06;
+      // 身子随笔尖移动：手跟着笔，脚跟踮起
+      const tip = curTip(lt, k);
+      const base = F.points('xiaoyao', BOY.x, BOY.y, BOY.s, t, o).handN;
+      x += clamp((tip[0] + 52 - base[0]) * 0.55, -26, 30);
+      y += clamp((tip[1] - 8 - base[1]) * 0.5, -10, 14) - 5;
+    } else if (pose === 'look') { o.pose = 'whisper'; o.head = 0.15; }
+    else if (pose === 'dip') { o.pose = 'kneel'; }
+    else if (pose === 'flick') { o.pose = 'swordUp'; o.head = 0.1; }
+    else if (pose === 'flick2') { o.pose = 'swordPoint'; }
+    else { o.pose = 'laugh'; }
+    // 换姿势时轻轻一顿（关键帧的缓冲）
+    const tc = { look: k[3] + 0.55, dip: k[4], flick: k[5], flick2: k[6], laugh: k[7] }[pose];
+    if (tc != null && lt >= tc) y -= Math.exp(-(lt - tc) / 0.09) * 6;
+    return { x, y, opts: o, pose };
+  }
+  function drawBoyBrush(g, lt, k, B, t, P) {
+    const hx = P.handN[0], hy = P.handN[1];
+    let ang, L = 78, wet = 1;
+    if (B.pose === 'write') {
+      const tip = curTip(lt, k);
+      ang = Math.atan2(tip[1] - hy, tip[0] - hx); L = clamp(Math.hypot(tip[0] - hx, tip[1] - hy) / 1.06, 60, 96);
+      wet = 1 - seg(lt, k[2] - 0.1, k[3]);
+    } else if (B.pose === 'look') { ang = -1.25 + 0.22 * Math.sin(lt * 9) * Math.exp(-(lt - k[3] - 0.55) / 0.5); wet = 0; }
+    else if (B.pose === 'dip') { ang = 1.75; wet = seg(lt, k[4] + 0.2, k[4] + 0.45); }
+    else if (B.pose === 'flick') { ang = -1.2 + 0.9 * Math.sin((lt - k[5]) * 22) * Math.exp(-(lt - k[5]) / 0.4); }
+    else if (B.pose === 'flick2') { ang = PI + 0.15 + 0.7 * Math.sin((lt - k[6]) * 24) * Math.exp(-(lt - k[6]) / 0.35); wet = 0.8; }
+    else { ang = PI * 0.92 + 0.08 * Math.sin(t * 44); wet = 0.6; }
+    const tip = bigBrush(g, hx, hy, ang, L, wet);
+    // 甩笔瞬间从笔尖抛出的墨点
+    for (const [t0, sd] of [[k[5] + 0.04, 3], [k[6] + 0.03, 4]]) {
+      const age = lt - t0;
+      if (age < 0 || age > 0.35) continue;
+      for (let i = 0; i < 30; i++) {
+        const an = (sd === 3 ? -2.4 : -2.9) + (h2(i, sd) - 0.5) * 1.6, v = 500 + 700 * h2(i, sd + 1);
+        const x = tip[0] + Math.cos(an) * v * age, y = tip[1] + Math.sin(an) * v * age + 600 * age * age;
+        g.fillStyle = rgba(INK, 0.9 * (1 - age / 0.35));
+        g.beginPath(); g.ellipse(x, y, 1.4 + 2.4 * h2(i, sd + 2), 1.2 + 1.6 * h2(i, sd + 2), an, 0, TAU); g.fill();
+      }
+    }
+    // 第二下甩笔，墨点回溅到自己肩上的抹布和脸上
+    if (lt > k[6] + 0.08) {
+      g.fillStyle = INK;
+      for (let i = 0; i < 8; i++) { const px = P.chest[0] + (h2(i, 9) - 0.3) * 26, py = P.chest[1] - 16 + h2(i, 10) * 26; g.beginPath(); g.arc(px, py, 1.4 + 1.8 * h2(i, 11), 0, TAU); g.fill(); }
+    }
+  }
+  function splats(k) {
+    const out = [];
+    for (const [t0, n, cx, cy, sx, sy, sd] of [[k[5] + 0.12, 26, 650, 220, 250, 140, 1], [k[6] + 0.1, 22, 700, 380, 210, 150, 2]]) {
+      for (let i = 0; i < n; i++) {
+        const r = h2(i, sd * 7) < 0.15 ? 4 + h2(i, sd * 7 + 1) * 4 : 1.2 + h2(i, sd * 7 + 2) * 2.4;
+        out.push({ t: t0 + h2(i, sd * 7 + 3) * 0.12, x: cx + (h2(i, sd * 7 + 4) - 0.5) * sx * 2, y: cy + (h2(i, sd * 7 + 5) - 0.5) * sy, r, a: h2(i, sd * 7 + 6) * 3 });
+      }
+    }
+    return out;
+  }
+  function inkBowl(g, x, y, lt, k) {
+    g.fillStyle = 'rgba(40,30,20,0.25)'; g.beginPath(); g.ellipse(x + 8, y + 3, 40, 6, 0, 0, TAU); g.fill();
+    g.fillStyle = K.lin(g, x - 34, 0, x + 34, 0, [[0, '#b8b4a6'], [0.4, '#f6f2e8'], [1, '#8a877c']]);
+    g.beginPath(); g.moveTo(x - 34, y - 22); g.quadraticCurveTo(x - 30, y + 2, x, y + 2); g.quadraticCurveTo(x + 30, y + 2, x + 34, y - 22); g.closePath(); g.fill();
+    g.strokeStyle = '#3c5a8a'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 30, y - 14); g.quadraticCurveTo(x, y - 8, x + 30, y - 14); g.stroke();
+    g.lineWidth = 1; g.beginPath(); g.moveTo(x - 12, y - 6); g.quadraticCurveTo(x - 4, y - 12, x + 4, y - 6); g.stroke();
+    g.fillStyle = '#ece8de'; g.beginPath(); g.ellipse(x, y - 22, 34, 7, 0, 0, TAU); g.fill();
+    g.fillStyle = '#121216'; g.beginPath(); g.ellipse(x, y - 21, 29, 5.2, 0, 0, TAU); g.fill();
+    const age = lt - (k[4] + 0.2);
+    if (age > 0 && age < 0.8) { g.strokeStyle = `rgba(210,220,236,${0.6 * (1 - age / 0.8)})`; g.lineWidth = 1; g.beginPath(); g.ellipse(x - 4, y - 21, 6 + age * 30, (6 + age * 30) * 0.18, 0, 0, TAU); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,0.4)'; g.beginPath(); g.ellipse(x - 10, y - 22.5, 9, 1.2, 0, 0, TAU); g.fill();
+  }
+  function birds(g, c, lt, t, k) {
+    const tf = k[5] + 0.05;
+    for (const [x0, dir, i] of [[600, 1, 0], [650, -1, 1], [704, 1, 2]]) {
+      const y0 = 84, age = lt - tf - i * 0.06;
+      if (age <= 0) {
+        const hop = Math.max(0, Math.sin((c.b.x + i * 0.5) * PI)) * 4 * (h2(c.b.i, i) < 0.5 ? 1 : 0);
+        sparrow(g, x0 + Math.sin(t * 0.5 + i) * 3, y0 - hop, 1.5, dir, false, 0);
+      } else if (age < 2.5) {
+        const x = x0 + age * (260 + 60 * i) * (i === 1 ? -0.6 : 1), y = y0 - age * 170 + age * age * 10;
+        sparrow(g, x, y, 1.5, i === 1 ? -1 : 1, true, t * 40 + i);
+      }
+    }
+  }
+  function fgLeaves(g, t) {
+    const tex = K.cache('g07|fgleaf', 380, 280, 0.5, (q) => {
+      const r = A.rng(9);
+      try { q.filter = `blur(${(5 * SS() * 0.5).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+      for (let k = 0; k < 10; k++) {
+        const x = 20 + r() * 240, y = 10 + r() * 150, a = 0.2 + r() * 0.9, L = 90 + r() * 80;
+        q.save(); q.translate(x, y); q.rotate(a);
+        q.fillStyle = r() < 0.5 ? '#1c2c20' : '#2c4430';
+        q.beginPath(); q.moveTo(0, 0); q.quadraticCurveTo(L * 0.4, -14, L, 0); q.quadraticCurveTo(L * 0.4, 14, 0, 0); q.fill();
+        q.restore();
+      }
+    });
+    g.save(); g.translate(-90, -70); g.rotate(0.03 * Math.sin(t * 1.1) + 0.015 * Math.sin(t * 2.7));
+    g.drawImage(tex, 0, 0, 380, 280);
+    g.restore();
+  }
+
+  // 回忆：晴朗上午的白墙与少年
+  function drawPast(g, c, lt, t, k, lite) {
+    g.drawImage(skyTex(false), 0, 0, W, 640);
+    // 桂树（随风轻摇）
+    g.save(); g.translate(360, 350); g.rotate(Math.sin(t * 0.9) * 0.006 + 0.004 * Math.sin(t * 2.1)); g.drawImage(osmanthus(false), -340, -350, 760, 320); g.restore();
+    g.drawImage(wallTex(false), 0, 0, W, H);
+    // 竹影在墙上摇
+    if (!lite) {
+    g.save(); wallPath(g, 2); g.clip();
+    g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.2;
+    g.drawImage(bambooShadow(), -80 + Math.sin(t * 0.8) * 10 + Math.sin(t * 2.3) * 3, 120 + Math.sin(t * 0.6) * 4, W + 200, 560);
+    g.restore();
+    }
+    // 墨淌：几道细细的垂痕慢慢往下爬
+    for (const [x, y0, born, sp, mx] of [[398, 346, -1.6, 9, 46], [470, 362, -1.2, 7, 30], [586, 350, -1.5, 8, 38], [800, 372, 0.9, 16, 44]]) {
+      const L = Math.min(mx, Math.max(0, lt - born) * sp * (1 - 0.3 * Math.max(0, lt - born) / 6));
+      if (L <= 0.5) continue;
+      g.strokeStyle = rgba(INK, 0.8); g.lineWidth = 1.8; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x - 1, y0 - 4); g.quadraticCurveTo(x + 1.5, y0 + L * 0.5, x + 0.4, y0 + L); g.stroke();
+      g.fillStyle = INK; g.beginPath(); g.ellipse(x + 0.4, y0 + L + 1.2, 2.2, 2.9, 0, 0, TAU); g.fill();
+    }
+    writeGlyph(g, WRIT[5], clamp((lt + 0.25) / 0.45), 1, 1);
+    writeGlyph(g, WRIT[6], wProg(lt, k), wDry(k), 3);
+    dryDrag(g, dragU(lt, k));
+    for (const sp of splats(k)) {
+      if (lt < sp.t) continue;
+      const e = easeOut(seg(lt, sp.t, sp.t + 0.08));
+      g.fillStyle = rgba(INK, 0.9);
+      g.beginPath(); g.ellipse(sp.x, sp.y, sp.r * e, sp.r * e * 0.8, sp.a, 0, TAU); g.fill();
+      if (sp.r > 3) { g.beginPath(); g.ellipse(sp.x + Math.cos(sp.a) * sp.r * 1.7, sp.y + Math.sin(sp.a) * sp.r * 1.7, sp.r * 0.35 * e, sp.r * 0.3 * e, 0, 0, TAU); g.fill(); }
+    }
+    inkBowl(g, 812, GY + 10, lt, k);
+    const B = boyState(lt, k, boyPose(lt, k), t);
+    const P = F.points('xiaoyao', B.x, B.y, BOY.s, t, B.opts);
+    // 少年投在墙上与地上的影
+    g.save();
+    g.beginPath(); g.rect(-60, 60, WEND + 60, WB - 60); g.clip();
+    g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.2;
+    g.translate(B.x + 64, B.y - 52); g.transform(1, 0, -0.2, 0.94, 0, 0);
+    F.draw(g, 'xiaoyao', 0, 0, BOY.s, t, Object.assign({}, B.opts, { tone: 'silhouette', ink: '#3f5262', rim: null, feibai: false }));
+    g.restore();
+    g.fillStyle = 'rgba(60,48,34,0.3)'; g.beginPath(); g.ellipse(B.x + 26, BOY.y + 2, 70, 9, 0, 0, TAU); g.fill();
+    F.draw(g, 'xiaoyao', B.x, B.y, BOY.s, t, B.opts);
+    drawBoyBrush(g, lt, k, B, t, P);
+    birds(g, c, lt, t, k);
+    // 桂花细瓣飘落（近大远小）
+    for (let i = 0; i < 50; i++) {
+      const z = h2(i, 5), sp = 16 + 30 * z, y0 = (h2(i, 6) * 780 + t * sp) % 780 - 30;
+      const x = 40 + h2(i, 7) * 760 + y0 * 0.3 + Math.sin(t * (0.7 + z) + i) * 16;
+      const r = 1.1 + z * 2.6;
+      g.fillStyle = rgba(i % 3 ? '#f6cf4a' : '#e8a040', 0.6 + 0.4 * z);
+      g.beginPath(); g.ellipse(x, y0, r, r * (0.45 + 0.55 * Math.abs(Math.sin(t * 3 + i))), t + i, 0, TAU); g.fill();
+    }
+    V.dust(g, c, { n: 36, area: [80, 140, 900, 600], color: '#fff3d0', size: [1, 2.6], alpha: 0.55, night: false });
+    willow(g, t, false);
+    fgLeaves(g, t);
+  }
+  // 右上角垂下的柳丝（随风摆）；aged 时只剩枯丝
+  function willow(g, t, aged) {
+    g.lineCap = 'round';
+    for (let i = 0; i < 16; i++) {
+      const sx = 1050 + h2(i, 41) * 260, sy = -10, len = 70 + h2(i, 42) * 80 * (aged ? 0.7 : 1);
+      const ph = t * (1.2 + 0.5 * h2(i, 43)) + i, sw = Math.sin(ph) * 10 + 6;
+      const ex = sx + sw, ey = sy + len;
+      g.strokeStyle = aged ? rgba('#6a5e4a', 0.55) : rgba(i % 3 ? '#7f9a50' : '#5a7a3a', 0.85); g.lineWidth = 1;
+      g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo(sx + sw * 0.2, sy + len * 0.5, ex, ey); g.stroke();
+      if (aged) continue;
+      g.strokeStyle = rgba(i % 2 ? '#a8c070' : '#7f9a50', 0.9); g.lineWidth = 2.4;
+      g.beginPath();
+      for (let k = 2; k < 11; k++) { const u = k / 11, px = lerp(sx, ex, u) + sw * 0.2 * (1 - u) * u * 2, py = lerp(sy, ey, u); const dd = (k % 2 ? 1 : -1) * 3.6; g.moveTo(px, py); g.lineTo(px + dd + sw * 0.04, py + 5); }
+      g.stroke();
+    }
+  }
+  // 几十年后：阴天冷光，墙皮剥落，只剩“大侠”
+  function drawAged(g, c, lt, t, k) {
+    // 天、枯枝、老墙合成一张（转场时只贴一次）
+    g.drawImage(K.cache('g07|agedAll' + fk(), W, H, 1, (q) => {
+      q.drawImage(skyTex(true), 0, 0, W, 640);
+      q.drawImage(osmanthus(true), 20, 0, 760, 320);
+      q.drawImage(wallTex(true), 0, 0, W, H);
+      bandV(q, 0, 540, W, H, [[0, 'rgba(200,206,206,0)'], [0.5, 'rgba(200,206,206,0.16)'], [1, 'rgba(200,206,206,0.05)']]);
+      // 冷灰的天光，四角压暗
+      q.fillStyle = K.rad(q, 520, 330, 200, 900, [[0, 'rgba(30,40,50,0)'], [1, 'rgba(30,40,50,0.28)']]); q.fillRect(0, 0, W, H);
+    }), 0, 0, W, H);
+    willow(g, t, true);
+    // 枯叶：在“愁”字落下，贴在“侠”上
+    const tl = k[10], u = seg(lt, tl - 1.4, tl);
+    const lx = lerp(700, 506, easeOut(u)) + Math.sin(u * 9) * 34 * (1 - u), ly = lerp(-30, 262, u);
+    deadLeaf(g, lx, ly, 1.3, u < 1 ? lt * 3 : 0.6 + 0.04 * Math.sin(t * 3), u < 1 ? Math.cos(lt * 5) : 1);
+    for (let i = 0; i < 10; i++) {
+      const sp = 40 + 30 * h2(i, 3), y = (h2(i, 4) * 800 + t * sp) % 800 - 40, x = (h2(i, 5) * 1400 + t * 50 + Math.sin(t + i) * 40) % 1400 - 60;
+      deadLeaf(g, x, y, 0.6 + 0.6 * h2(i, 6), t * (1 + h2(i, 7)) + i, Math.cos(t * 3 + i));
+    }
+  }
+  function deadLeaf(g, x, y, s, rot, fx) {
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * (Math.abs(fx) < 0.15 ? 0.15 * Math.sign(fx || 1) : fx), s);
+    g.fillStyle = '#8a4a26';
+    g.beginPath();
+    for (let p = 0; p < 5; p++) { const a = (p / 5) * TAU - PI / 2; g.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); g.lineTo(Math.cos(a + 0.63) * 6, Math.sin(a + 0.63) * 6); }
+    g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(60,30,14,0.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 14); g.stroke();
+    g.restore();
+  }
+
+  XYT.registerShot('c1_wallink', {
+    name: '题壁墨枯', zone: 'right', night: false,
+    text: '#1a2026', shadow: 'rgba(250,246,236,0.95)', accent: '#b8862e', bloom: 0.2,
+    draw(g, c) {
+      const lt = c.lt, t = c.t, k = chars(c, T21);
+      // 几十年后的那张老墙提前分几帧建好，转场时不卡
+      if (lt > 0.8) skyTex(true);
+      if (lt > 1.6) osmanthus(true);
+      if (lt > 2.4) wallTex(true);
+      const tJump = k[8], jump = smooth((lt - tJump) / 0.5);
+      // 时间跳转后慢慢推向“大侠”二字
+      const push = easeInOut(seg(lt, tJump, c.dur + 0.4));
+      g.save();
+      if (push > 0) { const z = 1 + 0.1 * push; g.translate(440, 300); g.scale(z, z); g.translate(-440, -300 - 8 * push); }
+      const stain = seg(lt, tJump - 0.15, tJump + 0.45);
+      if (jump < 1) {
+        drawPast(g, c, lt, t, k, jump > 0.45);
+        // 岁月从墙上的斑痕处洇开：一团团灰绿的水渍越晕越大，墙色褪灰
+        if (stain > 0 && jump < 0.6) {
+          g.save(); g.globalCompositeOperation = 'multiply';
+          const spots = [[300, 380, 0], [760, 250, 1], [520, 540, 2], [960, 170, 3], [140, 180, 4], [640, 420, 5], [420, 160, 6]];
+          for (const [sx, sy, i] of spots) {
+            const e = easeOut(seg(stain, i * 0.06, 0.7 + i * 0.04));
+            if (e <= 0) continue;
+            // 两层由大到小叠出柔边，像水渍在灰墙上慢慢洇开
+            for (let j = 0; j < 2; j++) {
+              g.fillStyle = rgba(i % 2 ? '#a8a898' : '#9aa290', 0.22 * e);
+              A.inkBlob(g, sx, sy, (20 + e * 210) * (1 - j * 0.3), i * 3 + j + 11, 0.45); g.fill();
+            }
+          }
+          g.fillStyle = rgba('#b8b8b0', 0.5 * stain); g.fillRect(-40, -40, W + 80, H + 80);
+          g.restore();
+        }
+      }
+      if (jump > 0) { g.save(); g.globalAlpha = jump; drawAged(g, c, lt, t, k); g.restore(); }
+      g.restore();
+    },
+  });
+
+  // =====================================================================
+  // 第22句 彩依还蝶：曲终人散｜发华鬓白｜红颜殁
+  // =====================================================================
+  const T22 = [0.27, 0.61, 0.97, 1.61, 2.27, 2.63, 3.06, 3.49, 3.95, 4.27, 4.72];
+  const GOLD = '#eacd76', MOONW = '#f2ecde', RED = '#c83c23';
+  // ---------- 本组共用：一只淡黄的蝶（彩依） ----------
+  // 翅膀贴图：上翅、下翅各一张（白底染色前的成品），thin 为翅膀变薄后的半透明版
+  function wingImg(thin) {
+    return K.cache('g07|wing' + (thin ? 'T' : 'A'), 96, 96, 1, (q) => {
+      // 上翅
+      const up = () => { q.beginPath(); q.moveTo(6, 50); q.bezierCurveTo(14, 26, 46, 6, 84, 6); q.quadraticCurveTo(94, 16, 86, 30); q.bezierCurveTo(74, 46, 44, 52, 6, 54); q.closePath(); };
+      const lo = () => { q.beginPath(); q.moveTo(6, 52); q.bezierCurveTo(36, 50, 64, 60, 60, 76); q.bezierCurveTo(56, 92, 30, 94, 20, 86); q.quadraticCurveTo(8, 76, 6, 58); q.closePath(); };
+      const a = thin ? 0.55 : 1;
+      let gr = q.createLinearGradient(6, 52, 86, 8);
+      gr.addColorStop(0, `rgba(214,146,40,${a})`); gr.addColorStop(0.35, `rgba(246,214,110,${a})`); gr.addColorStop(0.8, `rgba(255,240,186,${a})`); gr.addColorStop(1, `rgba(255,250,226,${a})`);
+      q.fillStyle = gr; up(); q.fill();
+      gr = q.createRadialGradient(6, 54, 2, 6, 54, 70);
+      gr.addColorStop(0, `rgba(200,120,40,${a})`); gr.addColorStop(0.45, `rgba(244,204,96,${a})`); gr.addColorStop(1, `rgba(255,236,170,${a})`);
+      q.fillStyle = gr; lo(); q.fill();
+      // 翅脉与翅缘
+      q.strokeStyle = `rgba(120,70,20,${thin ? 0.6 : 0.55})`; q.lineWidth = 0.8;
+      for (const [x1, y1] of [[80, 10], [76, 22], [62, 34], [40, 46], [50, 70], [30, 84]]) { q.beginPath(); q.moveTo(8, 53); q.quadraticCurveTo((8 + x1) / 2, (53 + y1) / 2 - 4, x1, y1); q.stroke(); }
+      q.strokeStyle = `rgba(150,90,30,${thin ? 0.75 : 0.8})`; q.lineWidth = 2.2;
+      q.beginPath(); q.moveTo(46, 12); q.bezierCurveTo(62, 6, 80, 4, 84, 6); q.quadraticCurveTo(94, 16, 86, 30); q.stroke();
+      // 翅上的眼斑与白点
+      q.fillStyle = `rgba(255,255,255,${thin ? 0.4 : 0.85})`;
+      for (const [x1, y1, r] of [[80, 12, 2.4], [86, 20, 1.8], [70, 10, 1.6], [44, 80, 2], [34, 86, 1.4]]) { q.beginPath(); q.arc(x1, y1, r, 0, TAU); q.fill(); }
+      q.fillStyle = `rgba(200,110,60,${thin ? 0.3 : 0.6})`; q.beginPath(); q.ellipse(48, 72, 6, 4, 0.4, 0, TAU); q.fill();
+    });
+  }
+  // 画一只蝶：x, y 身体中心；s 翅长；rot 身体朝向（0 朝上）；open 翅开合 0..1；thin 半透明；glow 光晕
+  function butterfly(g, x, y, s, rot, open, o = {}) {
+    const k = 0.1 + 0.9 * open, img = wingImg(o.thin > 0.5);
+    g.save(); g.translate(x, y); g.rotate(rot);
+    if (o.glow > 0) dot(g, 0, 0, s * 2.4, o.glowColor || '#ffd88a', o.glow, o.op);
+    if (o.alpha != null) g.globalAlpha *= o.alpha;
+    for (const sd of [-1, 1]) {
+      g.save(); g.scale(sd * k, 1); g.rotate(-0.15);
+      g.drawImage(img, -s * 0.06, -s * 0.56, s, s);
+      g.restore();
+    }
+    g.fillStyle = '#3a2614'; g.beginPath(); g.ellipse(0, s * 0.02, s * 0.045, s * 0.26, 0, 0, TAU); g.fill();
+    g.strokeStyle = '#3a2614'; g.lineWidth = Math.max(0.6, s * 0.02);
+    g.beginPath(); g.moveTo(0, -s * 0.2); g.quadraticCurveTo(-s * 0.08, -s * 0.38, -s * 0.15, -s * 0.44); g.moveTo(0, -s * 0.2); g.quadraticCurveTo(s * 0.08, -s * 0.38, s * 0.15, -s * 0.44); g.stroke();
+    g.restore();
+  }
+  // 格扇：上部方格棂心透出纱光，下部裙板
+  function geshan(q, x, y, w, h, lightCol) {
+    q.fillStyle = '#2c1a12'; q.fillRect(x, y, w, h);
+    const ix = x + 8, iw = w - 16, iy = y + 10, ih = h * 0.62;
+    q.fillStyle = K.lin(q, 0, iy, 0, iy + ih, [[0, mix(lightCol, '#3a2418', 0.35)], [0.5, lightCol], [1, mix(lightCol, '#3a2418', 0.25)]]); q.fillRect(ix, iy, iw, ih);
+    q.strokeStyle = 'rgba(60,34,18,0.85)'; q.lineWidth = 2;
+    for (let xx = ix + iw / 6; xx < ix + iw - 2; xx += iw / 6) { q.beginPath(); q.moveTo(xx, iy); q.lineTo(xx, iy + ih); q.stroke(); }
+    for (let yy = iy + ih / 10; yy < iy + ih - 2; yy += ih / 10) { q.beginPath(); q.moveTo(ix, yy); q.lineTo(ix + iw, yy); q.stroke(); }
+    q.strokeStyle = rgba(GOLD, 0.7); q.lineWidth = 1.4; q.strokeRect(ix - 2, iy - 2, iw + 4, ih + 4);
+    const by = iy + ih + 14, bh = h - (by - y) - 14;
+    q.fillStyle = '#3a2216'; q.fillRect(ix, by, iw, bh);
+    q.strokeStyle = rgba(GOLD, 0.55); q.lineWidth = 1.2; q.strokeRect(ix + 6, by + 6, iw - 12, bh - 12);
+    q.beginPath(); q.ellipse(x + w / 2, by + bh / 2, iw * 0.22, bh * 0.22, 0, 0, TAU); q.stroke();
+  }
+  // 喜堂：金色与月白为主调，红只点在一对红烛、一方小囍与几缕红纸屑上
+  function hallTex() {
+    return K.cache('g07|hall' + fk(), W, H, 1, (q) => {
+      const r = A.rng(2201);
+      bandV(q, 0, 0, W, H, [[0, '#1a1018'], [0.5, '#2a1c24'], [1, '#140c10']]);
+      // 后墙：六扇格扇，纱后透着暖金的烛光
+      for (let i = 0; i < 6; i++) geshan(q, 330 + i * 130, 124, 130, 346, i === 2 || i === 3 ? '#f6dfa0' : '#e8cf96');
+      // 两侧墙（透视）：左墙暗，右墙开一扇月光棂窗
+      q.fillStyle = K.lin(q, 0, 0, 330, 0, [[0, '#120a0e'], [1, '#2a1a1e']]);
+      q.beginPath(); q.moveTo(0, 0); q.lineTo(330, 124); q.lineTo(330, 470); q.lineTo(0, 760); q.closePath(); q.fill();
+      q.fillStyle = K.lin(q, 1110, 0, W, 0, [[0, '#2a1a1e'], [1, '#140c10']]);
+      q.beginPath(); q.moveTo(1110, 124); q.lineTo(W, 30); q.lineTo(W, 760); q.lineTo(1110, 470); q.closePath(); q.fill();
+      // 右墙的窗：月白冷光，斜透视的方格
+      q.save(); q.beginPath(); q.moveTo(1150, 150); q.lineTo(1250, 110); q.lineTo(1250, 470); q.lineTo(1150, 430); q.closePath(); q.clip();
+      bandV(q, 1140, 100, 1260, 480, [[0, '#cfe0f0'], [1, '#8fa6c8']]);
+      q.strokeStyle = 'rgba(40,26,20,0.9)'; q.lineWidth = 2.5;
+      for (let k = 1; k < 5; k++) { const x = 1150 + k * 20; q.beginPath(); q.moveTo(x, 150 - k * 8); q.lineTo(x, 430 + k * 8); q.stroke(); }
+      for (let k = 1; k < 12; k++) { q.beginPath(); q.moveTo(1150, 150 + k * 24); q.lineTo(1250, 110 + k * 30); q.stroke(); }
+      q.restore();
+      q.strokeStyle = '#2a1810'; q.lineWidth = 7; q.beginPath(); q.moveTo(1150, 150); q.lineTo(1250, 110); q.lineTo(1250, 470); q.lineTo(1150, 430); q.closePath(); q.stroke();
+      // 顶：梁枋彩画（青底金线）与天花
+      q.fillStyle = K.lin(q, 0, 0, 0, 124, [[0, '#0e0a10'], [1, '#22161c']]); q.beginPath(); q.moveTo(0, 0); q.lineTo(W, 0); q.lineTo(W, 30); q.lineTo(1110, 124); q.lineTo(330, 124); q.lineTo(0, 0); q.fill();
+      q.strokeStyle = rgba(GOLD, 0.22); q.lineWidth = 1;
+      for (let k = 0; k <= 10; k++) { q.beginPath(); q.moveTo(330 + k * 78, 124); q.lineTo(lerp(-200, W + 200, k / 10), 0); q.stroke(); }
+      q.fillStyle = K.lin(q, 0, 92, 0, 126, [[0, '#24343a'], [1, '#14202a']]); q.fillRect(300, 94, 840, 32);
+      q.strokeStyle = rgba(GOLD, 0.8); q.lineWidth = 1.6; q.strokeRect(304, 98, 832, 24);
+      for (let k = 0; k < 7; k++) { const cx = 360 + k * 120; q.beginPath(); q.ellipse(cx, 110, 22, 8, 0, 0, TAU); q.stroke(); q.beginPath(); q.arc(cx, 110, 4, 0, TAU); q.stroke(); }
+      // 正中小小一方红囍（剪纸）
+      q.save(); q.translate(720, 262); q.rotate(PI / 4); q.fillStyle = RED; q.fillRect(-34, -34, 68, 68); q.restore();
+      q.fillStyle = '#f6d88a'; q.font = `52px ${XYT.FONT}`; q.textAlign = 'center'; q.textBaseline = 'middle'; q.fillText('囍', 720, 265);
+      // 供桌
+      q.fillStyle = K.lin(q, 0, 428, 0, 470, [[0, '#4a2a1a'], [1, '#1e100a']]); q.fillRect(590, 430, 260, 40);
+      q.fillStyle = '#5a3420'; q.fillRect(580, 424, 280, 9); q.fillStyle = rgba(GOLD, 0.7); q.fillRect(580, 424, 280, 1.5);
+      q.fillStyle = mix(RED, '#2a0a08', 0.25); q.fillRect(680, 433, 80, 37);
+      q.strokeStyle = rgba(GOLD, 0.7); q.lineWidth = 1; q.strokeRect(684, 437, 72, 29);
+      // 地面：深色抛光的木地板，向灭点收拢
+      q.fillStyle = K.lin(q, 0, 470, 0, H, [[0, '#3a2620'], [0.4, '#2a1a16'], [1, '#120a08']]);
+      q.beginPath(); q.moveTo(0, 760); q.lineTo(330, 470); q.lineTo(1110, 470); q.lineTo(W, 760); q.closePath(); q.fill();
+      q.strokeStyle = 'rgba(0,0,0,0.35)'; q.lineWidth = 1;
+      for (let k = -10; k <= 10; k++) { q.beginPath(); q.moveTo(720 + k * 40, 470); q.lineTo(720 + k * 170, H + 40); q.stroke(); }
+      for (let k = 1; k < 7; k++) { const yy = 470 + Math.pow(k / 7, 1.8) * 260; q.beginPath(); q.moveTo(0, yy); q.lineTo(W, yy); q.stroke(); }
+      // 月光在地上投下的窗格
+      q.save(); q.globalCompositeOperation = 'screen';
+      try { q.filter = `blur(${(3 * SS()).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+      q.fillStyle = 'rgba(170,190,230,0.28)';
+      q.beginPath(); q.moveTo(1150, 470); q.lineTo(1250, 470); q.lineTo(1000, 720); q.lineTo(760, 720); q.closePath(); q.fill();
+      q.filter = 'none';
+      q.restore();
+      // 地上散落的红纸屑与花生红枣
+      for (let k = 0; k < 70; k++) {
+        const x = 200 + r() * 1000, y = 480 + Math.pow(r(), 0.8) * 230, s = 0.5 + (y - 470) / 250;
+        q.fillStyle = r() < 0.75 ? rgba(RED, 0.7) : rgba('#e8c070', 0.8);
+        q.save(); q.translate(x, y); q.rotate(r() * PI); q.fillRect(-4 * s, -2 * s, 8 * s, 4 * s); q.restore();
+      }
+      // 中间的空宴席：圆桌、杯盘狼藉
+      const tab = (cx, cy, rx, ry) => {
+        q.fillStyle = 'rgba(0,0,0,0.45)'; q.beginPath(); q.ellipse(cx, cy + ry * 1.6, rx * 1.05, ry * 0.8, 0, 0, TAU); q.fill();
+        q.fillStyle = '#1a0e0a'; q.fillRect(cx - rx * 0.1, cy, rx * 0.2, ry * 2.4);
+        q.fillStyle = K.lin(q, 0, cy - ry, 0, cy + ry + 8, [[0, '#6a4028'], [0.6, '#4a2a1a'], [1, '#2a160e']]);
+        q.beginPath(); q.ellipse(cx, cy, rx, ry, 0, 0, TAU); q.fill();
+        q.fillStyle = '#2a160e'; q.beginPath(); q.ellipse(cx, cy + 5, rx, ry, 0, 0, PI); q.lineTo(cx - rx, cy); q.fill();
+        q.fillStyle = K.lin(q, 0, cy - ry, 0, cy + ry, [[0, '#7a4a2e'], [1, '#5a3420']]); q.beginPath(); q.ellipse(cx, cy, rx, ry, 0, 0, TAU); q.fill();
+        q.strokeStyle = rgba(GOLD, 0.35); q.lineWidth = 1.2; q.beginPath(); q.ellipse(cx, cy, rx - 3, ry - 2, 0, PI * 1.05, PI * 1.95); q.stroke();
+        for (let k = 0; k < 9; k++) {
+          const a = r() * TAU, d = Math.sqrt(r()) * 0.75, x = cx + Math.cos(a) * rx * d, y = cy + Math.sin(a) * ry * d;
+          if (k % 3 === 0) { q.fillStyle = '#e8e2d4'; q.beginPath(); q.ellipse(x, y, 13, 4.5, 0, 0, TAU); q.fill(); q.fillStyle = '#c8b090'; q.beginPath(); q.ellipse(x, y - 1, 8, 2.5, 0, 0, TAU); q.fill(); }
+          else if (k % 3 === 1) { q.fillStyle = '#f0ece2'; q.fillRect(x - 3, y - 7, 6, 7); q.fillStyle = '#c8c0b0'; q.beginPath(); q.ellipse(x, y - 7, 3, 1.2, 0, 0, TAU); q.fill(); }
+          else { q.save(); q.translate(x, y); q.rotate(PI / 2 - 0.2); q.fillStyle = '#ece6da'; q.fillRect(-3, -6, 6, 9); q.restore(); }
+        }
+        // 酒壶
+        q.fillStyle = K.lin(q, cx + rx * 0.3 - 9, 0, cx + rx * 0.3 + 9, 0, [[0, '#a8b8b0'], [0.5, '#e8f0ea'], [1, '#7a8a84']]);
+        q.beginPath(); q.ellipse(cx + rx * 0.3, cy - 12, 10, 13, 0, 0, TAU); q.fill(); q.fillRect(cx + rx * 0.3 - 3, cy - 32, 6, 10);
+      };
+      tab(640, 548, 150, 30);
+      tab(1110, 676, 230, 46);
+      // 近处左侧一根粗柱（暗，衬字）
+      q.fillStyle = K.lin(q, 40, 0, 190, 0, [[0, '#0a0608'], [0.6, '#24141a'], [1, '#0e080a']]); q.fillRect(40, 0, 150, H);
+      q.fillStyle = rgba(GOLD, 0.25); q.fillRect(170, 0, 2, H);
+      q.fillStyle = '#3a2216'; q.fillRect(30, 60, 170, 26); q.strokeStyle = rgba(GOLD, 0.5); q.strokeRect(34, 64, 162, 18);
+    });
+  }
+  // 纱幔：月白轻纱，从梁上垂下，随风轻摆（缓存一幅，逐帧斜切）
+  function gauzeTex() {
+    return K.cache('g07|gauze', 140, 420, 0.5, (q) => {
+      for (let k = 0; k < 5; k++) {
+        const x0 = 10 + k * 24;
+        q.fillStyle = K.lin(q, x0, 0, x0 + 30, 0, [[0, 'rgba(242,236,222,0.05)'], [0.5, 'rgba(242,236,222,0.32)'], [1, 'rgba(242,236,222,0.06)']]);
+        q.beginPath(); q.moveTo(x0, 0); q.lineTo(x0 + 34, 0); q.quadraticCurveTo(x0 + 40, 220, x0 + 30 + k * 2, 420); q.lineTo(x0 - 6 + k * 2, 420); q.quadraticCurveTo(x0 - 4, 200, x0, 0); q.fill();
+      }
+    });
+  }
+  // 宾客的残影：每组一张缓存的幽灵剪影（静止），散去时上浮、淡没成金尘
+  const GUESTS = [
+    [0, 'villager', 520, 566, 1.05, 1, 'sit', 1, 0], [1, 'villager', 762, 560, 1.12, -1, 'drink', 3, 3],
+    [2, 'villager', 600, 586, 1.15, 1, 'sit', 2, 2], [2, 'villager', 700, 572, 1.1, -1, 'stand', 4, 1],
+    [3, 'villager', 860, 566, 1.12, -1, 'laugh', 5, 0], [3, 'villager', 430, 572, 1.08, 1, 'stand', 6, 2],
+  ];
+  function guestSprite(i) {
+    const [, who, , , s, facing, pose, seed, variant] = GUESTS[i];
+    return K.cache('g07|guest' + i, 200, 260, 1, (q) => {
+      F.draw(q, who, 100, 240, s, 1.3 + i, { pose, facing, seed, variant, ghost: true, night: true, wind: 0.2, ink: '#f2e2b8', glow: 0.45, glowColor: '#ffd890' });
+    });
+  }
+  function drawHall(g, c, lt, t, k) {
+    // 慢推近
+    const z = 1 + 0.05 * easeInOut(seg(lt, 0, k[4]));
+    g.save(); g.translate(720, 360); g.scale(z, z); g.translate(-720, -360);
+    g.drawImage(hallTex(), 0, 0, W, H);
+    // 后墙纱后的烛光随火苗微微明灭
+    dot(g, 720, 330, 360, '#ffcf80', 0.16 + 0.04 * noise1(t * 3, 4));
+    // 纱幔
+    const gz = gauzeTex();
+    for (const [x, sd] of [[318, 1], [1000, -1]]) {
+      g.save(); g.translate(x, 120); g.transform(1, 0, 0.04 * Math.sin(t * 0.8 + sd) + 0.02 * sd, 1, 0, 0); g.drawImage(gz, 0, 0, 140, 420); g.restore();
+    }
+    // 一对红烛：每拍矮一截，烛泪滑下
+    const bi = Math.max(0, c.b.i - (c.grid ? Math.floor(c.grid.pos(c.t - lt)) : 0)), step = bi + (1 - Math.exp(-c.b.since / 0.12));
+    const burn = clamp(0.35 + 0.075 * step, 0, 0.92);
+    for (const [cx, sd] of [[650, 1], [790, 2]]) E.candle(g, { x: cx, y: 424, h: 74, r: 8, t, burn, color: RED, seed: sd, glow: 1.2 });
+    // 烛光在地板上的倒影
+    K.lighter(g, () => { for (const cx of [650, 790]) { g.save(); g.translate(cx, 560); g.scale(0.35, 1.6); A.glow(g, 0, 0, 60, '#ff9a50', 0.18); g.restore(); } });
+    // 宫灯：右边一盏在“散”字熄灭，冒一缕烟
+    const off = smooth((lt - k[3]) / 0.25);
+    E.lantern(g, { x: 470, y: 122, s: 1.9, t, kind: 'palace', lit: 1, color: '#e8c87a', seed: 1, cord: 26, glowColor: '#ffc070' });
+    E.lantern(g, { x: 970, y: 122, s: 1.9, t, kind: 'palace', lit: 1 - off, color: off > 0.5 ? '#6e5c40' : '#e8c87a', seed: 2, cord: 26, glowColor: '#ffc070' });
+    if (lt > k[3]) V.smoke(g, c, { kind: 'incense', x: 970, y: 196, h: 140, n: 2, width: 1.4, color: '#c8c0b8', alpha: 0.5 * (1 - seg(lt, k[3] + 1.2, k[4])), time: t });
+    // 宾客残影：曲、终、人、散，一组组淡去
+    for (let i = 0; i < GUESTS.length; i++) {
+      const [grp, , x, y] = GUESTS[i], kc = k[grp], u = seg(lt, kc, kc + 0.5);
+      if (u >= 1) continue;
+      const a = 0.62 * (1 - smooth(u)) * (0.9 + 0.1 * Math.sin(t * 2 + i));
+      g.save(); g.globalAlpha = a;
+      g.drawImage(guestSprite(i), x - 100, y - 240 - 26 * easeOut(u) + Math.sin(t * 1.3 + i) * 1.5, 200, 260);
+      g.restore();
+      // 散成金尘
+      if (u > 0) for (let j = 0; j < 14; j++) {
+        const px = x + (h2(j, i) - 0.5) * 70 + Math.sin(t * 2 + j) * 6, py = y - 30 - h2(j, i + 9) * 150 - u * (40 + 60 * h2(j, i + 4));
+        dot(g, px, py, 4 + 4 * h2(j, i + 2), GOLD, 0.5 * Math.sin(PI * u));
+      }
+    }
+    // 月光与浮尘
+    V.dust(g, c, { n: 40, color: '#dfe8ff', alpha: 0.6, light: { x: 1200, y: 290, angle: 2.4, spread: 0.35, len: 520 } });
+    g.restore();
+  }
+
+  // ---------- 卧房：病榻、黎明前的窗（近景） ----------
+  const HEAD = { x: 486, y: 420, s: 2.0 };
+  // 侧脸轮廓（右向立姿的局部坐标），画时转 -90°：头顶朝左，脸朝上
+  const toW = (px, py) => [HEAD.x + py * HEAD.s, HEAD.y - px * HEAD.s];
+  const TEMPLE = [2, -8];
+  const WIN = [760, 40, 200, 290];
+  function headTex() {
+    return K.cache('g07|jinhead3', 260, 220, 1, (q) => {
+      q.translate(130, 116); q.scale(HEAD.s, HEAD.s); q.rotate(-PI / 2);
+      const skin = '#eadccf', line = '#4a3632';
+      // 颈（大半藏在被里）
+      q.fillStyle = '#d8c6ba';
+      q.beginPath(); q.moveTo(-8, 18); q.lineTo(-7, 40); q.lineTo(15, 40); q.lineTo(12, 22); q.closePath(); q.fill();
+      // 脸：额、眉骨、鼻、唇、下颌；由颊侧到鼻梁的淡淡晕染
+      const face = () => {
+        q.beginPath();
+        q.moveTo(11, -29); q.quadraticCurveTo(18.5, -22, 19, -13); q.quadraticCurveTo(18.2, -9.5, 19, -7.5); q.quadraticCurveTo(23, -2, 25.5, 2.2); q.quadraticCurveTo(25, 4.8, 20.5, 5.6);
+        q.quadraticCurveTo(21.6, 8.4, 21, 10.6); q.quadraticCurveTo(20.2, 12, 20.8, 13.4); q.quadraticCurveTo(21, 16.4, 18.8, 17.6); q.quadraticCurveTo(19.2, 22.5, 14.5, 25.5);
+        q.quadraticCurveTo(6, 29, -3, 23); q.lineTo(-11, 4); q.lineTo(-5, -21); q.closePath();
+      };
+      q.fillStyle = K.lin(q, -10, 0, 26, 0, [[0, '#cdb9ac'], [0.45, skin], [1, '#f2e8de']]); face(); q.fill();
+      q.save(); face(); q.clip();
+      q.fillStyle = 'rgba(120,124,150,0.16)'; q.beginPath(); q.ellipse(11, -5, 7, 4.5, 0, 0, TAU); q.fill();
+      q.fillStyle = 'rgba(120,124,150,0.12)'; q.beginPath(); q.ellipse(6, 12, 9, 8, 0, 0, TAU); q.fill();
+      q.fillStyle = 'rgba(80,70,80,0.18)'; q.beginPath(); q.ellipse(4, 26, 16, 5, 0, 0, TAU); q.fill();
+      q.restore();
+      q.strokeStyle = line; q.lineWidth = 0.6; face(); q.stroke();
+      // 闭目：一道下弯的线；淡眉；唇缝一点淡红；鼻翼
+      q.lineCap = 'round';
+      q.strokeStyle = 'rgba(40,30,30,0.85)'; q.lineWidth = 0.8; q.beginPath(); q.moveTo(7.6, -5.2); q.quadraticCurveTo(11.6, -2.6, 15.8, -5.4); q.stroke();
+      q.lineWidth = 0.5; q.beginPath(); q.moveTo(14.6, -4.6); q.lineTo(16.4, -3.6); q.stroke();
+      q.strokeStyle = 'rgba(40,36,40,0.75)'; q.lineWidth = 1.2; q.beginPath(); q.moveTo(6, -12); q.quadraticCurveTo(12, -14.8, 18, -11.8); q.stroke();
+      q.strokeStyle = 'rgba(170,96,96,0.65)'; q.lineWidth = 0.7; q.beginPath(); q.moveTo(18.6, 12.1); q.lineTo(21.2, 12.3); q.stroke();
+      q.strokeStyle = line; q.lineWidth = 0.45; q.beginPath(); q.moveTo(21, 5.2); q.quadraticCurveTo(18.6, 6.4, 17.6, 4.8); q.stroke();
+      // 耳
+      q.fillStyle = '#e4d0c2'; q.beginPath(); q.ellipse(-4.5, 2, 3.8, 6.6, 0.1, 0, TAU); q.fill(); q.strokeStyle = line; q.lineWidth = 0.45; q.stroke();
+      q.beginPath(); q.arc(-4, 2, 2.2, -1.2, 1.4); q.stroke();
+      // 头发：盖住头顶与后脑，发际线从额到鬓；几道发光
+      q.fillStyle = '#101316';
+      q.beginPath(); q.moveTo(13, -27.5); q.quadraticCurveTo(4, -41, -12, -39); q.quadraticCurveTo(-31, -31, -31, -10); q.quadraticCurveTo(-31, 11, -19, 25);
+      q.lineTo(-9, 22); q.quadraticCurveTo(-10.5, 10, -9.5, 5); q.quadraticCurveTo(-8.5, -3.5, 1.5, -8); q.quadraticCurveTo(6, -16, 8.5, -22); q.quadraticCurveTo(10.5, -26.5, 13, -27.5); q.fill();
+      q.strokeStyle = 'rgba(150,160,180,0.32)'; q.lineWidth = 0.5;
+      for (let j = 0; j < 9; j++) { q.beginPath(); q.moveTo(10 - j * 2.6, -31 + j * 0.6); q.quadraticCurveTo(-14, -31 + j * 4, -25, -6 + j * 3.6); q.stroke(); }
+      // 发髻与白色发带
+      q.fillStyle = '#101316'; q.beginPath(); q.ellipse(-13, -45, 9, 7, -0.3, 0, TAU); q.fill();
+      q.strokeStyle = 'rgba(232,236,230,0.85)'; q.lineWidth = 2; q.lineCap = 'round';
+      q.beginPath(); q.ellipse(-13, -45, 5, 6.5, -0.3, 0.6, 2.6); q.stroke();
+      q.lineWidth = 1.3; q.beginPath(); q.moveTo(-17, -41); q.quadraticCurveTo(-26, -36, -30, -27); q.moveTo(-16, -40); q.quadraticCurveTo(-22, -31, -22, -23); q.stroke();
+    });
+  }
+  function roomTex() {
+    return K.cache('g07|room3', W, H, 1, (q) => {
+      const r = A.rng(2207);
+      // 后墙：暗梅紫的板壁，靠窗处被天光微微照亮
+      bandV(q, 0, 0, W, H, [[0, '#1c1622'], [0.6, '#261c28'], [1, '#100a10']]);
+      q.strokeStyle = 'rgba(0,0,0,0.3)'; q.lineWidth = 2; for (let x = 40; x < W; x += 120) { q.beginPath(); q.moveTo(x, 0); q.lineTo(x, 470); q.stroke(); }
+      q.globalCompositeOperation = 'screen'; A.glow(q, 860, 200, 400, '#6a7aa8', 0.38); q.globalCompositeOperation = 'source-over';
+      // 墙上一幅小小的花蝶图（彩依的影子）
+      q.fillStyle = '#d8ccb0'; q.fillRect(470, 60, 120, 200); q.fillStyle = '#e8dcc0'; q.fillRect(478, 70, 104, 180);
+      q.fillStyle = '#3a2418'; q.fillRect(462, 54, 136, 8); q.fillRect(462, 258, 136, 8);
+      q.strokeStyle = 'rgba(80,90,70,0.7)'; q.lineWidth = 1.2; q.beginPath(); q.moveTo(500, 240); q.quadraticCurveTo(520, 180, 556, 150); q.moveTo(526, 190); q.quadraticCurveTo(540, 176, 560, 182); q.stroke();
+      for (const [x, y] of [[556, 150], [540, 176], [512, 210]]) { q.fillStyle = 'rgba(220,150,160,0.8)'; q.beginPath(); q.arc(x, y, 5, 0, TAU); q.fill(); }
+      q.save(); q.translate(520, 120); q.rotate(-0.3); q.fillStyle = 'rgba(230,180,80,0.85)';
+      q.beginPath(); q.ellipse(-7, -3, 8, 5, -0.5, 0, TAU); q.ellipse(7, -3, 8, 5, 0.5, 0, TAU); q.fill(); q.beginPath(); q.ellipse(-5, 5, 5, 3.5, 0.4, 0, TAU); q.ellipse(5, 5, 5, 3.5, -0.4, 0, TAU); q.fill(); q.restore();
+      q.fillStyle = 'rgba(30,20,20,0.15)'; q.fillRect(478, 70, 104, 180);
+      // 窗：两扇窗扇向内推开，窗外另画
+      const [wx, wy, ww, wh] = WIN;
+      q.globalCompositeOperation = 'destination-out'; q.fillStyle = '#000'; q.fillRect(wx, wy, ww, wh); q.globalCompositeOperation = 'source-over';
+      q.strokeStyle = '#140c08'; q.lineWidth = 14; q.strokeRect(wx, wy, ww, wh);
+      for (const [x0, sd] of [[wx, -1], [wx + ww, 1]]) {
+        // 推开的窗扇：透视里窄窄一条棂格
+        const x1 = x0 + sd * 46;
+        q.fillStyle = '#2a1a12'; q.beginPath(); q.moveTo(x0, wy - 4); q.lineTo(x1, wy - 22); q.lineTo(x1, wy + wh + 22); q.lineTo(x0, wy + wh + 4); q.closePath(); q.fill();
+        q.fillStyle = 'rgba(200,190,170,0.5)'; q.beginPath(); q.moveTo(x0 + sd * 6, wy + 6); q.lineTo(x1 - sd * 6, wy - 8); q.lineTo(x1 - sd * 6, wy + wh + 8); q.lineTo(x0 + sd * 6, wy + wh - 6); q.closePath(); q.fill();
+        q.strokeStyle = '#2a1a12'; q.lineWidth = 2.2;
+        for (let k = 1; k < 9; k++) { const u = k / 9; q.beginPath(); q.moveTo(x0 + sd * 6, lerp(wy + 6, wy + wh - 6, u)); q.lineTo(x1 - sd * 6, lerp(wy - 8, wy + wh + 8, u)); q.stroke(); }
+        q.beginPath(); q.moveTo((x0 + x1) / 2, wy - 2); q.lineTo((x0 + x1) / 2, wy + wh + 6); q.stroke();
+      }
+      q.fillStyle = '#2a1a12'; q.fillRect(wx - 20, wy + wh, ww + 40, 14); q.fillStyle = 'rgba(160,180,220,0.35)'; q.fillRect(wx - 20, wy + wh, ww + 40, 1.5);
+      // 床围（矮栏）与床面
+      q.fillStyle = K.lin(q, 0, 440, 0, 500, [[0, '#3a2418'], [1, '#22140c']]); q.fillRect(0, 446, W, 60);
+      q.strokeStyle = rgba(GOLD, 0.4); q.lineWidth = 1.2;
+      for (let x = -20; x < W; x += 84) { q.strokeRect(x + 6, 452, 72, 46); q.beginPath(); q.arc(x + 42, 475, 12, 0, TAU); q.stroke(); }
+      q.fillStyle = rgba(GOLD, 0.6); q.fillRect(0, 446, W, 1.6);
+      q.fillStyle = K.lin(q, 0, 500, 0, 600, [[0, '#4a3a44'], [1, '#2a1e26']]); q.fillRect(0, 500, W, 100);
+      // 枕：紫缎绣金
+      q.fillStyle = K.lin(q, 0, 466, 0, 540, [[0, '#7a6488'], [0.45, '#574266'], [1, '#2a1e34']]);
+      q.beginPath(); q.moveTo(330, 486); q.quadraticCurveTo(326, 470, 344, 468); q.lineTo(600, 470); q.quadraticCurveTo(618, 474, 614, 492); q.lineTo(608, 536); q.lineTo(334, 536); q.closePath(); q.fill();
+      q.strokeStyle = rgba(GOLD, 0.75); q.lineWidth = 1.4; q.strokeRect(352, 500, 240, 26);
+      for (let x = 370; x < 590; x += 30) { q.beginPath(); q.arc(x, 513, 6, 0, TAU); q.stroke(); q.beginPath(); q.arc(x, 513, 2, 0, TAU); q.stroke(); }
+      // 枕上铺开的发丝，然后是头
+      q.fillStyle = 'rgba(14,16,18,0.92)';
+      q.beginPath(); q.moveTo(430, 470); q.quadraticCurveTo(372, 474, 356, 508); q.quadraticCurveTo(384, 488, 426, 484); q.closePath(); q.fill();
+      q.drawImage(headTex(), HEAD.x - 130, HEAD.y - 116, 260, 220);
+      // 锦被：月白缎面，盖到下巴；胸前隆起，褶纹柔顺，金线团花
+      const quilt = () => { q.beginPath(); q.moveTo(506, 470); q.quadraticCurveTo(512, 404, 556, 398); q.quadraticCurveTo(620, 380, 700, 392); q.quadraticCurveTo(800, 410, 900, 448); q.quadraticCurveTo(1040, 494, 1300, 500); q.lineTo(1300, 610); q.lineTo(500, 610); q.closePath(); };
+      q.fillStyle = K.lin(q, 0, 380, 0, 620, [[0, '#e2dccf'], [0.45, '#bdb8ae'], [1, '#6e6a66']]); quilt(); q.fill();
+      q.save(); quilt(); q.clip();
+      q.strokeStyle = 'rgba(70,64,62,0.3)'; q.lineWidth = 2.4;
+      for (let k = 0; k < 7; k++) { const x = 600 + k * 100; q.beginPath(); q.moveTo(x, 400 + k * 14); q.quadraticCurveTo(x + 30, 520, x - 14, 610); q.stroke(); }
+      q.strokeStyle = 'rgba(255,250,240,0.35)'; q.lineWidth = 1.4;
+      for (let k = 0; k < 7; k++) { const x = 604 + k * 100; q.beginPath(); q.moveTo(x, 402 + k * 14); q.quadraticCurveTo(x + 32, 520, x - 10, 610); q.stroke(); }
+      q.strokeStyle = rgba('#d8b060', 0.6); q.lineWidth = 1.4;
+      for (let k = 0; k < 14; k++) { const x = 600 + r() * 680, y = 480 + r() * 110; q.beginPath(); q.arc(x, y, 8 + r() * 5, 0, TAU); q.stroke(); q.beginPath(); q.arc(x, y, 2.5, 0, TAU); q.stroke(); }
+      q.fillStyle = 'rgba(80,70,90,0.2)'; q.beginPath(); q.ellipse(540, 470, 50, 60, 0, 0, TAU); q.fill();
+      q.restore();
+      // 被头翻出的里子（领口一道浅青）
+      q.fillStyle = '#e4ece6'; q.beginPath(); q.moveTo(506, 470); q.quadraticCurveTo(512, 404, 556, 398); q.quadraticCurveTo(600, 388, 650, 388); q.lineTo(652, 400); q.quadraticCurveTo(586, 400, 556, 412); q.quadraticCurveTo(524, 426, 518, 480); q.closePath(); q.fill();
+      q.strokeStyle = 'rgba(60,70,66,0.4)'; q.lineWidth = 1; q.stroke();
+      // 床沿：深木雕金
+      q.fillStyle = K.lin(q, 0, 600, 0, H, [[0, '#4a2a18'], [1, '#160c06']]); q.fillRect(0, 600, W, 120);
+      q.fillStyle = rgba(GOLD, 0.65); q.fillRect(0, 600, W, 2);
+      q.strokeStyle = rgba(GOLD, 0.35); q.lineWidth = 1.4;
+      for (let x = -40; x < W; x += 180) { q.strokeRect(x + 10, 618, 160, 80); q.beginPath(); q.ellipse(x + 90, 658, 44, 22, 0, 0, TAU); q.stroke(); }
+      // 床头小几
+      q.fillStyle = '#2a1810'; q.fillRect(250, 548, 96, 12); q.fillRect(262, 560, 10, 160); q.fillRect(324, 560, 10, 160);
+      q.fillStyle = rgba(GOLD, 0.45); q.fillRect(250, 548, 96, 1.5);
+    });
+  }
+  // 窗外：黎明前的天（dawn 0..1 越来越亮）
+  function windowSky(g, t, dawn) {
+    const [wx, wy, ww, wh] = WIN;
+    g.save(); g.beginPath(); g.rect(wx, wy, ww, wh); g.clip();
+    const sky = (d) => K.cache('g07|winsky3' + d, ww, wh, 1, (q) => {
+      bandV(q, 0, 0, ww, wh, d ? [[0, '#4a5a80'], [0.5, '#a4b0c8'], [1, '#f2dac4']] : [[0, '#121a32'], [0.7, '#2c385a'], [1, '#4a5274']]);
+      if (!d) { q.fillStyle = '#fff'; const r = A.rng(5); for (let k = 0; k < 22; k++) { q.globalAlpha = 0.3 + r() * 0.6; q.beginPath(); q.arc(r() * ww, r() * wh * 0.6, 0.6 + r() * 0.9, 0, TAU); q.fill(); } q.globalAlpha = 1; }
+      q.fillStyle = d ? '#4c546a' : '#1a2034'; q.beginPath(); q.moveTo(0, wh - 40); for (let x = 0; x <= ww; x += 10) q.lineTo(x, wh - 46 - 22 * Math.sin(x / 40) - 10 * noise1(x / 24, 2)); q.lineTo(ww, wh); q.lineTo(0, wh); q.fill();
+      q.fillStyle = d ? 'rgba(220,214,220,0.4)' : 'rgba(80,90,120,0.4)'; q.fillRect(0, wh - 60, ww, 30);
+      // 梅枝剪影与几点白梅
+      q.strokeStyle = d ? '#2a2a36' : '#0c0e18'; q.lineCap = 'round';
+      q.lineWidth = 5; q.beginPath(); q.moveTo(ww + 10, 30); q.quadraticCurveTo(150, 54, 120, 46); q.quadraticCurveTo(90, 40, 70, 70); q.stroke();
+      q.lineWidth = 2.4; q.beginPath(); q.moveTo(140, 52); q.quadraticCurveTo(130, 24, 110, 12); q.moveTo(96, 44); q.lineTo(84, 92); q.moveTo(70, 70); q.lineTo(44, 78); q.stroke();
+      q.fillStyle = d ? 'rgba(244,240,244,0.85)' : 'rgba(200,206,230,0.65)';
+      for (const [x, y] of [[110, 12], [84, 92], [120, 46], [44, 78], [150, 54], [128, 30], [70, 70]]) { q.beginPath(); q.arc(x, y, 3.4, 0, TAU); q.fill(); }
+    });
+    g.drawImage(sky(0), wx, wy, ww, wh);
+    g.globalAlpha = dawn; g.drawImage(sky(1), wx, wy, ww, wh); g.globalAlpha = 1;
+    g.restore();
+  }
+  // 鬓角四缕：从鬓边垂到枕上，按“发、华、鬓、白”由根到梢一缕缕变白
+  function strandPath(i, t) {
+    const [tx, ty] = toW(TEMPLE[0], TEMPLE[1]);
+    const sw = Math.sin(t * 1.3 + i * 1.7) * 1.6;
+    const p0 = [tx - i * 3, ty + i * 3], p1 = [tx + 6 - i * 4 + sw, ty + 40 + i * 5], p2 = [tx - 40 - i * 14 + sw, ty + 62 + i * 4], p3 = [tx - 70 - i * 22, ty + 100 + i * 8];
+    return (u) => { const v = 1 - u; return [v * v * v * p0[0] + 3 * v * v * u * p1[0] + 3 * v * u * u * p2[0] + u * u * u * p3[0], v * v * v * p0[1] + 3 * v * v * u * p1[1] + 3 * v * u * u * p2[1] + u * u * u * p3[1]]; };
+  }
+  function taper(g, P, u0, u1, w0, w1, col) {
+    const n = 16;
+    g.fillStyle = col;
+    const L = [], R = [];
+    for (let j = 0; j <= n; j++) {
+      const u = lerp(u0, u1, j / n), [x, y] = P(u), [x2, y2] = P(Math.min(1, u + 0.01)), [x0, y0] = P(Math.max(0, u - 0.01));
+      const tx = x2 - x0, ty = y2 - y0, l = Math.hypot(tx, ty) || 1, w = lerp(w0, w1, u) / 2;
+      L.push([x - (ty / l) * w, y + (tx / l) * w]); R.push([x + (ty / l) * w, y - (tx / l) * w]);
+    }
+    g.beginPath(); g.moveTo(L[0][0], L[0][1]); for (const p of L) g.lineTo(p[0], p[1]); for (let j = n; j >= 0; j--) g.lineTo(R[j][0], R[j][1]); g.closePath(); g.fill();
+  }
+  function strands(g, lt, k, t) {
+    for (let i = 0; i < 4; i++) {
+      const P = strandPath(i, t), w = seg(lt, k[4 + i], k[4 + i] + 0.4);
+      taper(g, P, 0, 1, 3.6, 0.6, '#121418');
+      if (w <= 0) continue;
+      taper(g, P, 0, w, 3.2, lerp(3.2, 0.6, w), '#f2f4f6');
+      const [fx, fy] = P(w);
+      dot(g, fx, fy, 22, '#e8f0ff', 0.85 * (1 - smooth((lt - k[4 + i] - 0.4) / 0.45)));
+    }
+  }
+  // 晋元的手：“殁”后从被下伸出，伸向飞走的蝶（宽袖往下垂成兜，手指张开）
+  function jinArm(g, lt, k, t, target) {
+    const reach = easeInOut(seg(lt, k[10] + 0.05, k[10] + 1.0));
+    if (reach <= 0) return null;
+    const B = [646, 404];
+    const a1 = Math.atan2(target[1] - B[1], target[0] - B[0]);
+    const la = lerp(-0.25, a1, smooth(reach * 1.4)) + 0.04 * Math.sin(t * 2.8) * reach, L = 120 * reach;
+    const dx = Math.cos(la), dy = Math.sin(la), nx = -dy, ny = dx;
+    const wr = [B[0] + dx * L, B[1] + dy * L];
+    const line = 'rgba(38,48,46,0.7)';
+    // 手：掌、四指、拇指，向前伸开
+    const hx = wr[0] + dx * 4, hy = wr[1] + dy * 4;
+    g.save(); g.translate(hx, hy); g.rotate(la);
+    g.fillStyle = '#ecdfd2'; g.strokeStyle = line; g.lineWidth = 0.9;
+    g.beginPath(); g.ellipse(6, 0, 10, 7.5, 0, 0, TAU); g.fill(); g.stroke();
+    g.lineCap = 'round';
+    for (let j = 0; j < 4; j++) {
+      const fa = (j - 1.5) * 0.17 * (0.5 + reach), len = [15, 18, 17, 13][j];
+      g.strokeStyle = line; g.lineWidth = 4.6; g.beginPath(); g.moveTo(13, (j - 1.5) * 3.2); g.lineTo(13 + Math.cos(fa) * len, (j - 1.5) * 3.2 + Math.sin(fa) * len); g.stroke();
+      g.strokeStyle = '#ecdfd2'; g.lineWidth = 3; g.stroke();
+    }
+    g.strokeStyle = line; g.lineWidth = 4.6; g.beginPath(); g.moveTo(6, -6); g.lineTo(14, -12); g.stroke(); g.strokeStyle = '#ecdfd2'; g.lineWidth = 3; g.stroke();
+    g.restore();
+    // 宽袖
+    const w0 = 22, w1 = 12, drop = 34 * reach;
+    const top0 = [B[0] - nx * w0, B[1] - ny * w0], top1 = [wr[0] - nx * w1, wr[1] - ny * w1];
+    const bot1 = [wr[0] + nx * w1, wr[1] + ny * w1 + drop * 0.5], bot0 = [B[0] + nx * w0, B[1] + ny * w0];
+    g.fillStyle = K.lin(g, B[0] - nx * w0, B[1] - ny * w0, B[0] + nx * (w0 + drop), B[1] + ny * (w0 + drop), [[0, '#fbfcf8'], [0.6, '#e2eae4'], [1, '#aebcb6']]);
+    g.beginPath(); g.moveTo(top0[0], top0[1]); g.lineTo(top1[0], top1[1]); g.lineTo(bot1[0], bot1[1]);
+    g.quadraticCurveTo(lerp(B[0], wr[0], 0.55) + nx * (w0 + drop), lerp(B[1], wr[1], 0.55) + ny * (w0 + drop) + drop, bot0[0], bot0[1]); g.closePath(); g.fill();
+    g.strokeStyle = line; g.lineWidth = 1; g.stroke();
+    g.strokeStyle = 'rgba(110,140,130,0.4)'; g.lineWidth = 1.3;
+    for (const u of [0.35, 0.7]) { const px = lerp(B[0], wr[0], u), py = lerp(B[1], wr[1], u); g.beginPath(); g.moveTo(px - nx * 6, py - ny * 6); g.quadraticCurveTo(px + nx * 10, py + ny * 10 + drop * 0.3, px + nx * (14 + drop * 0.5) - dx * 8, py + ny * (14 + drop * 0.5) + drop * 0.6); g.stroke(); }
+    g.strokeStyle = '#a8cfc4'; g.lineWidth = 3; g.beginPath(); g.moveTo(top1[0], top1[1]); g.lineTo(bot1[0], bot1[1]); g.stroke();
+    // 袖根压在被沿下
+    g.fillStyle = K.lin(g, 0, B[1] - 8, 0, B[1] + 20, [[0, '#d8d2c6'], [1, '#bab4aa']]); g.beginPath(); g.ellipse(B[0] - 4, B[1] + 7, 30, 12, la * 0.2, 0, TAU); g.fill();
+    return [hx, hy];
+  }
+  const CAI = { x: 846, y: 600, s: 2.4 };
+  function caiyiOpts(dissolve) {
+    return { pose: 'sit', seat: 'ledge', facing: -1, rim: '#b0c6ee', light: [880, 60], glow: 0.2 + 0.6 * dissolve, glowColor: '#ffe0a0', wind: 0.15 + 0.45 * dissolve, night: true };
+  }
+  // 蝴蝶的路线：胸前成形，“殁”字振翅飞向窗口，穿窗而去（停在 880, 258 附近，接下一镜）
+  function bflyAt(lt, k, chest) {
+    const t0 = k[10], u = seg(lt, t0, t0 + 1.3);
+    const p0 = chest, p2 = [880, 258];
+    const e = easeInOut(u);
+    let x = (1 - e) * (1 - e) * p0[0] + 2 * e * (1 - e) * (p0[0] - 90) + e * e * p2[0];
+    let y = (1 - e) * (1 - e) * p0[1] + 2 * e * (1 - e) * (p0[1] - 120) + e * e * p2[1];
+    const sway = Math.sin(PI * u) + 0.35 * u;
+    x += Math.sin(lt * 7) * 7 * sway; y += Math.cos(lt * 9) * 6 * sway;
+    return [x, y, u];
+  }
+  function drawRoom(g, c, lt, t, k) {
+    const z = 1 + 0.045 * easeInOut(seg(lt, k[4], c.dur));
+    g.save(); g.translate(600, 420); g.scale(z, z); g.translate(-600, -420);
+    const dawn = smooth(seg(lt, k[4] - 0.3, c.dur + 0.4));
+    windowSky(g, t, dawn);
+    g.drawImage(roomTex(), 0, 0, W, H);
+    // 窗光：冷冷的一道斜照在被面上，天越亮越清楚
+    g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.2 + 0.5 * dawn;
+    g.drawImage(K.cache('g07|winbeam3', 520, 420, 0.25, (q) => {
+      q.translate(-480, -300);
+      try { q.filter = `blur(${(10 * SS() * 0.25).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+      q.fillStyle = K.lin(q, 860, 60, 600, 640, [[0, 'rgba(150,172,214,0.55)'], [1, 'rgba(150,172,214,0)']]);
+      q.beginPath(); q.moveTo(760, 330); q.lineTo(960, 330); q.lineTo(900, 680); q.lineTo(520, 680); q.closePath(); q.fill();
+    }), 480, 300, 520, 420);
+    g.restore();
+    // 床头一支残红烛：暖光照在他脸上，天亮时一点点暗下去；蝶飞走那一下，火苗猛地一偏
+    const gust = lt > k[10] + 0.15 ? Math.exp(-(lt - k[10] - 0.15) / 0.3) : 0;
+    E.candle(g, { x: 298, y: 548, h: 64, r: 8.5, t, burn: 0.5 + 0.3 * dawn, color: RED, seed: 7, glow: 1.5 - 0.7 * dawn, wind: 0.15 + 0.9 * gust });
+    dot(g, 440, 450, 170, '#ffb070', 0.22 * (1 - 0.6 * dawn));
+    strands(g, lt, k, t);
+    // 彩依：坐在榻边，红颜殁时由下而上收拢成一只蝶
+    const dis = seg(lt, k[8], k[10] + 0.05);
+    const o = caiyiOpts(dis);
+    const P = F.points('caiyi', CAI.x, CAI.y, CAI.s, t, o);
+    const chest = [P.chest[0] - 4, P.chest[1] + 8];
+    const bf = bflyAt(lt, k, chest);
+    jinArm(g, lt, k, t, [bf[0], bf[1]]);
+    if (dis < 1) {
+      if (dis <= 0) F.draw(g, 'caiyi', CAI.x, CAI.y, CAI.s, t, o);
+      else {
+        // 画进草稿层，从脚往上擦掉，擦口留一道金边
+        const m = g.getTransform(), D = devBox(g, [600, 300, 1120, 730]);
+        const B = scratch('g07cai', D.w, D.h);
+        B.q.setTransform(m.a, m.b, m.c, m.d, m.e - D.X0, m.f - D.Y0);
+        F.draw(B.q, 'caiyi', CAI.x, CAI.y, CAI.s, t, o);
+        const top = 360, bot = 720, ey = lerp(bot, top, dis);
+        B.q.globalCompositeOperation = 'destination-out';
+        B.q.fillStyle = K.lin(B.q, 0, ey - 36, 0, ey + 6, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,1)']]);
+        B.q.fillRect(620, ey - 36, 480, bot - ey + 100);
+        B.q.globalCompositeOperation = 'source-atop';
+        B.q.fillStyle = K.lin(B.q, 0, ey - 56, 0, ey, [[0, 'rgba(255,220,140,0)'], [1, 'rgba(255,232,170,0.95)']]);
+        B.q.fillRect(620, ey - 56, 480, 60);
+        B.q.globalCompositeOperation = 'source-over';
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(B.cv, 0, 0, D.w, D.h, D.X0, D.Y0, D.w, D.h); g.restore();
+        // 擦口飞起的金粉，旋着收向胸口
+        for (let j = 0; j < 50; j++) {
+          const ph = (dis * 2.4 + h2(j, 3)) % 1;
+          const sx = CAI.x - 120 + h2(j, 4) * 200, sy = lerp(bot, top, clamp(dis + 0.05)) + (h2(j, 7) - 0.5) * 30;
+          const e = easeIn(ph), ang = h2(j, 5) * TAU + ph * 5;
+          const x = lerp(sx, chest[0], e) + Math.cos(ang) * 26 * (1 - e), y = lerp(sy, chest[1], e) + Math.sin(ang) * 16 * (1 - e);
+          dot(g, x, y, 3 + 5 * h2(j, 6), '#ffd890', 0.75 * Math.sin(PI * ph) * (1 - seg(dis, 0.92, 1)));
+        }
+      }
+    }
+    // 蝶：在“颜”字于胸前显形，“殁”字飞走
+    const born = seg(lt, k[9] - 0.1, k[10]);
+    if (born > 0) {
+      const u = bf[2], s = lerp(12, 46, easeOut(born)) * (1 - 0.6 * smooth(u * 1.25 - 0.15));
+      const flap = lt < k[10] ? 0.55 + 0.45 * Math.sin(lt * 9) : Math.abs(Math.cos(lt * 15));
+      const hd = Math.atan2(258 - chest[1], 880 - chest[0]) + PI / 2;
+      for (let j = 1; j <= 9; j++) { const p = bflyAt(lt - j * 0.06, k, chest); if (p[2] <= 0) break; dot(g, p[0], p[1] + j * 1.6, 6 - j * 0.5, '#ffe0a0', 0.45 * (1 - j / 10)); }
+      butterfly(g, bf[0], bf[1], s, lerp(-0.2, hd - 0.3, smooth(u * 3)) + 0.15 * Math.sin(lt * 5), flap, { glow: 0.6 * born * (1 - 0.4 * u), op: 'lighter' });
+    }
+    // 上方垂下的帐幔，两侧挽起
+    g.save(); g.globalAlpha = 0.7;
+    for (const [x, sd] of [[-30, 1], [1090, -1]]) { g.save(); g.translate(x, -20); g.transform(1.3, 0, 0.03 * Math.sin(t * 0.8 + sd) + (lt > k[10] ? 0.05 * Math.sin(PI * seg(lt, k[10], k[10] + 1.4)) * sd : 0), 1.15, 0, 0); g.drawImage(gauzeTex(), 0, 0, 140, 420); g.restore(); }
+    g.restore();
+    // 近处一缕纱帐（虚），压在画面右缘
+    g.save(); g.globalAlpha = 0.55; g.translate(1170, -10); g.transform(1.6, 0, 0.03 * Math.sin(t * 0.9), 1.8, 0, 0); g.drawImage(gauzeTex(), 0, 0, 140, 420); g.restore();
+    g.restore();
+  }
+
+  XYT.registerShot('c1_caiyi', {
+    name: '彩依还蝶', zone: 'left', night: true,
+    text: '#e9f1f6', shadow: 'rgba(14,10,22,0.92)', accent: '#f0c239', bloom: 0.42,
+    draw(g, c) {
+      const lt = c.lt, t = c.t, k = chars(c, T22);
+      // 卧房的贴图在喜堂这几秒里先建好，硬切时不卡
+      if (lt > 0.5) headTex();
+      if (lt > 1.0) roomTex();
+      if (lt > 1.4) gauzeTex();
+      if (lt < k[4]) drawHall(g, c, lt, t, k);
+      else drawRoom(g, c, lt, t, k);
+    },
+  });
+
+  // =====================================================================
+  // 第23句 蝶绕残烛：烛残未觉｜与日争辉｜徒消瘦
+  // =====================================================================
+  const T23 = [0.29, 0.61, 0.99, 1.41, 2.09, 2.69, 3.01, 3.51, 3.81, 4.31, 4.71];
+  const WX0 = 560, WX1 = 1020, WY0 = 92, WY1 = 520;   // 木窗
+  const CX = 380, CTOP = 514, CBASE = 548, TABLE = 560; // 残烛：x、烛顶、烛脚、桌面
+  // 窗外的天：0 日出前，1 日出后
+  function dawnTex(d) {
+    return K.cache('g07|dawn' + d, WX1 - WX0, WY1 - WY0, 1, (q) => {
+      const w = WX1 - WX0, h = WY1 - WY0;
+      bandV(q, 0, 0, w, h, d ? [[0, '#5a74a0'], [0.35, '#b8a4b0'], [0.62, '#f2b070'], [1, '#f8cc8a']] : [[0, '#1e2644'], [0.38, '#5a4a6e'], [0.62, '#c87a72'], [0.8, '#ffae66'], [1, '#ffd496']]);
+      // 太阳将出处的一团亮
+      q.globalCompositeOperation = 'lighter';
+      A.glow(q, 290, 330, 260, d ? '#ffe0a0' : '#ff9a50', d ? 0.35 : 0.55);
+      q.globalCompositeOperation = 'source-over';
+      // 几缕被照亮的薄云
+      for (const [y, x0, x1, a] of [[120, 40, 300, 0.4], [170, 180, 460, 0.5], [210, 0, 200, 0.35]]) {
+        q.fillStyle = K.lin(q, x0, 0, x1, 0, [[0, rgba(d ? '#fff4e0' : '#ffb488', 0)], [0.5, rgba(d ? '#fff4e0' : '#ffb488', a)], [1, rgba(d ? '#fff4e0' : '#ffb488', 0)]]);
+        q.beginPath(); q.ellipse((x0 + x1) / 2, y, (x1 - x0) / 2, 5, -0.03, 0, TAU); q.fill();
+      }
+    });
+  }
+  // 窗外的远山与屋脊（天空透明，太阳从山后跃出）
+  function ridgeTex(d) {
+    return K.cache('g07|ridge' + d, WX1 - WX0, WY1 - WY0, 1, (q) => {
+      const w = WX1 - WX0, h = WY1 - WY0;
+      // 远山层层，越远越淡
+      for (const [y0, amp, col, sd] of [[338, 30, d ? '#c8a8b0' : '#8a6078', 3], [356, 24, d ? '#a48898' : '#5e4060', 5], [374, 18, d ? '#80687c' : '#40304a', 7]]) {
+        q.fillStyle = col; q.beginPath(); q.moveTo(0, h);
+        for (let x = 0; x <= w; x += 8) q.lineTo(x, y0 - amp * (0.5 + 0.5 * Math.sin(x / 70 + sd)) - 16 * noise1(x / 30, sd));
+        q.lineTo(w, h); q.closePath(); q.fill();
+      }
+      // 近处屋脊（马头墙剪影）
+      q.fillStyle = d ? '#4a3438' : '#2a1c24';
+      const r = A.rng(31);
+      let x = -10;
+      while (x < w + 20) { const ww = 50 + r() * 70, hh = 12 + r() * 20; q.fillRect(x, 416 - hh, ww, h); q.fillRect(x - 4, 412 - hh, ww * 0.3, 6); q.fillRect(x + ww * 0.7, 412 - hh, ww * 0.34, 6); x += ww + 2; }
+      bandV(q, 0, 350, w, 428, [[0, rgba(d ? '#ffe0b8' : '#e8a080', 0)], [1, rgba(d ? '#ffe0b8' : '#e8a080', 0.4)]]);
+    });
+  }
+  // 屋内（缓存）：暗木墙、步步锦窗棂（窗口处留空）、虚掉的空床帐、桌案、书与扇
+  function candleRoomTex() {
+    return K.cache('g07|croom' + fk(), W, H, 1, (q) => {
+      const r = A.rng(2301);
+      bandV(q, 0, 0, W, H, [[0, '#1c1312'], [0.7, '#2a1c1a'], [1, '#140c0a']]);
+      for (let k = 0; k < 18; k++) { q.fillStyle = rgba(r() < 0.5 ? '#4a3230' : '#1a100e', 0.08 + r() * 0.06); A.inkBlob(q, r() * W, r() * 560, 30 + r() * 80, k, 0.5); q.fill(); }
+      // 虚化的床帐：左侧一片月白轻纱，后面是空床
+      const bed = document.createElement('canvas'), S = SS();
+      bed.width = Math.ceil(420 * S); bed.height = Math.ceil(560 * S);
+      const b = bed.getContext('2d'); b.scale(S, S);
+      b.fillStyle = '#1e1414'; b.fillRect(40, 0, 18, 560); b.fillRect(330, 0, 18, 560);
+      b.fillStyle = '#2a1c1a'; b.fillRect(40, 300, 310, 60);
+      for (let k = 0; k < 7; k++) {
+        const x0 = 50 + k * 44 + (k > 3 ? 30 : 0);
+        b.fillStyle = K.lin(b, x0, 0, x0 + 50, 0, [[0, 'rgba(236,226,206,0.08)'], [0.5, 'rgba(236,226,206,0.42)'], [1, 'rgba(236,226,206,0.06)']]);
+        b.beginPath(); b.moveTo(x0, 0); b.lineTo(x0 + 52, 0); b.quadraticCurveTo(x0 + 58 + (k > 3 ? 20 : -20), 300, x0 + 46 + (k > 3 ? 40 : -40), 560); b.lineTo(x0 - 6 + (k > 3 ? 40 : -40), 560); b.quadraticCurveTo(x0 - 2, 260, x0, 0); b.fill();
+      }
+      b.fillStyle = '#d8c090'; b.beginPath(); b.arc(196, 300, 9, 0, TAU); b.fill();
+      try { q.filter = `blur(${(7 * S).toFixed(1)}px)`; } catch (e) { /* 无 */ }
+      q.globalAlpha = 0.85; q.drawImage(bed, -40, 0, 420, 560); q.globalAlpha = 1;
+      q.filter = 'none';
+      // 窗洞与窗框、窗棂
+      q.globalCompositeOperation = 'destination-out'; q.fillStyle = '#000'; q.fillRect(WX0, WY0, WX1 - WX0, WY1 - WY0); q.globalCompositeOperation = 'source-over';
+      q.strokeStyle = '#1a100c'; q.lineWidth = 16; q.strokeRect(WX0, WY0, WX1 - WX0, WY1 - WY0);
+      q.lineWidth = 4;
+      const cxw = (WX0 + WX1) / 2;
+      // 步步锦：一圈套一圈的短棂，中间留大空
+      for (let k = 0; k < 3; k++) {
+        const ix = WX0 + 18 + k * 30, iy = WY0 + 18 + k * 30, iw = WX1 - WX0 - 36 - k * 60, ih = WY1 - WY0 - 36 - k * 60;
+        if (k < 2) {
+          for (let j = 0; j < 6; j++) { const u = (j + 0.5) / 6; q.beginPath(); q.moveTo(ix + iw * u - 26, iy + (k ? 0 : 0)); q.lineTo(ix + iw * u + 26, iy); q.stroke(); q.beginPath(); q.moveTo(ix + iw * u - 26, iy + ih); q.lineTo(ix + iw * u + 26, iy + ih); q.stroke(); }
+          for (let j = 0; j < 7; j++) { const u = (j + 0.5) / 7; q.beginPath(); q.moveTo(ix, iy + ih * u - 22); q.lineTo(ix, iy + ih * u + 22); q.stroke(); q.beginPath(); q.moveTo(ix + iw, iy + ih * u - 22); q.lineTo(ix + iw, iy + ih * u + 22); q.stroke(); }
+        }
+        for (let j = 0; j < 7; j++) { const u = (j + 0.5) / 7; q.beginPath(); q.moveTo(ix + iw * u, iy - 30); q.lineTo(ix + iw * u, iy); q.stroke(); }
+      }
+      q.lineWidth = 5; q.beginPath(); q.moveTo(cxw, WY0); q.lineTo(cxw, WY0 + 48); q.moveTo(cxw, WY1 - 48); q.lineTo(cxw, WY1); q.moveTo(WX0, (WY0 + WY1) / 2); q.lineTo(WX0 + 48, (WY0 + WY1) / 2); q.moveTo(WX1 - 48, (WY0 + WY1) / 2); q.lineTo(WX1, (WY0 + WY1) / 2); q.stroke();
+      q.fillStyle = '#2a1a14'; q.fillRect(WX0 - 30, WY1, WX1 - WX0 + 60, 16); q.fillStyle = 'rgba(255,200,150,0.25)'; q.fillRect(WX0 - 30, WY1, WX1 - WX0 + 60, 1.6);
+      // 桌案：暗红漆面，边上一道亮
+      q.fillStyle = K.lin(q, 0, TABLE, 0, H, [[0, '#4a2a22'], [0.3, '#3a1e18'], [1, '#160a08']]); q.fillRect(-20, TABLE, W + 40, H - TABLE);
+      q.fillStyle = 'rgba(255,190,140,0.18)'; q.fillRect(-20, TABLE, W + 40, 2);
+      q.fillStyle = 'rgba(0,0,0,0.35)'; q.fillRect(-20, TABLE + 2, W + 40, 6);
+      // 桌上：一册书、一柄合起的折扇（他留下的）
+      q.save(); q.translate(640, TABLE + 4); q.rotate(-0.05);
+      q.fillStyle = '#2a3a3c'; q.fillRect(-70, -14, 140, 14); q.fillStyle = '#e8dcc0'; q.fillRect(-66, -11, 134, 8); q.fillStyle = '#34484a'; q.fillRect(-72, -18, 146, 6);
+      q.fillStyle = '#c8b890'; q.fillRect(-60, -16, 30, 2);
+      q.restore();
+      q.save(); q.translate(800, TABLE - 2); q.rotate(0.12);
+      q.fillStyle = K.lin(q, -60, 0, 60, 0, [[0, '#6a4a30'], [0.5, '#b8946a'], [1, '#5a3a24']]);
+      q.beginPath(); q.moveTo(-62, -3); q.lineTo(60, -6); q.lineTo(62, 1); q.lineTo(-62, 3); q.closePath(); q.fill();
+      q.fillStyle = '#e8e0cc'; q.beginPath(); q.moveTo(-20, -4); q.lineTo(60, -6); q.lineTo(61, -1); q.lineTo(-20, 1); q.closePath(); q.fill();
+      q.strokeStyle = '#2a1a10'; q.lineWidth = 1; q.beginPath(); q.arc(-58, 0, 3, 0, TAU); q.stroke();
+      q.strokeStyle = '#a8cfc4'; q.lineWidth = 1.4; q.beginPath(); q.moveTo(-58, 2); q.quadraticCurveTo(-64, 14, -58, 26); q.stroke();
+      q.restore();
+      // 铜烛台
+      q.fillStyle = 'rgba(0,0,0,0.4)'; q.beginPath(); q.ellipse(CX + 8, TABLE + 3, 62, 6, 0, 0, TAU); q.fill();
+      q.fillStyle = K.lin(q, CX - 50, 0, CX + 50, 0, [[0, '#5a3a14'], [0.35, '#d8a850'], [0.6, '#a87a30'], [1, '#3a2408']]);
+      q.beginPath(); q.ellipse(CX, TABLE - 2, 44, 7, 0, 0, TAU); q.fill();
+      q.fillRect(CX - 6, CBASE + 4, 12, TABLE - CBASE - 6);
+      q.beginPath(); q.ellipse(CX, CBASE + 4, 38, 7, 0, 0, TAU); q.fill();
+      q.fillStyle = 'rgba(255,230,170,0.5)'; q.beginPath(); q.ellipse(CX - 14, CBASE + 2, 14, 2, 0, 0, TAU); q.fill();
+      // 层层堆积的烛泪：烛脚摊开一圈，往盘沿垂挂
+      q.fillStyle = '#d6c4a4';
+      q.beginPath(); q.ellipse(CX, CBASE + 1, 30, 7, 0, 0, TAU); q.fill();
+      for (let k = 0; k < 7; k++) { const dx = -26 + k * 9 + (r() - 0.5) * 4, L = 6 + r() * 12; q.beginPath(); q.ellipse(CX + dx, CBASE + 5 + L / 2, 3.2, L / 2 + 2, 0, 0, TAU); q.fill(); }
+      q.fillStyle = 'rgba(255,250,236,0.35)'; q.beginPath(); q.ellipse(CX - 10, CBASE - 1, 12, 2.4, 0, 0, TAU); q.fill();
+      // 残烛身：短，烛泪一道道凝在身上
+      q.fillStyle = K.lin(q, CX - 15, 0, CX + 15, 0, [[0, '#a89070'], [0.35, '#efe2c4'], [0.7, '#d8c8a6'], [1, '#8a7458']]);
+      q.beginPath(); q.moveTo(CX - 17, CBASE); q.lineTo(CX - 16, CTOP + 6); q.quadraticCurveTo(CX - 12, CTOP - 4, CX - 6, CTOP + 2); q.quadraticCurveTo(CX, CTOP + 5, CX + 6, CTOP); q.quadraticCurveTo(CX + 12, CTOP - 6, CX + 16, CTOP + 4); q.lineTo(CX + 17, CBASE); q.closePath(); q.fill();
+      q.fillStyle = '#e8dcbc';
+      for (let k = 0; k < 8; k++) { const dx = -14 + k * 4, L = 6 + r() * 30; q.beginPath(); q.moveTo(dx + CX - 2.2, CTOP + 2); q.lineTo(dx + CX - 2, CTOP + L); q.arc(dx + CX, CTOP + L, 2.2, PI, 0, true); q.lineTo(dx + CX + 2.2, CTOP + 2); q.fill(); }
+      q.fillStyle = 'rgba(255,248,230,0.3)'; q.fillRect(CX - 8, CTOP + 6, 3, CBASE - CTOP - 10);
+      // 烛顶凹下去的一汪
+      q.fillStyle = '#c8b490'; q.beginPath(); q.ellipse(CX, CTOP + 2, 14, 3.8, 0, 0, TAU); q.fill();
+    });
+  }
+  // 烛泪：每两拍从烛口淌下一滴，顺着烛身滑到烛脚
+  function waxDrops(g, c, lt) {
+    const t0 = c.t - lt, i0 = Math.ceil(c.grid.pos(t0 - 0.6));
+    for (let i = i0; i <= c.b.i; i++) {
+      if (((i % 2) + 2) % 2) continue;
+      const age = c.t - c.grid.time(i);
+      if (age < 0 || age > 2.2) continue;
+      const dx = (h2(i, 4) - 0.5) * 18, u = easeIn(clamp(age / 1.6));
+      const y = lerp(CTOP + 3, CBASE + 2, u), r = 2.4 + 0.8 * Math.sin(Math.min(1, age * 3) * PI * 0.5);
+      g.fillStyle = 'rgba(244,236,214,0.95)';
+      g.beginPath(); g.moveTo(CX + dx - 1.4, CTOP + 3); g.lineTo(CX + dx - r * 0.8, y); g.arc(CX + dx, y, r, PI, 0, true); g.lineTo(CX + dx + 1.4, CTOP + 3); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.6)'; g.beginPath(); g.arc(CX + dx - 0.8, y - 0.6, 0.9, 0, TAU); g.fill();
+    }
+  }
+  // 蝶的路线：从窗口飞进来，绕烛一圈；“日”字扑向太阳，“争”字折回；“徒”火灭，“消”落在烛芯上
+  function moth(lt, k) {
+    const fl = [CX, CTOP - 30];
+    const P = (x, y, z) => ({ x, y, z: z ?? 1 });
+    // 进窗：-0.6 → 烛旁
+    if (lt < k[0]) { const u = easeInOut(seg(lt, -0.6, k[0])); return P(lerp(880, fl[0] + 80, u) + Math.sin(u * 6) * 12, lerp(260, fl[1] - 20, u) - Math.sin(u * PI) * 40, 1); }
+    // 绕烛一圈（前后有远近）
+    if (lt < k[3] + 0.2) { const u = seg(lt, k[0], k[3] + 0.2), a = u * TAU + 0.0; return P(fl[0] + Math.cos(a) * 80, fl[1] - 20 + Math.sin(a) * 28 - Math.sin(u * PI) * 16, 0.85 + 0.3 * Math.sin(a)); }
+    // 烛旁悬停
+    if (lt < k[5]) { const u = lt - k[3] - 0.2; return P(fl[0] + 80 + Math.sin(u * 2.4) * 14, fl[1] - 22 + Math.sin(u * 4.1) * 10, 1); }
+    // 扑向太阳
+    if (lt < k[6] + 0.1) { const u = easeOut(seg(lt, k[5], k[6] + 0.1)); return P(lerp(fl[0] + 80, 760, u), lerp(fl[1] - 22, 300, u) + Math.sin(u * 8) * 8, lerp(1, 0.75, u)); }
+    // 折回烛火
+    if (lt < k[7]) { const u = easeInOut(seg(lt, k[6] + 0.1, k[7])); return P(lerp(760, fl[0] + 60, u), lerp(300, fl[1] - 50, u) - Math.sin(u * PI) * 30, lerp(0.75, 1, u)); }
+    // 来回
+    if (lt < k[8]) { const u = seg(lt, k[7], k[8]); return P(fl[0] + 60 - u * 30 + Math.sin(lt * 9) * 6, fl[1] - 50 + Math.sin(lt * 7) * 8, 1); }
+    // 火灭后盘旋落下，“消”字停在烛芯上
+    const u = easeInOut(seg(lt, k[8], k[9]));
+    return P(lerp(fl[0] + 30, CX + 1, u) + Math.sin(u * 7) * 18 * (1 - u), lerp(fl[1] - 50, CTOP - 14, u) - Math.sin(u * PI) * 20, 1);
+  }
+  function drawMoth(g, lt, k, t) {
+    const m = moth(lt, k), m0 = moth(lt - 0.05, k);
+    const landed = lt >= k[9], thin = seg(lt, k[10] - 0.1, k[10] + 0.5);
+    const s = 46 * m.z;
+    let rot, open;
+    if (!landed) {
+      const hd = Math.atan2(m.y - m0.y, m.x - m0.x);
+      rot = hd + PI / 2; rot = Math.atan2(Math.sin(rot), Math.cos(rot)) * 0.5;
+      open = Math.abs(Math.cos(t * 14 + 0.3));
+    } else {
+      // 落定：翅膀先轻轻开合几下，“瘦”字之后变薄、半透明，不再扇动
+      rot = 0.06;
+      const settle = Math.exp(-(lt - k[9]) / 0.35);
+      open = thin > 0 ? lerp(0.75 + 0.1 * Math.sin((lt - k[9]) * 12) * settle, 0.82, thin) : 0.75 + 0.22 * Math.sin((lt - k[9]) * 12) * settle;
+    }
+    const sun = seg(lt, k[5] - 0.1, k[5] + 0.6);
+    butterfly(g, m.x, m.y, s, rot, open, { thin, alpha: lerp(1, 0.85, thin), glow: (0.18 + 0.25 * sun) * (landed ? 0.6 : 1), glowColor: '#ffe0a0', op: 'lighter' });
+    return m;
+  }
+
+  XYT.registerShot('c1_butterflycandle', {
+    name: '蝶绕残烛', zone: 'right', night: true,
+    text: '#e9f1f6', shadow: 'rgba(30,16,10,0.92)', accent: '#f2be45', bloom: 0.45,
+    draw(g, c) {
+      const lt = c.lt, t = c.t, k = chars(c, T23);
+      // 固定机位，只有 0.5 px 的呼吸
+      g.save(); g.translate(Math.sin(t * 0.9) * 0.5, Math.sin(t * 0.7) * 0.5);
+      const rise = easeOut(seg(lt, k[5] - 0.12, k[5] + 0.5));       // “日”字太阳跃出
+      const day = smooth(seg(lt, k[5] - 0.2, c.dur));
+      // 窗外：天由日出前过渡到日出后，太阳跃出远山
+      const sy = lerp(WY0 + 362, 236, rise) - 8 * day;
+      const ww = WX1 - WX0, wh = WY1 - WY0;
+      // 日出前、日出后各合成一张（天＋远山）；只有太阳跃出的那半秒分层画
+      const comp = (d) => K.cache('g07|wcomp' + d, ww, wh, 1, (q) => { q.drawImage(dawnTex(d), 0, 0, ww, wh); q.drawImage(ridgeTex(d), 0, 0, ww, wh); });
+      if (rise <= 0) g.drawImage(comp(0), WX0, WY0, ww, wh);
+      else if (rise >= 1) {
+        g.drawImage(comp(1), WX0, WY0, ww, wh);
+        g.save(); g.beginPath(); g.rect(WX0, WY0, ww, wh); g.clip();
+        E.sun(g, { x: 850, y: sy, r: 44, color: '#ff8a30', glow: 0.45, spread: 6 });
+        dot(g, 850, sy, 110, '#ffe8b0', 0.25);
+        g.restore();
+      } else {
+        g.save(); g.beginPath(); g.rect(WX0, WY0, ww, wh); g.clip();
+        g.drawImage(dawnTex(0), WX0, WY0, ww, wh);
+        g.globalAlpha = rise; g.drawImage(dawnTex(1), WX0, WY0, ww, wh); g.globalAlpha = 1;
+        E.sun(g, { x: 850, y: sy, r: 40 + 4 * rise, color: '#ff8a30', glow: 0.7 - 0.25 * rise, spread: 6 });
+        dot(g, 850, sy, 110, '#ffe8b0', 0.35 - 0.1 * rise);
+        g.drawImage(ridgeTex(0), WX0, WY0, ww, wh);
+        g.globalAlpha = rise; g.drawImage(ridgeTex(1), WX0, WY0, ww, wh); g.globalAlpha = 1;
+        g.restore();
+      }
+      g.drawImage(candleRoomTex(), 0, 0, W, H);
+      // 晨光：太阳一出，屋里整体泛起暖金；丁达尔光穿窗，照到桌上
+      if (rise > 0) {
+        dot(g, 900, 300, 520, '#ffd8a0', 0.16 * rise + 0.05 * day, 'screen');
+        // 光落在桌上、烛旁的一片暖亮
+        dot(g, 540, 610, 300, '#ffd090', 0.18 * rise, 'screen');
+        // 漆面映出窗的亮
+        g.save(); g.translate(790, TABLE + 14); g.scale(1, 0.1); dot(g, 0, 0, 280, '#ffd8a0', 0.5 * rise, 'screen'); g.restore();
+        V.godRays(g, c, { x: 850, y: sy, angle: 2.55, spread: 0.5, n: 6, len: 900, width: 0.95, start: 0.3, color: '#ffe0a8', alpha: 0.45 * rise, source: false, beat: 0.25, res: 0.18, motes: 36, moteColor: '#fff4d8' });
+      }
+      // 残烛：火苗 6–10 Hz 抖动；太阳出来后在光里显得黯淡；“徒”字熄灭
+      const out = lt >= k[8];
+      waxDrops(g, c, lt);
+      if (!out) {
+        const dim = 1 - 0.55 * rise;
+        V.flame(g, c, { kind: 'candle', x: CX, y: CTOP - 2, s: 1.15, burn: 0.75, glow: 1.6 * dim, alpha: 0.6 + 0.4 * dim, color: '#ff9a3a', wind: 0.05 * Math.sin(t * 1.3) });
+        dot(g, CX, CTOP - 40, 260, '#ff9a48', 0.22 * dim);
+        dot(g, CX, TABLE + 10, 160, '#ffb060', 0.16 * dim);
+        g.save(); g.translate(CX, TABLE + 26); g.scale(0.25, 1); dot(g, 0, 0, 40, '#ffb060', 0.4 * dim); g.restore();
+      } else {
+        // 一缕青烟升起，烛芯一点余红
+        const age = lt - k[8];
+        dot(g, CX + 0.5, CTOP - 5, 4, '#ff6a2a', 0.6 * Math.exp(-age / 0.8));
+        V.smoke(g, c, { kind: 'incense', x: CX + 1, y: CTOP - 5, h: 260 * smooth(age / 1.2), n: 2, width: 1.6, wind: 0.12, color: '#c8ccd8', alpha: 0.55 * (1 - 0.3 * seg(age, 1.5, 3)) });
+        // 熄灭那一下，暖光迅速收走
+        dot(g, CX, CTOP - 40, 260, '#ff9a48', 0.22 * 0.45 * Math.exp(-age / 0.25));
+      }
+      // 烛芯
+      g.strokeStyle = '#1a100c'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(CX, CTOP + 1); g.quadraticCurveTo(CX + 1, CTOP - 4, CX + 0.5, CTOP - 7); g.stroke();
+      drawMoth(g, lt, k, t);
+      // 光里的浮尘（日出前很淡）
+      V.dust(g, c, { n: 30, color: '#ffe8c0', alpha: 0.25 + 0.5 * rise, area: [160, 160, 1000, 600] });
+      g.restore();
+    },
+  });
+
+  // =====================================================================
+  // 第24句 枫天初雪：当泪干血盈眶涌白雪纷飞｜都成红
+  // =====================================================================
+  const T24 = [0.29, 0.59, 0.93, 1.39, 1.79, 2.19, 2.59, 3.09, 3.47, 3.89, 4.15, 5.03, 5.55, 6.01];
+  // 枫谷远景：冷暮天、蜀山远峰、薄雾（缓存）
+  function valleyFar() {
+    return K.cache('g07|vfar', W + 120, H + 80, 1, (q) => {
+      q.translate(60, 40);
+      bandV(q, -60, -40, W + 60, 620, [[0, '#1c3050'], [0.35, '#35608a'], [0.65, '#86aec6'], [0.85, '#cfdde2'], [1, '#e2e6e2']]);
+      // 日落处的一抹余暖（在左，给人物逆光）
+      q.globalCompositeOperation = 'screen';
+      A.glow(q, 300, 470, 520, '#f0c8b0', 0.42);
+      A.glow(q, 300, 520, 260, '#ffe6d0', 0.4);
+      q.globalCompositeOperation = 'source-over';
+      E.clouds(q, { t: 0, y: 150, color: '#c8d8e6', shade: '#4a6a8a', alpha: 0.5, scale: 1.1, n: 4, seed: 41, speed: 0, lightX: 300 });
+      E.mountains(q, { t: 0, lightDir: -1, layers: [
+        { kind: 'karst', color: '#7a96ae', light: '#e8eef2', litA: 0.35, y: 470, scaleY: 0.9, speed: 0, seed: 7, fog: '#c8d6de', fogA: 0.5 },
+        { kind: 'far', color: '#5a7a96', light: '#d8e4ec', litA: 0.3, y: 520, scaleY: 0.6, speed: 0, seed: 3, fog: '#b0c4d0', fogA: 0.45 },
+      ] });
+      E.mist(q, { t: 0, y: 500, h: 120, color: '#c4d4dc', alpha: 0.55, speed: 0, seed: 2 });
+    });
+  }
+  // 中景：枫谷山坡，层林尽染（红只在坡上一片片）
+  function valleyMid() {
+    return K.cache('g07|vmid', W + 120, 420, 1, (q) => {
+      q.translate(60, -300);
+      const r = A.rng(2401);
+      // 山坡
+      for (const [y0, col, amp, sd] of [[560, '#3e566c', 50, 1], [610, '#2c3e50', 40, 2]]) {
+        q.fillStyle = col; q.beginPath(); q.moveTo(-60, 720);
+        for (let x = -60; x <= W + 60; x += 12) q.lineTo(x, y0 - amp * (0.5 + 0.5 * Math.sin(x / 160 + sd)) - 26 * noise1(x / 60, sd) + (x > 700 ? -(x - 700) * 0.12 : 0));
+        q.lineTo(W + 60, 720); q.closePath(); q.fill();
+      }
+      // 枫林：一团团点叶，坡上越近越大；冷光里红得发暗，坡顶受逆光一点亮
+      const cols = ['#dc3023', '#ca6924', '#a8281c', '#e8762c', '#8a1c18'];
+      for (let k = 0; k < 70; k++) {
+        const x = 520 + r() * 820 + (r() < 0.25 ? -620 : 0), base = 600 - (x > 700 ? (x - 700) * 0.12 : 0) - r() * 50;
+        const R = 14 + r() * 26 * (x > 900 ? 1.3 : 1);
+        q.fillStyle = '#2a1e1e'; q.fillRect(x - 1.5, base - R * 0.4, 3, R * 0.9);
+        const c0 = cols[Math.floor(r() * cols.length)];
+        for (let j = 0; j < 26; j++) { const a = r() * TAU, d = Math.sqrt(r()) * R; q.fillStyle = rgba(c0, 0.55 + r() * 0.4); q.beginPath(); q.arc(x + Math.cos(a) * d, base - R * 0.6 + Math.sin(a) * d * 0.8, 2.6 + r() * 3.4, 0, TAU); q.fill(); }
+        q.fillStyle = rgba('#ffd0a0', 0.25); q.beginPath(); q.arc(x - R * 0.3, base - R * 1.1, R * 0.35, 0, TAU); q.fill();
+      }
+      // 坡间雾
+      bandV(q, -60, 520, W + 60, 600, [[0, 'rgba(176,196,208,0)'], [0.6, 'rgba(176,196,208,0.45)'], [1, 'rgba(176,196,208,0)']]);
+      // 石阶山道：从右下蜿蜒上坡
+      q.fillStyle = '#5a6670';
+      for (let k = 0; k < 14; k++) { const u = k / 13, x = lerp(1180, 860, u) + Math.sin(u * 5) * 30, y = lerp(700, 560, u), w = lerp(70, 26, u); q.fillRect(x - w / 2, y, w, 4 + 3 * (1 - u)); }
+    });
+  }
+  // 近景：右侧一棵老枫，枝头逆光透红
+  function nearMaple() {
+    return K.cache('g07|vnear', 520, 560, 1, (q) => {
+      const r = A.rng(2407);
+      q.translate(520, 0);
+      q.strokeStyle = '#1e1414'; q.lineCap = 'round';
+      const br = (x, y, a, L, w, d) => {
+        if (d <= 0 || L < 10) return;
+        const x1 = x + Math.cos(a) * L, y1 = y + Math.sin(a) * L;
+        q.lineWidth = w; q.beginPath(); q.moveTo(x, y); q.quadraticCurveTo((x + x1) / 2 + (r() - 0.5) * 20, (y + y1) / 2 + (r() - 0.5) * 20, x1, y1); q.stroke();
+        br(x1, y1, a + (r() - 0.6) * 0.8, L * 0.7, w * 0.65, d - 1);
+        if (r() < 0.8) br(x1, y1, a - 0.6 - r() * 0.5, L * 0.6, w * 0.6, d - 1);
+      };
+      br(-40, 560, -1.9, 200, 34, 6);
+      br(-90, 200, -2.6, 160, 16, 5);
+      // 叶团：暗红底、亮红边（逆光）
+      const leaf = (x, y, s, rot, c) => { q.save(); q.translate(x, y); q.rotate(rot); q.fillStyle = c; q.beginPath(); for (let k = 0; k < 5; k++) { const a = -PI / 2 + (k - 2) * 0.95, a2 = a + 0.475, rr = k === 2 ? 1 : k === 1 || k === 3 ? 0.88 : 0.62; q.lineTo(Math.cos(a - 0.12) * s * rr * 0.55, Math.sin(a - 0.12) * s * rr * 0.55); q.lineTo(Math.cos(a) * s * rr, Math.sin(a) * s * rr); q.lineTo(Math.cos(a + 0.12) * s * rr * 0.55, Math.sin(a + 0.12) * s * rr * 0.55); if (k < 4) q.lineTo(Math.cos(a2) * s * 0.3, Math.sin(a2) * s * 0.3); } q.closePath(); q.fill(); q.restore(); };
+      const clusters = [[-250, 70, 90], [-150, 30, 80], [-340, 150, 70], [-60, 120, 80], [-220, 210, 60], [-420, 60, 60]];
+      for (const pass of [0, 1]) for (const [cx, cy, R] of clusters) {
+        for (let k = 0; k < (pass ? 50 : 70); k++) {
+          const a = r() * TAU, d = Math.sqrt(r()) * R, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.7;
+          leaf(x, y, 9 + r() * 7, r() * TAU, pass ? rgba(r() < 0.5 ? '#f05a30' : '#ff8a40', 0.75) : rgba(r() < 0.5 ? '#8a1c18' : '#b82a20', 0.95));
+        }
+      }
+    });
+  }
+  // 少年仰脸的侧影：逆光的墨色剪影，脸的轮廓上一线冷白的光；高马尾、蓝发带随风
+  // 局部坐标：头高约 100（头顶 -58，下巴 +40），面朝右；整体再转一点让下巴微抬
+  const EYE = [30, -12];
+  function headPath(g) {
+    g.beginPath();
+    g.moveTo(-4, -58);
+    g.bezierCurveTo(14, -60, 27, -50, 31, -38);
+    g.quadraticCurveTo(36, -27, 37, -20); g.quadraticCurveTo(35, -15.5, 36, -13); g.quadraticCurveTo(38, -10, 39, -8);
+    g.quadraticCurveTo(45, -3, 49, 1.5); g.quadraticCurveTo(49.5, 4.5, 42, 6.2); g.quadraticCurveTo(43.2, 9, 42.6, 11);
+    g.quadraticCurveTo(44.5, 13, 44, 14.5); g.quadraticCurveTo(42, 16.4, 41.6, 17.2); g.quadraticCurveTo(43.4, 19, 42.8, 21);
+    g.quadraticCurveTo(39.5, 23.5, 39.6, 26); g.quadraticCurveTo(41, 31, 38, 34); g.quadraticCurveTo(30, 41, 18, 43);
+    g.quadraticCurveTo(10, 50, 11, 62); g.lineTo(13, 84);
+    g.lineTo(-27, 84); g.quadraticCurveTo(-26, 50, -32, 26);
+    g.bezierCurveTo(-50, 8, -48, -36, -32, -50); g.quadraticCurveTo(-20, -59, -4, -58);
+    g.closePath();
+  }
+  function robePath(g) {
+    g.beginPath();
+    g.moveTo(13, 78); g.quadraticCurveTo(40, 92, 78, 104); g.bezierCurveTo(130, 118, 166, 146, 178, 190); g.lineTo(200, 420); g.lineTo(-220, 420);
+    g.lineTo(-196, 200); g.bezierCurveTo(-180, 140, -120, 112, -70, 100); g.quadraticCurveTo(-40, 92, -27, 78); g.closePath();
+  }
+  function bust(g, t, wind, gust, alpha, lite) {
+    if (alpha <= 0.01) return;
+    g.save(); if (alpha < 1) g.globalAlpha *= alpha;
+    // 马尾与发带：从头顶后方甩向身后；“都”字大风从左来，一下子甩到前面
+    const tieX = -14, tieY = -64;
+    const ang = (u, ph, fl) => lerp(PI * 0.72 + (fl || 0) - lerp(0.6, 0.3, wind) * u * (1 - u * 0.5) * (fl ? 0.5 : 1), 0.1 + 0.3 * u, gust) + Math.sin(t * 3 + ph + u * 5) * (0.14 + 0.12 * gust + (fl ? 0.2 : 0)) * u;
+    const strip = (len, w0, ph, col, w1 = 1.5, fl = 0) => {
+      const L = [], R = [];
+      let x = tieX, y = tieY;
+      for (let i = 0; i <= 14; i++) {
+        const u = i / 14, a = ang(u, ph, fl), w = lerp(w0, w1, Math.pow(u, 1.4)) / 2 * (1 + 0.25 * Math.sin(u * PI));
+        if (i) { x += Math.cos(a) * len / 14; y += Math.sin(a) * len / 14; }
+        L.push([x - Math.sin(a) * w, y + Math.cos(a) * w]); R.push([x + Math.sin(a) * w, y - Math.cos(a) * w]);
+      }
+      g.fillStyle = col; g.beginPath(); g.moveTo(L[0][0], L[0][1]);
+      for (const p of L) g.lineTo(p[0], p[1]); for (let i = R.length - 1; i >= 0; i--) g.lineTo(R[i][0], R[i][1]);
+      g.closePath(); g.fill();
+    };
+    const RIM = '#e8f2fc';
+    // 冷白的逆光轮廓：剪影往光的方向挪一点先画一层亮边
+    g.fillStyle = RIM;
+    for (const [dx, dy] of lite ? [[0, -1.6]] : [[-1.8, -1.2], [1.6, -1.4]]) { g.save(); g.translate(dx, dy); robePath(g); g.fill(); headPath(g); g.fill(); g.restore(); }
+    g.save(); g.translate(-1.6, -1.2); strip(190, 32, 0, RIM, 4); g.restore();
+    // 马尾（墨黑，发梢透一点光）
+    strip(190, 30, 0, '#0c1016', 3);
+    if (!lite) { strip(176, 8, 1.7, 'rgba(40,52,70,0.9)', 1, 0.05); strip(160, 5, 2.9, 'rgba(40,52,70,0.8)', 1, 0.18); }
+    // 衣：月白长衫背着光，冷灰蓝，肩头一线亮
+    g.fillStyle = K.lin(g, 0, 80, 0, 420, [[0, '#3c4c5e'], [0.4, '#2c3a4a'], [1, '#1a2430']]); robePath(g); g.fill();
+    g.save(); robePath(g); g.clip();
+    g.fillStyle = K.lin(g, -200, 0, 200, 0, [[0, 'rgba(160,190,210,0.18)'], [0.5, 'rgba(160,190,210,0)'], [1, 'rgba(220,120,90,0.12)']]); g.fillRect(-220, 70, 420, 360);
+    // 交领：内衣白领、外衫领缘
+    g.fillStyle = 'rgba(214,226,232,0.7)'; g.beginPath(); g.moveTo(13, 80); g.quadraticCurveTo(4, 120, -30, 200); g.lineTo(-18, 204); g.quadraticCurveTo(14, 126, 22, 86); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(120,150,170,0.7)'; g.lineWidth = 4; g.beginPath(); g.moveTo(-27, 80); g.quadraticCurveTo(-8, 140, 40, 230); g.stroke();
+    g.strokeStyle = 'rgba(90,120,140,0.5)'; g.lineWidth = 1.6; for (const x0 of [-120, 90]) { g.beginPath(); g.moveTo(x0, 140); g.quadraticCurveTo(x0 + 10, 260, x0 - 6, 420); g.stroke(); }
+    g.restore();
+    // 头：发与脸同是剪影，脸略透冷色，颊上一点枫叶的红反光
+    g.fillStyle = '#10151d'; headPath(g); g.fill();
+    g.save(); headPath(g); g.clip();
+    // 脸上极淡的冷光晕染（逆光里只透一点），颊边一抹枫叶的红反光
+    g.fillStyle = K.rad(g, 30, -2, 2, 36, [[0, 'rgba(84,100,126,0.42)'], [0.6, 'rgba(84,100,126,0.16)'], [1, 'rgba(84,100,126,0)']]); g.fillRect(-10, -50, 70, 100);
+    g.fillStyle = K.rad(g, 30, 10, 1, 16, [[0, 'rgba(200,80,56,0.16)'], [1, 'rgba(200,80,56,0)']]); g.fillRect(10, -10, 40, 40);
+    // 发际线：额上与鬓角的墨发
+    g.fillStyle = '#0a0d12'; g.beginPath(); g.moveTo(-4, -60); g.bezierCurveTo(16, -62, 30, -52, 32, -40); g.quadraticCurveTo(18, -40, 10, -30); g.quadraticCurveTo(2, -16, -2, 6); g.quadraticCurveTo(-10, 18, -30, 30); g.lineTo(-60, 0); g.lineTo(-40, -60); g.closePath(); g.fill();
+    g.restore();
+    // 发髻、发带结
+    g.fillStyle = RIM; g.beginPath(); g.ellipse(tieX - 1, tieY - 1.5, 12, 9, -0.4, 0, TAU); g.fill();
+    g.fillStyle = '#0a0d12'; g.beginPath(); g.ellipse(tieX, tieY, 11, 8.4, -0.4, 0, TAU); g.fill();
+    strip(150, 5.5, 1.1, '#4c8dae', 2.4, 0.42); strip(124, 4.4, 2.3, '#6aa6c4', 2, 0.62);
+    g.fillStyle = '#4c8dae'; g.beginPath(); g.ellipse(tieX + 2, tieY + 4, 6, 3.6, -0.4, 0, TAU); g.fill();
+    // 鬓边几缕碎发
+    g.strokeStyle = '#0a0d12'; g.lineWidth = 1.1; g.lineCap = 'round';
+    for (let i = 0; i < 2; i++) { g.beginPath(); g.moveTo(24 - i * 4, -46 + i * 2); g.quadraticCurveTo(34 - i * 2 + Math.sin(t * 3 + i) * 3, -32 + i * 3, 31 + Math.sin(t * 2.6 + i) * 4, -14 + i * 5); g.stroke(); }
+    g.restore();
+  }
+  // 头的变换：人物层 1.3 → 1.0 假拉远（围着胸口缩）
+  function headXf(lt, dur) {
+    const z = lerp(1.3, 1.0, easeInOut(clamp(lt / dur))), k = 1.2 * z;
+    return { k, x: 410, y: lerp(300, 318, easeInOut(clamp(lt / dur))), rot: -0.2 };
+  }
+  // 泪：眼角起，沿颊滑到下颌，“涌”字落下
+  function tearDrop(g, lt, k, hx) {
+    const t0 = k[1], tf = k[6], slide = seg(lt, t0 + 0.35, tf);
+    if (lt < t0) return;
+    const path = (u) => [EYE[0] + 2 + 6 * u, EYE[1] + 2 + 40 * u];
+    const toW = (p) => { const c = Math.cos(hx.rot), s = Math.sin(hx.rot); return [hx.x + (p[0] * c - p[1] * s) * hx.k, hx.y + (p[0] * s + p[1] * c) * hx.k]; };
+    const well = smooth((lt - t0) / 0.35);
+    if (lt < tf) {
+      // 颊上的湿痕
+      g.strokeStyle = `rgba(210,232,250,${0.35 * slide})`; g.lineWidth = 1.4; g.lineCap = 'round';
+      g.beginPath(); for (let j = 0; j <= 10; j++) { const [x, y] = toW(path((slide * j) / 10)); j ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+      const [x, y] = toW(path(easeIn(slide)));
+      const r = 2.2 * well * hx.k;
+      g.fillStyle = 'rgba(220,238,255,0.9)'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+      dot(g, x - r * 0.3, y - r * 0.3, 5 * hx.k, '#ffffff', 0.8 * well);
+    } else {
+      // 坠落：带着一点天光
+      const age = lt - tf, [x0, y0] = toW(path(1));
+      if (age > 1.2) return;
+      const x = x0 + age * 20, y = y0 + 900 * age * age * 0.5 + age * 30;
+      const r = 2.4 * hx.k;
+      g.fillStyle = 'rgba(220,238,255,0.9)'; g.beginPath(); g.ellipse(x, y, r * 0.8, r * (1 + Math.min(1.2, age * 5)), 0, 0, TAU); g.fill();
+      dot(g, x, y, 6 * hx.k, '#ffffff', 0.7 * (1 - age / 1.2));
+    }
+  }
+  // 卷起的枫叶风暴：“都”字从左卷来，一团团旋着把人与雪吞没，之后慢慢落尽
+  function leafStorm(g, c, lt, k, layer) {
+    const t0 = k[11], age = lt - t0;
+    if (age < -0.2) return 0;
+    const U = V.util, PT = U.petalTex, m = U.Mx(g);
+    const N = 170;
+    const ga = g.globalAlpha;
+    for (let i = 0; i < N; i++) {
+      const z = h2(i, 71), near = z > 0.74;
+      if ((layer === 'front') !== near) continue;
+      const delay = h2(i, 72) * 0.6 + (1 - h2(i, 73)) * 0.15, a = age - delay;
+      if (a < 0) continue;
+      // 大半叶子随风疾速卷过画面；三成半途脱出风头，慢慢飘落（长音里落尽）
+      const drop = h2(i, 81) < 0.32, tDrop = 0.5 + 0.7 * h2(i, 82);
+      const sp = lerp(900, 1700, z) * (0.8 + 0.4 * h2(i, 74));
+      const fly = drop ? Math.min(a, tDrop) : a, drift = drop ? Math.max(0, a - tDrop) : 0;
+      const y0 = 100 + h2(i, 75) * 620;
+      const swirl = Math.sin(fly * 4.5 + h2(i, 76) * TAU) * (50 + 90 * z) * Math.exp(-drift * 0.7);
+      const x = -140 + fly * sp + drift * 40 * (1 + z) + Math.sin(drift * 1.3 + i) * 30 * Math.min(1, drift);
+      const y = y0 - 150 * Math.sin(Math.min(1, fly / 1.2) * PI) * (0.4 + h2(i, 77)) + swirl + drift * (40 + 50 * z) + drift * drift * 6;
+      if (x > W + 100 || y > H + 80 || x < -160) continue;
+      const al = clamp(a / 0.12) * (drop ? 1 - seg(drift, 1.8, 2.8) : 1);
+      if (al <= 0) continue;
+      const s = lerp(14, 76, z * z) * (0.75 + 0.5 * h2(i, 78)), vi = Math.floor(h2(i, 79) * 60);
+      const img = near ? U.soft('petal|maple' + (vi % 4), PT('maple', vi, false), 3.2) : PT('maple', vi, false);
+      const w = s * (64 / 52) * (near ? img.pk : 1);
+      const fx = Math.cos(a * 4 + i);
+      g.globalAlpha = ga * al * (near ? 0.9 : 1);
+      U.putR(g, m, img, x, y, w, w, a * (2 + 3 * h2(i, 80)) + i, (fx < 0 ? -1 : 1) * Math.max(0.15, Math.abs(fx)));
+    }
+    // 前景：一阵贴着镜头扫过的大片虚叶，正好把人影整个盖住
+    if (layer === 'front') {
+      for (let i = 0; i < 24; i++) {
+        const a = age - 0.25 - h2(i, 83) * 0.45;
+        if (a < 0 || a > 1.6) continue;
+        const sp = 1500 + 900 * h2(i, 84), x = -220 + a * sp, y = 140 + h2(i, 85) * 560 + Math.sin(a * 6 + i) * 50 - a * 120;
+        if (x > W + 200) continue;
+        const vi = Math.floor(h2(i, 86) * 60), img = U.soft('petal|maple' + (vi % 4), PT('maple', vi, false), 4), w = (80 + 80 * h2(i, 87)) * img.pk;
+        const fx = Math.cos(a * 5 + i);
+        g.globalAlpha = ga * 0.92 * clamp(a / 0.08);
+        U.putR(g, m, img, x, y, w, w, a * 3 + i, (fx < 0 ? -1 : 1) * Math.max(0.2, Math.abs(fx)));
+      }
+    }
+    U.reset(g, m);
+    g.globalAlpha = ga;
+    return 0;
+  }
+  // 风头横扫的位置（x）：“都”字从画面左外起，约半秒扫过人物
+  const frontX = (lt, k) => -220 + (lt - k[11]) * 1300;
+  // 侧影被一片片枫叶形的缺口吃掉：每个缺口在风头扫过时张开，并从那里飞出一片叶子
+  const HOLES = 110;
+  const holeAt = (i, k) => {
+    const x = 150 + h2(i, 91) * 560, y = 150 + h2(i, 92) * 580;
+    return { x, y, t: k[11] + (x + 220) / 1300 + (h2(i, 93) - 0.3) * 0.35, r: 46 + 40 * h2(i, 94), rot: h2(i, 95) * TAU, vi: Math.floor(h2(i, 96) * 60) };
+  };
+  function drawBust(g, c, lt, k, hx, gust) {
+    const tw = k[11] + (420 + 220) / 1300;
+    if (lt > tw + 0.9) return;
+    const draw = (q, lite) => { q.save(); q.translate(hx.x, hx.y); q.rotate(hx.rot); q.scale(hx.k, hx.k); bust(q, c.t, 0.35 + 0.2 * Math.sin(c.t * 0.7), gust, 1, lite); q.restore(); };
+    if (lt < k[11] + 0.15) { draw(g); return; }
+    const m = g.getTransform(), D = devBox(g, [110, 90, 740, 730]);
+    // 消散中的剪影画在 0.7 倍分辨率的草稿层（正被叶子吃掉，略软看不出）
+    const RB = 0.7, B = scratch('g07bust', D.w * RB, D.h * RB);
+    B.q.setTransform(m.a * RB, m.b * RB, m.c * RB, m.d * RB, (m.e - D.X0) * RB, (m.f - D.Y0) * RB);
+    draw(B.q, true);
+    // 缺口遮罩：三分之一分辨率画好，再一次性从剪影里抠掉
+    const PT = V.util.petalTex, R3 = 3, M = scratch('g07bustm', D.w / R3, D.h / R3), bw = Math.ceil(D.w * RB), bh = Math.ceil(D.h * RB);
+    M.q.setTransform(m.a / R3, m.b / R3, m.c / R3, m.d / R3, (m.e - D.X0) / R3, (m.f - D.Y0) / R3);
+    for (let i = 0; i < HOLES; i++) {
+      const h = holeAt(i, k), u = easeOut(seg(lt, h.t, h.t + 0.35));
+      if (u <= 0) continue;
+      const w = h.r * u * 2.2;
+      M.q.save(); M.q.translate(h.x, h.y); M.q.rotate(h.rot + u); M.q.drawImage(PT('maple', h.vi, false), -w / 2, -w / 2, w, w); M.q.restore();
+    }
+    M.q.globalAlpha = smooth(seg(lt, tw + 0.35, tw + 0.85)); M.q.fillStyle = '#000'; M.q.fillRect(-100, -100, W + 200, H + 200); M.q.globalAlpha = 1;
+    B.q.setTransform(1, 0, 0, 1, 0, 0);
+    B.q.globalCompositeOperation = 'destination-out';
+    B.q.drawImage(M.cv, 0, 0, Math.ceil(D.w / R3), Math.ceil(D.h / R3), 0, 0, bw, bh);
+    B.q.globalCompositeOperation = 'source-over';
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(B.cv, 0, 0, bw, bh, D.X0, D.Y0, D.w, D.h); g.restore();
+    // 从缺口里飞出去的叶子
+    const U = V.util, m2 = U.Mx(g), ga = g.globalAlpha;
+    for (let i = 0; i < HOLES; i += 3) {
+      const h = holeAt(i, k), a = lt - h.t;
+      if (a < 0 || a > 2.2) continue;
+      const x = h.x + a * (500 + 300 * h2(i, 97)) + Math.sin(a * 5 + i) * 30, y = h.y - a * (160 + 120 * h2(i, 98)) + a * a * 60;
+      const s = 18 + 26 * h2(i, 99), fx = Math.cos(a * 5 + i);
+      g.globalAlpha = ga * clamp(a / 0.1) * (1 - seg(a, 1.4, 2.2));
+      U.putR(g, m2, PT('maple', h.vi, false), x, y, s, s, a * 4 + i, (fx < 0 ? -1 : 1) * Math.max(0.15, Math.abs(fx)));
+    }
+    U.reset(g, m2); g.globalAlpha = ga;
+  }
+
+  XYT.registerShot('c1_maplestorm', {
+    name: '枫天初雪', zone: 'top', night: true,
+    text: '#e9f1f6', shadow: 'rgba(16,24,40,0.9)', accent: '#ff8a6a', bloom: 0.4,
+    draw(g, c) {
+      const lt = c.lt, t = c.t, k = chars(c, T24);
+      // 远景随假拉远缩得慢一些（视差）
+      const zb = lerp(1.08, 1.0, easeInOut(clamp(lt / c.dur)));
+      g.save(); g.translate(640, 420); g.scale(zb, zb); g.translate(-640, -420);
+      // 远景与中景合成一张（同一层缩放）
+      g.drawImage(K.cache('g07|vback', W + 120, H + 80, 1, (q) => { q.drawImage(valleyFar(), 0, 0, W + 120, H + 80); q.drawImage(valleyMid(), 0, 340, W + 120, 420); }), -60, -40, W + 120, H + 80);
+      // 远处一群归鸟
+      for (let i = 0; i < 5; i++) A.bird(g, 860 + i * 26 + lt * 18, 230 + (i % 2) * 12 + Math.sin(t + i) * 3, 0.9, t * 7 + i, 'rgba(30,40,60,0.6)');
+      E.mist(g, { t, y: 600, h: 120, color: '#a8bccb', alpha: 0.35, speed: 10, seed: 6 });
+      g.restore();
+      const zn = lerp(1.15, 1.0, easeInOut(clamp(lt / c.dur)));
+      // 近处的老枫（逆光），随风摇；大风时摇得更狠
+      const gust = smooth(seg(lt, k[11] - 0.05, k[11] + 0.35)) * (1 - smooth(seg(lt, k[11] + 1.6, k[11] + 3)));
+      g.save(); g.translate(1280, 0); g.scale(zn, zn); g.rotate(0.012 * Math.sin(t * 1.1) + 0.04 * gust * Math.sin(t * 6)); g.translate(-1280, 0);
+      g.drawImage(nearMaple(), 760, -20, 520, 560);
+      g.restore();
+      // 背景里一直零落的枫叶（远层）
+      V.petals(g, c, { kind: 'maple', n: 26, layer: 'back', wind: 30 + 400 * gust, fall: 40, seed: 24, alpha: 0.9 });
+      // 初雪：“白”字起落，“纷飞”变密；风暴来时被卷走
+      const snowA = smooth(seg(lt, k[7] - 0.1, k[8])) * (1 - smooth(seg(lt, k[11] + 0.1, k[11] + 0.7)));
+      const snowB = smooth(seg(lt, k[9] - 0.1, k[10] + 0.2)) * (1 - smooth(seg(lt, k[11] + 0.1, k[11] + 0.7)));
+      if (snowA > 0) V.snow(g, c, { n: 90, layer: 'back', alpha: 0.9 * snowA, fall: 46, wind: -10, size: [1.2, 8], seed: 31 });
+      // 少年的侧影
+      const hx = headXf(lt, c.dur);
+      const cover = leafStorm(g, c, lt, k, 'back');
+      drawBust(g, c, lt, k, hx, gust);
+      tearDrop(g, lt, k, hx);
+      if (snowB > 0) V.snow(g, c, { n: 140, layer: 'front', alpha: 0.95 * snowB, fall: 60, wind: -14, size: [1.5, 12], seed: 33 });
+      V.petals(g, c, { kind: 'maple', n: 12, layer: 'front', wind: 30 + 500 * gust, fall: 50, seed: 25, alpha: 0.85 });
+      leafStorm(g, c, lt, k, 'front');
+      // 长音：叶落尽，空谷里的暮色更冷一些
+      const after = smooth(seg(lt, k[13], c.dur));
+      if (after > 0) { g.save(); g.globalAlpha = 0.18 * after; g.fillStyle = '#1a2a44'; g.fillRect(-20, -20, W + 40, H + 40); g.restore(); }
+    },
+  });
+})();

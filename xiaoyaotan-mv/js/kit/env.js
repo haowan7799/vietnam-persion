@@ -3870,7 +3870,7 @@
   };
 
   // ---------- 室内 ----------
-  // 喜堂（满画面）：红烛、大红囍字、红绸彩球、帷幔；fade 0..1 褪成灰烬色（爱已走到尽头），burn 红烛燃尽程度
+  // 喜堂（满画面）：红烛、大红囍字、红绸彩球、帷幔；fade 0..1 褪成灰烬色（第9句），burn 红烛燃尽程度
   E.weddingHall = function (g, o = {}) {
     const t = o.t || 0, fade = clamp(o.fade || 0), burn = clamp(o.burn ?? fade * 0.9), red = o.red || '#b8221c', gold = o.gold || '#e0b04a';
     const base = cached('wedding', [red, gold, fontKey('囍')], W, H, 1, (c) => {

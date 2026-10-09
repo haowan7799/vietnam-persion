@@ -210,6 +210,7 @@
     }
 
     overlays(g, t, c, sc) {
+      if (this.tl.storyboard) return;
       const sec = this.sectionAt(t);
       if (sec && sec.type === 'chorus') {
         g.globalCompositeOperation = 'lighter';

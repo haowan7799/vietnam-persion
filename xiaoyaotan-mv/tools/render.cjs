@@ -3,7 +3,7 @@
  * 逍遥叹 · 音乐动画 —— 离线逐帧渲染（H.264 + AAC 的 MP4，不受实时录制掉帧影响）
  *
  * 依赖：Node 18+、ffmpeg、playwright（npm i playwright && npx playwright install chromium）
- * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--crf 18] [--seconds 20]
+ * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--crf 18] [--seconds 20] [--storyboard]
  */
 'use strict';
 const path = require('path');
@@ -23,6 +23,7 @@ const res = +flag('--res', 1080);
 const fps = +flag('--fps', 30);
 const limit = flag('--seconds', null);
 const crf = flag('--crf', '18');
+const useBoard = args.includes('--storyboard'); if (useBoard) args.splice(args.indexOf('--storyboard'), 1);
 const [audio, lyricsPath, outArg] = args;
 if (!audio) {
   console.error('用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--seconds 20]');
@@ -58,6 +59,10 @@ if (conv.status !== 0 || !fs.existsSync(wav)) {
     const text = fs.readFileSync(lyricsPath, 'utf8');
     const shots = await tab.evaluate((t) => XYT.api.setLyrics(t), text);
     console.log(`已应用歌词，镜头数 ${shots}`);
+  }
+  if (useBoard) {
+    const n = await tab.evaluate(() => XYT.api.setStoryboard(XYT.STORYBOARD));
+    console.log(`已应用分镜表，镜头数 ${n}`);
   }
   const info = await tab.evaluate((w) => { XYT.api.setResolution(w); const st = XYT.api.state(); return { bpm: st.an.bpm, dur: st.an.duration, secs: st.an.sections.map((s) => s.type) }; }, res === 720 ? 1280 : 1920);
   await tab.evaluate(() => XYT.api.fonts());
