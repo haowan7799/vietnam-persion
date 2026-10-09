@@ -1964,7 +1964,7 @@
           q.globalCompositeOperation = 'source-atop'; q.fillStyle = 'rgba(255,196,120,0.36)'; q.fillRect(ax - 80, ay - 240, 220, 260); q.globalCompositeOperation = 'source-over';
         });
         V.util.viaScratch(g, 'g02_va4_gY', [yx - 120, yy - 170, yx + 110, yy + 120], 1, 'source-over', 0.66 * ghostA, (q) => {
-          // 少年坐在墙头，腿垂在墙这边：身子一直朝右（望着落日），“舍”字上只是头低下来、往回偏一点；回头的笑在左边的特写里
+          // 少年坐〔第4句第2–4字〕，腿垂在墙这边：身子一直朝右（望着落日），“舍”字上只是头低下来、往回偏一点；回头的笑在左边的特写里
           F.draw(q, 'xiaoyao', yx, yy, 1.3, tw, { stage: 'youth', pose: 'sit', seat: 'ledge', facing: 1, wind: 0.35, windDir: 1, seed: 5, head: -0.18 * turn, rim: '#ffe2a0', light: [SUN4[0], SUN4[1]], rimWidth: 2.2 });
           q.globalCompositeOperation = 'source-atop'; q.fillStyle = 'rgba(255,196,120,0.34)'; q.fillRect(yx - 120, yy - 170, 230, 290); q.globalCompositeOperation = 'source-over';
         });

@@ -767,7 +767,7 @@
     const a = ROWS6[j], b = ROWS6[j + 1], u = clamp((y - a.y) / (b.y - a.y));
     return lerp(waveY(a, x, t) - a.y, waveY(b, x, t) - b.y, u);
   }
-  // 水纹：工笔“鱼鳞”浪纹——一排排两头尖的弧笔错落成鳞；每排烘成一条可循环的长贴图，按各自的速度向东流
+  // 水纹：工笔“鱼鳞”浪纹——一排排两头尖的弧笔错落成鳞；每排烘成一条可循环的长贴图，按各自的速度〔第6句第5–7字〕
   const NR6 = 20;
   const STRIP6 = Array.from({ length: NR6 }, (_, j) => {
     const d = Math.pow((j + 0.6) / NR6, 1.65), y = HZ6 + 5 + (H - HZ6 + 30) * d;
@@ -1465,7 +1465,7 @@
       q.strokeStyle = '#5a2010'; q.lineWidth = 1.1; q.beginPath(); q.moveTo(0, 0); q.quadraticCurveTo(2, 12, 0, 22); q.stroke();
     });
   }
-  // 背景：日落的天（太阳正落在墙头）、客栈后院的白墙黛瓦与月洞窗、左边客栈的后檐、参差的池岸、映着天光的池水（一张）
+  // 背景：日落的天（太阳正落〔第4句第2–4字〕）、客栈后院的白墙黛瓦与月洞窗、左边客栈的后檐、参差的池岸、映着天光的池水（一张）
   function va8Bg() {
     return cache('va8_bg5', W, H, 1, (q) => {
       const r = A.rng(83);
@@ -1635,7 +1635,7 @@
     g.strokeStyle = '#4a2a10'; g.lineWidth = 0.5; g.beginPath(); g.moveTo(0, -5); g.quadraticCurveTo(-2, -10, -4, -12); g.moveTo(0, -5); g.quadraticCurveTo(2, -10, 4, -12); g.stroke();
     g.restore();
   }
-  // 涟漪里的回忆：每样先画成一张小贴图（统一的淡象牙色调，各留一点自己的颜色），落水时倒着映在涟漪圈里，随水纹一片片错开
+  // 涟漪里的回忆：每样先画成一张小贴图（统一的淡象牙色调，各留一点自己的颜色），落水时倒着映在涟漪圈里，随水纹〔第8句第5–7字〕错开
   const MEM8 = { yueru: '#e0503a', gourd: '#e0a040', butterfly: '#f2c83a', linger: '#b8a0e8' };
   function memTex(kind) {
     return cache('va8_mem2_' + kind, 170, 200, 1.5, (q) => {

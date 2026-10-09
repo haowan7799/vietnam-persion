@@ -672,7 +672,7 @@
         const len = 14 + k * 40 + h2(i, 43) * 18, bend = -(Math.sin(t * 2 + i) * 0.25 + 0.4 + 0.5 * gust) * wind * len * 0.55;
         blade(g, x, y, len * (1 - 0.3 * gust), 1 + k * 2, bend, rgba(i % 3 ? '#26342a' : '#4a5c4c', 0.85));
       }
-      // 路标：想法太多每个字吱呀一晃；“由”字被风猛地一扯
+      // 路标：〔第12句第1–4字〕每个字吱呀一晃；“由”字被风猛地一扯
       let creak = 0;
       for (let k = 0; k < 4; k++) { const d = lt - chr(c, id, k); if (d > 0) creak += Math.exp(-d / 0.35) * Math.sin(d * 16); }
       const jolt = dg > 0 ? Math.exp(-dg / 0.3) * Math.sin(dg * 26) : 0;
@@ -1235,7 +1235,7 @@
     draw(g, c) {
       const t = c.t, lt = Math.max(0, c.lt), id = 'vb26_ashring';
       const ct = [0, 1, 2, 3, 4, 5, 6].map((k) => chr(c, id, k));
-      // 知、己、难、逢：每字向右挪半步，俯身斟一杯；几人留：直起身，举壶向天
+      // 知、己、难、逢：每字向右挪半步，俯身斟一杯；〔第14句第5–7字〕：直起身，举壶向天
       let step = 0;
       for (let k = 0; k < 4; k++) if (lt >= ct[k] - 0.12) step = k;
       const stepK = (k) => easeInOut(clamp((lt - (ct[k] - 0.12)) / 0.14));
@@ -1817,7 +1817,7 @@
       q.lineTo(bx, by); q.lineTo(ax, ay); q.closePath(); q.clip();
       q.fillStyle = K.lin(q, 0, 0, 520, 520, [[0, '#04060c'], [0.55, '#0a0f18'], [1, '#121a26']]); q.fillRect(-40, -40, W + 120, 620);
       const r = A.rng(28);
-      // 一片片瓦：沿瓦垄方向（垂直檐口）逐层往里，越往里越扁越密
+      // 〔第8句第5–7字〕瓦：沿瓦垄方向（垂直檐口）逐层往里，越往里越扁越密
       for (let v = 6, k = 0; v < 900; k++) {
         const dv = 24 / (1 + k * 0.07);
         for (let u = -180; u < ED.L + 80; u += 28) {

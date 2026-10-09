@@ -919,7 +919,7 @@
       g.fillStyle = gr; g.fillRect(0, 0, W, 560);
     });
   }
-  // 霜花纹理：一片片羽状冰晶（白色，按剑身拉伸）
+  // 霜花纹理：〔第8句第5–7字〕羽状冰晶（白色，按剑身拉伸）
   function frostTex() {
     return K.cache('g12frostTex', 40, 240, 2, (g) => {
       const rr = A.rng(902);
@@ -1271,7 +1271,7 @@
     V.snow(g, c, { n: 70, size: [1, 5], fall: 14, wind: 18, seed: 57, alpha: 0.8, beat: 1 });
     g.restore();
   }
-  // 碎冰里先映出桃花池：一片片冰碴从剑上飞开，越飞越大，里面是那年的仙岛，随后填满整幅
+  // 碎冰里先映出桃花池：〔第8句第5–7字〕冰碴从剑上飞开，越飞越大，里面是那年的仙岛，随后填满整幅
   function shardReveal(g, c, k, cx, cy) {
     const n = 18;
     const shards = [];
@@ -1524,7 +1524,7 @@
       g.globalAlpha = clamp((0.1 + 0.25 * v) * gust * (0.6 + 0.4 * Math.sin(t * 1.3 + i)));
       g.drawImage(bar, x, y - (2 + 7 * v), len, 4 + 14 * v);
     }
-    // 路荒遗叹：一阵雪幕从右往左扫过整片雪原，贴地十二道亮的雪流
+    // 〔第19句第1–4字〕：一阵雪幕从右往左扫过整片雪原，贴地十二道亮的雪流
     const veil = 1 - smooth((lt - 1.1) / 0.6);
     if (veil > 0.01) {
       for (let i = 0; i < 12; i++) {

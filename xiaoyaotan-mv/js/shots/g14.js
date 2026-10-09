@@ -788,7 +788,7 @@
         put(m.x, m.y, m.s, treeSnow(m.T), m.T, SM_SNOW[k]);
         put(m.x, m.y, m.s, treeFull(m.T, '#4a4038'), m.T, SM_BLOOM[k]);
       }
-      // 远山脚下一片片桃林：枯点 → 粉色花团
+      // 远山脚下〔第8句第5–7字〕桃林：枯点 → 粉色花团
       const r = rng(4141);
       for (let i = 0; i < 46; i++) {
         const hl = i < 20, pts = hl ? O1HILLS[2].pts : O1HILLS[3].pts, x = hl ? lerp(-60, 290, r()) : lerp(870, 1340, r());

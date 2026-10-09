@@ -309,7 +309,7 @@
     plum: { cols: [['#fffaf7', '#efb8be'], ['#ffe2e4', '#d24456'], ['#f8c6cc', '#a8182c']], size: [8, 34], fall: 34, wind: 22, sway: 22, spin: 1.8, flip: 2.6 },
     maple: { cols: [['#f8b040', '#c8321c'], ['#f4c64a', '#da5a1c'], ['#ec5a2a', '#8c1610'], ['#d8302a', '#6a0e12']], size: [14, 56], fall: 46, wind: 30, sway: 40, spin: 1.1, flip: 1.6 },
     lotus: { cols: [['#fff9fb', '#f08cb0'], ['#fff3f6', '#e5739c'], ['#ffffff', '#f6b4ca']], size: [16, 60], fall: 28, wind: 18, sway: 34, spin: 0.7, flip: 1.2 },
-    // 血瓣：梅瓣的形，深红到暗绛（白雪都成红）
+    // 血瓣：梅瓣的形，深红到暗绛（白雪〔第24句第12–14字〕）
     blood: { cols: [['#c8202e', '#5a0610'], ['#b41826', '#48040c'], ['#d42c36', '#680a14']], size: [8, 32], fall: 34, wind: 22, sway: 22, spin: 1.8, flip: 2.6 },
   };
   function drawPetal(g, kind, c1, c2, flower) {
@@ -2089,7 +2089,7 @@
     },
   });
 
-  // 秋：红枫一片片落，雁阵南飞（第8句）
+  // 秋：红枫〔第8句第5–8字〕，雁阵南飞（第8句）
   shot('maple', {
     name: '特效·枫叶雁阵', night: false, bloom: 0.4,
     draw(g, c) {
@@ -2107,7 +2107,7 @@
     },
   });
 
-  // 雪：后半段白雪自下而上染红，红雪化作花瓣（泪干血盈眶涌 白雪纷飞都成红）
+  // 雪：后半段白雪自下而上染红，红雪化作花瓣（〔第24句第2–7字〕 〔第24句第8–14字〕）
   shot('snow', {
     name: '特效·白雪都成红', night: true, bloom: 0.5,
     draw(g, c) {
@@ -2211,7 +2211,7 @@
     },
   });
 
-  // 梦方破：一轮装着往事的光镜，先裂后碎
+  // 〔第18句第9–11字〕：一轮装着往事的光镜，先裂后碎
   const dreamImg = () => S('demo-dream', 320, 320, 0.8, (g) => {
     g.save(); g.beginPath(); g.arc(160, 160, 158, 0, TAU); g.clip();
     g.fillStyle = K.lin(g, 0, 0, 0, 320, [[0, '#f6c6d4'], [0.6, '#fbe6e0'], [1, '#d8b0c0']]); g.fillRect(0, 0, 320, 320);
