@@ -1,0 +1,254 @@
+<title>逍遥叹音乐动画</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap">
+<style>
+  /* 布局：左侧舞台（画面 + 节拍时间线）为主，右侧是四步工作栏；下方为分镜表与意象词典；窄屏单列 */
+  :root {
+    --bg: #e8e6df;
+    --surface: #f4f2ec;
+    --surface-2: #dedbd2;
+    --ink: #1c1e21;
+    --muted: #5d5a53;
+    --line: #cbc6ba;
+    --accent: #b3352a;
+    --jade: #3c7563;
+    --stage: #0e1014;
+    --display: "Ma Shan Zheng", "STKaiti", "KaiTi", "Kaiti SC", serif;
+    --body: "Noto Serif SC", "Songti SC", "SimSun", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --r: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111317; --surface: #181b20; --surface-2: #20242b; --ink: #ebe6da; --muted: #9e988c;
+      --line: #2c3139; --accent: #d9583f; --jade: #7fb3a0; --stage: #07080a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111317; --surface: #181b20; --surface-2: #20242b; --ink: #ebe6da; --muted: #9e988c;
+    --line: #2c3139; --accent: #d9583f; --jade: #7fb3a0; --stage: #07080a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.6; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 22px; }
+  header.top { display: flex; gap: 14px; align-items: center; }
+  .seal { flex: none; width: 52px; height: 52px; display: grid; place-items: center; background: var(--accent); color: #f7ece0; font-family: var(--display); font-size: 34px; border-radius: 4px; line-height: 1; }
+  h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(28px, 4vw, 40px); line-height: 1.1; text-wrap: balance; }
+  .lede { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
+  @media (max-width: 980px) {
+    .layout { display: flex; flex-direction: column; gap: 12px; }
+    .stage-col { display: contents; }
+    .panel { order: 1; margin-top: 8px; }
+    .stage-col > section.block { order: 2; }
+  }
+  .stage-col { display: grid; gap: 10px; min-width: 0; }
+  .stage-col section.block { margin-top: 14px; }
+  .stage { position: relative; background: var(--stage); border-radius: var(--r); overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+  .stage canvas { display: block; width: 100%; height: 100%; cursor: pointer; }
+  .big-play { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; align-items: center; padding: 8px 16px 8px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.45); background: rgba(10,10,12,0.55); color: #fff; font: inherit; font-size: 14px; cursor: pointer; backdrop-filter: blur(4px); }
+  .big-play svg { width: 16px; height: 16px; fill: currentColor; }
+  .big-play:hover { background: rgba(179,53,42,0.8); }
+  .big-play:disabled { opacity: 0.4; cursor: wait; }
+  .rec { position: absolute; inset: auto 0 0 0; padding: 12px 14px; background: linear-gradient(transparent, rgba(0,0,0,0.75)); color: #fff; display: grid; gap: 6px; }
+  .rec-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #e2412f; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.2; } }
+  @media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+  .rec-track { height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; overflow: hidden; }
+  .rec-track i { display: block; height: 100%; width: 0; background: #e2412f; }
+  .transport { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+  .chip { font-size: 13px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .chip.scene { font-family: var(--display); font-size: 17px; padding: 0 12px; color: var(--accent); border-color: var(--accent); }
+  .src { font-size: 13px; color: var(--muted); margin-left: auto; }
+  #strip { width: 100%; height: 76px; display: block; border-radius: var(--r); cursor: ew-resize; touch-action: none; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  .legend span.dot::before { width: 7px; height: 7px; border-radius: 50%; vertical-align: 1px; }
+  .legend span.plain::before { display: none; }
+  button, select, .file span { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled), .file:hover span { border-color: var(--ink); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fbf3ea; }
+  button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible + span, .file input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .panel { display: grid; gap: 14px; min-width: 0; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+  .step h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+  .step h2 b { font-family: var(--display); font-weight: 400; color: var(--accent); font-size: 22px; }
+  .hint { margin: 0; font-size: 13px; color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .file { position: relative; display: inline-block; }
+  .file input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+  .file.big span { display: block; padding: 12px; text-align: center; border-style: dashed; border-width: 1.5px; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
+  .msg { font-size: 13px; color: var(--jade); margin: 0; min-height: 1.2em; }
+  .progress { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--jade); transition: width 0.2s; }
+  .tap { display: grid; gap: 8px; padding: 10px; border: 1px dashed var(--accent); border-radius: var(--r); }
+  .tap-next { font-family: var(--display); font-size: 24px; line-height: 1.3; min-height: 1.3em; }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin: 0; }
+  .stats div { min-width: 0; }
+  .stats dt { font-size: 12px; color: var(--muted); }
+  .stats dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 15px; overflow-wrap: anywhere; }
+  .stats .wide { grid-column: 1 / -1; }
+  .stats .wide dd { font-family: var(--body); font-size: 14px; }
+  input[type="range"] { width: 140px; accent-color: var(--accent); }
+  output { font-family: var(--mono); font-size: 12px; color: var(--muted); min-width: 52px; display: inline-block; }
+  video { width: 100%; border-radius: var(--r); background: #000; }
+  section.block { display: grid; gap: 10px; min-width: 0; }
+  section.block h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; }
+  .scroll-x { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; font-size: 12px; color: var(--muted); background: var(--surface-2); position: sticky; top: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; cursor: pointer; color: var(--accent); white-space: nowrap; }
+  td.sec { white-space: nowrap; font-size: 13px; }
+  td.sec-chorus { color: var(--accent); font-weight: 600; }
+  td.why { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  td.lyric { font-family: var(--display); font-size: 18px; }
+  td select { padding: 3px 6px; font-family: var(--display); font-size: 16px; }
+  .vocab { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .vocab div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; min-width: 0; }
+  .vocab b { font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--accent); margin-right: 6px; }
+  .vocab small { color: var(--muted); font-size: 12px; }
+  .vocab p { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+  footer { font-size: 12px; color: var(--muted); }
+  body.is-recording .panel button, body.is-recording .panel input, body.is-recording select { pointer-events: none; opacity: 0.5; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="seal" aria-hidden="true">逍</div>
+    <div>
+      <h1>逍遥叹 · 音乐动画</h1>
+      <p class="lede">载入你手里的《逍遥叹》音频：自动找出节拍、强拍和主副歌，按每句歌词的意象切换水墨画面，镜头、转场和字幕都踩在拍子上，最后一键录成视频。</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="预览">
+      <div class="stage">
+        <canvas id="stage" width="1280" height="720" aria-label="音乐动画画面"></canvas>
+        <button id="bigPlay" class="big-play" type="button" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg><span id="bigPlayLabel">准备演示配乐…</span></button>
+        <div id="recOverlay" class="rec" hidden>
+          <div class="rec-row"><span class="rec-dot"></span><span>正在录制视频，请保持此页在前台</span><span id="recTime" class="time" style="color:#ddd">00:00.0</span><button id="recCancel" type="button">取消</button></div>
+          <div class="rec-track"><i id="recBar"></i></div>
+        </div>
+      </div>
+      <div class="transport">
+        <button id="play" type="button" disabled>播放</button>
+        <span id="time" class="time">00:00.0 / 00:00.0</span>
+        <span id="nowScene" class="chip scene">云山</span>
+        <span id="srcLabel" class="src">演示：合成配乐 + 自拟示例歌词</span>
+      </div>
+      <canvas id="strip" aria-label="时间线：段落、镜头、节拍与歌词位置，可拖动跳转"></canvas>
+      <div class="legend">
+        <span style="--c:#4f6f8a">主歌</span><span style="--c:#b23a27">副歌</span><span style="--c:#6b5aa0">间奏</span><span style="--c:#8c8a83">前奏 / 尾声</span><span class="dot" style="--c:#c0392b">歌词起句</span><span class="plain">竖线：节拍（长线为强拍）</span>
+      </div>
+      <section class="block" aria-labelledby="boardTitle">
+        <h2 id="boardTitle">分镜表</h2>
+        <p class="hint">每行是一个镜头，切点都落在强拍或节拍上。点时间可跳转，改选画面后时间线立即更新。</p>
+        <div class="scroll-x">
+          <table>
+            <thead><tr><th>起点</th><th>段落</th><th>画面</th><th>依据</th><th>这段的歌词</th></tr></thead>
+            <tbody id="boardBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <aside class="panel" aria-label="制作步骤">
+      <section class="step">
+        <h2><b>壹</b>歌曲</h2>
+        <label class="file big"><input id="audioFile" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg"><span>选择《逍遥叹》音频文件</span></label>
+        <div id="anaBox" class="progress" hidden><span id="anaLabel">分析中</span><div class="bar"><i id="anaBar"></i></div></div>
+        <p class="hint">支持 mp3、m4a、wav、flac。音频只在你的浏览器里分析和渲染，不会上传到任何地方。</p>
+      </section>
+
+      <section class="step">
+        <h2><b>贰</b>歌词<small style="font-weight:400;color:var(--muted)">（建议）</small></h2>
+        <textarea id="lyrics" spellcheck="false" placeholder="[00:21.30]第一句歌词&#10;[00:26.80]第二句歌词&#10;……&#10;也可以只粘贴纯文本，每行一句"></textarea>
+        <div class="row">
+          <label class="file"><input id="lrcFile" type="file" accept=".lrc,.txt,text/plain"><span>导入 LRC 文件</span></label>
+          <button id="applyLyrics" type="button">应用歌词</button>
+          <button id="tapStart" type="button" hidden>打点同步</button>
+        </div>
+        <div id="tapBox" class="tap" hidden>
+          <span class="hint">下一句（开唱时按空格或点「这句开始」）<span id="tapCount" class="time"></span></span>
+          <span id="tapNext" class="tap-next"></span>
+          <div class="row"><button id="tapBtn" class="primary" type="button">这句开始</button><button id="tapUndo" type="button">撤销一句</button><button id="tapDone" type="button">完成</button></div>
+        </div>
+        <p id="lyricsMsg" class="msg"></p>
+        <p class="hint">带时间轴的 LRC（多数音乐 App 可导出）可以直接用。每句里出现的意象词决定画面，命中的字会以朱红或金色显示。</p>
+      </section>
+
+      <section class="step">
+        <h2><b>叁</b>节拍</h2>
+        <dl class="stats">
+          <div><dt>速度（BPM）</dt><dd id="bpm">—</dd></div>
+          <div><dt>节拍数</dt><dd id="beats">—</dd></div>
+          <div><dt>镜头数</dt><dd id="shots">—</dd></div>
+          <div class="wide"><dt>段落</dt><dd id="secs">—</dd></div>
+        </dl>
+        <div class="row">
+          <button id="half" type="button" title="检测到的速度是实际的两倍时使用">速度 ÷2</button>
+          <button id="double" type="button" title="检测到的速度是实际的一半时使用">速度 ×2</button>
+        </div>
+        <div class="row"><label for="offset" class="hint">节拍偏移</label><input id="offset" type="range" min="-200" max="200" step="10" value="0"><output id="offsetOut" for="offset">0 ms</output></div>
+        <p class="hint">画面闪动比鼓点早就往右调，晚就往左调。</p>
+      </section>
+
+      <section class="step">
+        <h2><b>肆</b>导出</h2>
+        <div class="row">
+          <select id="res" aria-label="分辨率"><option value="720">720p · 1280×720</option><option value="1080">1080p · 1920×1080</option></select>
+          <button id="export" class="primary" type="button">导出视频</button>
+        </div>
+        <p class="hint">按实时录制，耗时等于歌曲长度。Chrome / Edge 新版本导出 MP4，其余浏览器导出 WebM。</p>
+        <p id="exportMsg" class="msg"></p>
+        <button id="saveAgain" type="button" hidden>保存视频</button>
+        <video id="resultVideo" controls playsinline hidden></video>
+      </section>
+    </aside>
+  </main>
+
+
+  <section class="block" aria-labelledby="vocabTitle">
+    <h2 id="vocabTitle">意象词典</h2>
+    <p class="hint">歌词里出现这些字词时切到对应画面；剑、泪、梦、花、雨、心、月、风、雪、笑、酒、飞、灯、天、叹等字出现的那一拍还会触发字效。</p>
+    <div id="vocab" class="vocab"></div>
+  </section>
+
+  <footer>同人创作工具。《逍遥叹》由胡歌演唱，歌曲与歌词版权归原作者所有；本页不包含任何原曲音频或歌词。快捷键：空格 播放 / 暂停，← → 跳 5 秒。</footer>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/story.js"></script>
+<script src="js/art.js"></script>
+<script src="js/scenes-a.js"></script>
+<script src="js/scenes-b.js"></script>
+<script src="js/render.js"></script>
+<script>
+  (function () {
+    const desc = {
+      mist: '晨雾群山，侠客立于崖上', boat: '夕阳江面，一叶孤舟摇橹', moon: '月下荷塘，荷花逐拍绽开', wine: '月影入杯，酒滴踩拍落下',
+      dream: '幻蝶环绕，梦影浮现', poem: '卷轴展开，大字逐笔写成', sword: '风雷夜空，剑气随拍挥出', flight: '云海日出，御剑而行',
+      petals: '桃花纷飞，拱桥上二人相望', rain: '江南烟雨，红伞独立', love: '黄昏两山，红线随拍颤动', memory: '孔明灯每拍升起一盏', freedom: '金色日出，鹤群振翅',
+    };
+    const box = document.getElementById('vocab');
+    for (const id in XYT.SCENES) {
+      const d = document.createElement('div');
+      const words = XYT.SCENE_WORDS[id].slice().sort((a, b) => b[1] - a[1]).map((w) => w[0]).join('、');
+      d.innerHTML = '<b></b><small></small><p></p>';
+      d.querySelector('b').textContent = XYT.SCENES[id].name;
+      d.querySelector('small').textContent = desc[id];
+      d.querySelector('p').textContent = words;
+      box.appendChild(d);
+    }
+  })();
+</script>
+<script src="js/app.js"></script>
