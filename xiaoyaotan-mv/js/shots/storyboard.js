@@ -5,6 +5,7 @@
   XYT.STORYBOARD = {
     "titleCard": false,
     "endCard": false,
+    "duration": 313.6,
     "intro": [
       {
         "id": "in1_ink",

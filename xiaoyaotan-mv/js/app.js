@@ -110,8 +110,31 @@
   }
 
   // ---------- 数据流 ----------
+  // 精编分镜只对原版《逍遥叹》成立：时长对得上、歌词句数一致时才启用
+  function boardFits() {
+    const sb = XYT.STORYBOARD;
+    if (!sb || !st.an || st.an.source !== 'audio' || !st.lyr) return false;
+    const n = st.lyr.lines.filter((l) => l.kind === 'lyric').length;
+    return Math.abs(st.an.duration - (sb.duration || 313.6)) < 3 && n === Object.keys(sb.lines || {}).length;
+  }
+  function activeBoard() {
+    if (st.storyboard) return st.storyboard;
+    return $('useBoard').checked && boardFits() ? XYT.STORYBOARD : null;
+  }
+  function updateBoardMsg(on) {
+    const sb = XYT.STORYBOARD;
+    $('useBoard').disabled = !boardFits() && !st.storyboard;
+    if (!sb) { $('boardMsg').textContent = ''; return; }
+    const n = Object.keys(sb.lines || {}).length;
+    const m = Math.floor((sb.duration || 313.6) / 60), sec = Math.floor((sb.duration || 313.6) % 60);
+    $('boardMsg').textContent = on ? `已启用：每句歌词一个专门设计的镜头，${n} 句加前奏、间奏、尾声共 60 个。`
+      : boardFits() ? '已关闭：现在按歌词意象自动排镜。勾选可换回精编镜头。'
+      : `精编分镜按原版《逍遥叹》（${m}:${String(sec).padStart(2, '0')}）逐句设计，需要载入原版音频和 ${n} 句带时间轴的歌词才能启用；否则按歌词意象自动排镜。`;
+  }
   function rebuild(keepPos) {
-    st.tl = XYT.buildTimeline(st.an, st.lyr, { overrides: st.overrides, storyboard: st.storyboard });
+    const board = activeBoard();
+    st.tl = XYT.buildTimeline(st.an, st.lyr, { overrides: st.overrides, storyboard: board });
+    updateBoardMsg(!!board);
     decorate(st.tl);
     R.setData(st.an, st.tl);
     drawStripStatic();
@@ -352,7 +375,7 @@
       for (const [id, m] of opts) { const o = document.createElement('option'); o.value = id; o.textContent = m.name; if (id === s.scene) o.selected = true; sel.appendChild(o); }
       sel.addEventListener('change', () => { st.overrides[s.key] = sel.value; rebuild(true); seek(s.start + 0.05); });
       cell.appendChild(sel); tr.appendChild(cell);
-      const why = s.src === 'lyric' ? '歌词意象' : s.src === 'intro' ? '片头' : s.src === 'end' ? '片尾' : st.overrides[s.key] ? '手动' : '段落';
+      const why = st.tl.storyboard && s.src !== 'end' ? '精编分镜' : s.src === 'lyric' ? '歌词意象' : s.src === 'intro' ? '片头' : s.src === 'end' ? '片尾' : st.overrides[s.key] ? '手动' : '段落';
       td(st.overrides[s.key] ? '手动' : why, 'why');
       td(ln ? ln.text : '—', 'lyric');
       tb.appendChild(tr);
@@ -522,6 +545,7 @@
   $('double').addEventListener('click', () => adjustBeat(st.factor * 2));
   $('offset').addEventListener('input', () => { $('offsetOut').textContent = `${$('offset').value} ms`; });
   $('offset').addEventListener('change', () => { st.offsetMs = +$('offset').value; adjustBeat(st.factor); });
+  $('useBoard').addEventListener('change', () => { if (st.an) rebuild(true); });
   $('export').addEventListener('click', startExport);
   $('recCancel').addEventListener('click', cancelExport);
   function adjustBeat(f) {

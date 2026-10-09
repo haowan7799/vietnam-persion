@@ -83,6 +83,8 @@
   .step h2 b { font-family: var(--display); font-weight: 400; color: var(--accent); font-size: 22px; }
   .hint { margin: 0; font-size: 13px; color: var(--muted); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .check { margin-top: 12px; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
   .file { position: relative; display: inline-block; }
   .file input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
   .file.big span { display: block; padding: 12px; text-align: center; border-style: dashed; border-width: 1.5px; }
@@ -205,6 +207,8 @@
         </div>
         <div class="row"><label for="offset" class="hint">节拍偏移</label><input id="offset" type="range" min="-200" max="200" step="10" value="0"><output id="offsetOut" for="offset">0 ms</output></div>
         <p class="hint">画面闪动比鼓点早就往右调，晚就往左调。</p>
+        <label class="row check"><input id="useBoard" type="checkbox" checked> 精编分镜（60 个镜头）</label>
+        <p id="boardMsg" class="hint"></p>
       </section>
 
       <section class="step">
