@@ -7,19 +7,27 @@
   const PI = Math.PI;
 
   // ---------- 颜色 ----------
+  // 任意 CSS 颜色（十六进制、rgb、hsl、颜色名）都先交给 1×1 画布规范化，结果记忆；记忆表过大就清空
   const cmemo = new Map();
+  let normG = null;
   function parse(c) {
     let v = cmemo.get(c);
     if (v) return v;
-    if (c[0] === '#') {
-      let h = c.slice(1);
+    let s = String(c).trim();
+    if (s[0] !== '#' && !/^rgba?\(/i.test(s)) {
+      if (!normG) normG = document.createElement('canvas').getContext('2d');
+      normG.fillStyle = '#000000'; normG.fillStyle = s; s = normG.fillStyle;
+    }
+    if (s[0] === '#') {
+      let h = s.slice(1);
       if (h.length <= 4) h = h.split('').map((ch) => ch + ch).join('');
       const n = parseInt(h.slice(0, 6), 16);
       v = [(n >> 16) & 255, (n >> 8) & 255, n & 255, h.length >= 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1];
     } else {
-      const m = c.match(/[\d.]+/g) || [0, 0, 0];
+      const m = s.match(/[\d.]+/g) || [0, 0, 0];
       v = [+m[0], +m[1], +m[2], m[3] == null ? 1 : +m[3]];
     }
+    if (cmemo.size > 4096) cmemo.clear();
     cmemo.set(c, v);
     return v;
   }
@@ -141,67 +149,74 @@
     ink: '#1a2026', accent: '#a8d4d4', ribbon: '#3b6db3', tassel: '#c8322a', inner: '#eef0ea',
     chest: 10, waist: 8.5, stoop: 0, prop: 'none', swordAt: 'back', glow: 0,
   };
+  // 设色（tone:'color'）字段：top 上衣、hem 下摆晕染色（hemA 下摆透明度）、sleeveEnd 袖端晕染、leg 裤；
+  // light 为浅色衣料（白描：浅底、细墨线、浅肤），cloth 底色、skin 肤色、line 墨线
   const CHARS = {
-    xiaoyao: { h: 180, prop: 'sword', lining: '#cfe6e2' },
+    xiaoyao: { h: 180, prop: 'sword', lining: '#d4ebe7', top: '#2b3d42', hem: '#a6cdc8', sleeveEnd: '#6a9998' },
     linger: {
       h: 166, sex: 'f', garment: 'dress', sleeve: 'wide', sd: 30, hair: 'linger', chest: 9, waist: 6.5,
       ink: '#231d29', accent: '#f2c4d6', accent2: '#cdb8e6', ribbon: '#d7c3ee', inner: '#f8eef3', gauze: '#f7e2ee',
       shawl: '#dcc8f0', flower: '#f9dbe6', heart: '#e27b9c', lining: '#f6d5e2', sheer: true,
+      light: true, cloth: '#f7f1f5', hem: '#e2c3dc', sleeveEnd: '#d6c4ec', skin: '#f6ebe5', line: '#4a3646', hairCol: '#16121a',
     },
     yueru: {
-      h: 168, sex: 'f', garment: 'jin', sleeve: 'cuff', hair: 'ponytail', frac: 0.74, chest: 9, waist: 6.5,
+      h: 168, sex: 'f', garment: 'jin', sleeve: 'cuff', hair: 'ponytail', frac: 0.4, chest: 9, waist: 6.5,
       ink: '#2b1416', accent: '#d8262c', ribbon: '#e2322f', tassel: '#e2322f', panel: '#8a1a1f', inner: '#f4e2d6',
-      prop: 'sword', swordAt: 'hip',
+      prop: 'sword', swordAt: 'hip', top: '#b0222a', hem: '#d23038', leg: '#8e1c22', hairCol: '#1c0e10',
     },
     anu: {
       h: 158, sex: 'f', garment: 'miao', sleeve: 'narrow', hair: 'miao', frac: 0.5, chest: 9, waist: 6.5,
       ink: '#201a24', accent: '#c9314a', accent2: '#2f7ab8', accent3: '#e9b740', silver: '#e2e6ee', inner: '#f2e8e0',
-      ribbon: '#c9314a', bells: true,
+      ribbon: '#c9314a', bells: true, top: '#2c2238', hem: '#3a2a4a', hemA: 1,
     },
     tangyu: {
       h: 178, hair: 'tangyu', ink: '#14222a', accent: '#3c93ab', ribbon: '#2f86a2', tassel: '#2f86a2', lining: '#7cc0d0',
-      prop: 'sword', swordAt: 'hip',
+      prop: 'sword', swordAt: 'hip', top: '#1d4252', hem: '#4aa3ba', sleeveEnd: '#2f7f96',
     },
     jiujianxian: {
       h: 176, hair: 'messy', sleeve: 'wide', sd: 27, ink: '#2b2520', accent: '#9a7550', ribbon: '#6b5a48', inner: '#58483a',
       hairCol: '#2c2824', beard: 'scruffy', prop: 'gourd', gourd: true, backSword: true, open: true, ragged: true, stoop: -0.03,
-      lining: '#b08a62', tassel: '#9a3324',
+      lining: '#b08a62', tassel: '#9a3324', top: '#4a3c30', hem: '#a88660', sleeveEnd: '#7e6448',
     },
     laolao: {
       h: 164, sex: 'f', garment: 'gown', sleeve: 'wide', sd: 33, hair: 'highbun', chest: 9, waist: 7,
       ink: '#25262b', hairCol: '#e8e6e0', accent: '#d4dade', accent2: '#9fb0ba', ribbon: '#c8d0d6', inner: '#f2f2ee',
       gauze: '#e4eaee', shawl: '#c9d4dc', prop: 'staff', lining: '#dde4e8', sheer: true,
+      light: true, cloth: '#eef1f2', hem: '#b8c6d0', sleeveEnd: '#aebdc8', skin: '#f0e6e0', line: '#3a3e46',
     },
     baiyue: {
       h: 190, garment: 'priest', sleeve: 'wide', sd: 34, hair: 'crown', ink: '#120f18', accent: '#6a38a0', accent2: '#9a74d0',
       moon: '#dfe2f6', inner: '#3a2c4c', prop: 'staff', cape: true, pads: true, chest: 11, waist: 9.5, lining: '#7d4cb8',
+      top: '#1e1628', hem: '#4c2a7c', sleeveEnd: '#3a2260', hemA: 0.9,
     },
     caiyi: {
       h: 165, sex: 'f', garment: 'dress', sleeve: 'wide', sd: 28, hair: 'caiyi', chest: 9, waist: 6.5,
       ink: '#2b2422', accent: '#f4d77c', accent2: '#f2a6bc', ribbon: '#f2a6bc', inner: '#fcf3dc', gauze: '#fbe7b0',
       shawl: '#f6c4d2', wings: true, lining: '#f8e3a0', sheer: true,
+      light: true, cloth: '#fcf5df', hem: '#f4bfd0', sleeveEnd: '#f6d486', skin: '#f7ebe0', line: '#4c3a30', hairCol: '#1c1612',
     },
     jinyuan: {
       h: 178, hair: 'scholar', sleeve: 'wide', sd: 28, ink: '#1c2427', accent: '#e4ede7', accent2: '#a9cfc5', ribbon: '#1c2427',
       inner: '#f4f6f1', prop: 'fan', lining: '#bfe0d6', chest: 9.5, waist: 7.5,
+      light: true, cloth: '#eef3ee', hem: '#b4d6cb', sleeveEnd: '#a8cfc4', skin: '#efe4da', line: '#26302e', hairCol: '#141a1c',
     },
     storyteller: {
       h: 170, garment: 'longgown', hair: 'cap', ink: '#27221e', accent: '#8e3b2b', hairCol: '#b9b4aa', beard: 'goatee',
-      beardCol: '#dedad2', inner: '#e8e0d0', prop: 'fan', stoop: 0.06, lining: '#b65a44',
+      beardCol: '#dedad2', inner: '#e8e0d0', prop: 'fan', stoop: 0.06, lining: '#b65a44', top: '#3c2e26', hem: '#8a5a44',
     },
-    villager: { h: 172, garment: 'short', sleeve: 'narrow', hair: 'douli', ink: '#2a2826', accent: '#7c8c7a', frac: 0.44 },
+    villager: { h: 172, garment: 'short', sleeve: 'narrow', hair: 'douli', ink: '#2a2826', accent: '#7c8c7a', frac: 0.44, top: '#3e3f38', hem: '#7c8a76', leg: '#2c2e30' },
   };
   const STAGES = {
-    youth: { h: 176, garment: 'short', sleeve: 'rolled', hair: 'youth', frac: 0.44, ink: '#28241f', accent: '#8fa3b0', ribbon: '#8a7a62', towel: true, prop: 'none' },
+    youth: { h: 176, garment: 'short', sleeve: 'rolled', hair: 'youth', frac: 0.44, ink: '#28241f', accent: '#8fa3b0', ribbon: '#8a7a62', towel: true, prop: 'none', top: '#5c4e3e', hem: '#907e62', leg: '#3c4752' },
     hero: {},
-    old: { ink: '#25282b', accent: '#7f8c94', ribbon: '#5a7088', sd: 26, sleeve: 'wide', hairCol: '#e3dfd7', hairLoose: true, stoop: 0.07, lining: '#a0aab0' },
-    wedding: { ink: '#4c1013', accent: '#dca846', ribbon: '#c41a20', inner: '#f0c66a', sleeve: 'wide', sd: 30, hair: 'wedding', flowerBall: true, prop: 'none', lining: '#e8b850' },
+    old: { ink: '#25282b', accent: '#7f8c94', ribbon: '#5a7088', sd: 26, sleeve: 'wide', hairCol: '#e3dfd7', hairLoose: true, stoop: 0.07, lining: '#a0aab0', top: '#33383c', hem: '#8e979c', sleeveEnd: '#5e676c' },
+    wedding: { ink: '#4c1013', accent: '#dca846', ribbon: '#c41a20', inner: '#f0c66a', sleeve: 'wide', sd: 30, hair: 'wedding', flowerBall: true, prop: 'none', lining: '#e8b850', top: '#8a161c', hem: '#c8262e', sleeveEnd: '#a81c22', hemA: 0.95, hairCol: '#1a0c0c' },
   };
   const VILLAGERS = [
     {},
-    { sex: 'f', h: 160, garment: 'dress', sleeve: 'mid', sd: 18, hair: 'bunF', ink: '#2b2624', accent: '#a9765e', chest: 9, waist: 7, gauze: null },
-    { hair: 'headcloth', ink: '#262a2c', accent: '#6f8394' },
-    { garment: 'robe', sleeve: 'mid', hair: 'oldman', beard: 'goatee', beardCol: '#d8d4cc', hairCol: '#c8c4bc', stoop: 0.2, ink: '#2b2925', accent: '#8a7660', frac: 1, h: 166 },
+    { sex: 'f', h: 160, garment: 'dress', sleeve: 'mid', sd: 18, hair: 'bunF', ink: '#2b2624', accent: '#a9765e', chest: 9, waist: 7, gauze: null, top: '#4a3a32', hem: '#a8806a' },
+    { hair: 'headcloth', ink: '#262a2c', accent: '#6f8394', top: '#3a4248', hem: '#6f8394' },
+    { garment: 'robe', sleeve: 'mid', hair: 'oldman', beard: 'goatee', beardCol: '#d8d4cc', hairCol: '#c8c4bc', stoop: 0.2, ink: '#2b2925', accent: '#8a7660', frac: 1, h: 166, top: '#3e3830', hem: '#8a7660' },
   ];
 
   function spec(who, o) {
@@ -216,6 +231,9 @@
 
   // ---------- 骨架 ----------
   const LT = 46, LS = 44, LU = 30, LF = 27, LB = 54, ANK = 6;
+  // 步态：每秒 0.85 个周期，支撑期占 60%；D 为一个周期的前进距离（局部单位）
+  const WALK_HZ = 0.85, DUTY = 0.6;
+  const strideOf = (sp, o) => (sp.sex === 'f' ? 108 : 126) * (o.stride ?? 1);
   function limbA(R, a1, a2, L1, L2) { const M = ma(R, dirA(a1), L1); return [M, ma(M, dirA(a1 + a2), L2)]; }
   // 两节肢体反解：bend=1 关节偏向屏幕顺时针一侧
   function ik(S, T, L1, L2, bend) {
@@ -238,15 +256,11 @@
       [J.Kn, J.An] = one(PS.lN, J.Hn); [J.Kf, J.Af] = one(PS.lF, J.Hf);
     };
     legs();
-    if (PS.ground) {
-      // 行走时以支撑腿着地；摆动腿若擦地就多屈膝抬起
-      let low = PS.stance ? J['A' + PS.stance][1] + ANK : Math.max(J.An[1], J.Af[1]) + ANK;
+    // 站立类姿势：整体下移到最低的脚着地；行走（planted）时脚由目标点决定，骨盆高度已在姿势里算好
+    if (PS.ground && !PS.planted) {
+      let low = Math.max(J.An[1], J.Af[1]) + ANK;
       if (PS.kneeGround) low = Math.max(low, J.Kn[1] + 4.5, J.Kf[1] + 4.5);
       J.P[1] -= low + (PS.lift || 0); legs();
-      if (PS.stance) {
-        const sw = PS.stance === 'n' ? 'f' : 'n', spec = PS['l' + (sw === 'n' ? 'N' : 'F')];
-        for (let it = 0; it < 14 && J['A' + sw][1] > -ANK - (PS.clear || 0); it++) { spec.a[0] += 0.035; spec.a[1] += 0.055; legs(); }
-      }
     }
     J.N = ma(J.P, J.up, LB + (q.breath || 0));
     J.Sn = ma(ma(J.N, J.up, -3.5), J.fw, 0.8); J.Sf = ma(ma(J.N, J.up, -3.5), J.fw, -2.4);
@@ -284,27 +298,36 @@
       };
     },
     walk(q) {
-      const ph = TAU * q.t * 0.85 * (q.o.speed || 1) + (q.o.phase || 0);
-      const amp = q.sp.sex === 'f' ? 0.3 : 0.36;
-      // 髋角近似三角波：支撑期脚底匀速后移，配合 walkSpeed 不打滑；膝在摆动初期弯得最深
-      const leg = (p) => {
-        const w = Math.atan2(Math.sin(p), Math.cos(p));
-        const tri = (2 / PI) * Math.asin(Math.sin(p));
-        const c = Math.max(0, Math.cos((w + 0.9) * 1.2));
-        return { a: [amp * (0.92 * tri + 0.08 * Math.sin(p)), 0.07 + 0.88 * c * c] };
+      // 脚由目标点驱动：支撑期脚在地面上随身体匀速后移（与 walkSpeed 严格相等，不打滑）；
+      // 摆动期脚在世界坐标里走摆线（离地、落地瞬间速度为零），抬脚高度 sin 拱形；骨盆高度取两腿够得着的较低者
+      const sp = q.sp, f = sp.sex === 'f';
+      const cyc = WALK_HZ * (q.o.speed || 1) * q.t + (q.o.phase ?? q.ph) / TAU;
+      const ph = TAU * cyc;
+      const D = strideOf(sp, q.o), a = (DUTY * D) / 2, lift = (f ? 7 : 8.5) * (q.o.stride ?? 1);
+      const tor = 0.06 + sp.stoop + 0.012 * Math.cos(ph * 2);
+      const foot = (c) => {
+        c -= Math.floor(c);
+        if (c < DUTY) return [a - D * c, -ANK];
+        const u = (c - DUTY) / (1 - DUTY);
+        return [-a + D * (DUTY * u - Math.sin(TAU * u) / TAU), -ANK - lift * Math.sin(PI * u) * (1 - 0.25 * u)];
       };
-      const s = Math.sin(ph), stance = Math.cos(ph) < 0 ? 'n' : 'f';
-      const swingC = Math.abs(Math.cos(ph));
+      const fN = foot(cyc), fF = foot(cyc + 0.5);
+      const Lr = (LT + LS) * 0.985, hx = 1.4 * Math.cos(tor);
+      const lim = (A, sx) => { const dx = A[0] - sx * hx; return A[1] - Math.sqrt(Math.max(0, Lr * Lr - dx * dx)); };
+      const smax = (x, y, k) => (x + y + Math.sqrt((x - y) * (x - y) + k * k)) / 2;
+      const py = smax(smax(lim(fN, 1), lim(fF, -1), 7), -(Lr * 0.93 + ANK), 5);
+      // 手臂与对侧腿同摆
+      const cN = Math.cos(TAU * (cyc - 0.05)), cF = -cN;
       return {
-        ground: true, tor: 0.06 + q.sp.stoop + 0.012 * Math.cos(ph * 2), head: 0.04,
-        lN: leg(ph), lF: leg(ph + PI),
-        aN: { a: [0.04 - 0.3 * s, 0.25 + 0.15 * Math.max(0, -s)] }, aF: { a: [0.04 + 0.3 * s, 0.3 + 0.15 * Math.max(0, s)] },
-        walking: true, gait: ph, stance, clear: 3 * swingC,
+        ground: true, planted: true, pel: [0, py], tor, head: 0.04,
+        lN: { f: fN }, lF: { f: fF },
+        aN: { a: [0.04 - 0.3 * cN, 0.25 + 0.16 * Math.max(0, -cN)] }, aF: { a: [0.04 - 0.3 * cF, 0.3 + 0.16 * Math.max(0, -cF)] },
+        walking: true, gait: ph,
       };
     },
     sit(q) {
       if (q.o.seat === 'ledge') {
-        const k = 0.12 * Math.sin(q.t * 1.6 + q.ph);
+        const k = 0.25 * Math.sin(q.t * 1.6 + q.ph);
         return {
           pel: [0, -7], tor: 0.04 + q.sp.stoop, head: 0.12,
           lN: { a: [1.45, 1.35 - k] }, lF: { a: [1.38, 1.5 + k] },
@@ -326,26 +349,38 @@
       };
       if (cr) {
         // 双膝跪坐，上身前倾，双臂向前托住怀中人
+        // holdN / holdF：怀中人背后的托点（局部坐标），fig.cradle 会自动算好
+        const hN = q.o.holdN, hF = q.o.holdF;
         P.pel = [-4, -40]; P.lN = { a: [0.8, 2.25] }; P.lF = { a: [0.72, 2.18] };
-        P.aN = { h: (J) => [J.P[0] + 60, -40], b: 1 }; P.aF = { h: (J) => [J.P[0] + 52, -31], b: 1 }; P.tor = 0.55; P.head = 0.62; P.sleeveK = 0.6;
+        P.aN = { h: (J) => (hN ? hN.slice() : [J.P[0] + 60, -36]), b: 1 }; P.aF = { h: (J) => (hF ? hF.slice() : [J.P[0] + 52, -26]), b: 1 };
+        P.tor = 0.5; P.head = 0.85; P.sleeveK = 0.6; P.cradle = true;
       }
       else if (q.sword) { P.aN = { h: (J) => [J.Kn[0] + 12, -70], b: 1 }; P.aF = { h: (J) => [J.Kn[0] + 11, -64], b: 1 }; P.tor = 0.12; P.head = 0.5; }
       return P;
     },
     lie(q) {
       if (q.o.flat) {
-        const lp = q.o.limp;
+        if (!q.o.limp) {
+          // 平躺：双手交叠在胸腹前，远侧手落在身侧地上
+          return {
+            pel: [0, -9], tor: -1.5, head: 0.25,
+            lN: { a: [1.5, 0.05] }, lF: { a: [1.72, 0.42] },
+            aN: { h: (J) => at(J, J.P, 9.5, 19), b: 1 }, aF: { h: (J) => [J.P[0] - 12, -2.5], b: 1 },
+            lying: true, floor: true, flat: true,
+          };
+        }
+        // 无力倚卧：上身被托起，头向后垂，近侧手臂垂落到地，长发顺重力垂到地面
         return {
-          pel: [0, -9], tor: lp ? -0.82 : -1.5, head: lp ? -0.85 : 0.25,
-          lN: { a: [1.5, 0.05] }, lF: { a: lp ? [1.85, 1.45] : [1.42, 0.32] },
-          aN: lp ? { h: (J) => [J.Sn[0] + 4, -2], b: 1 } : { a: [0.02, 0.05] }, aF: lp ? { h: (J) => at(J, J.P, 12, 14), b: 1 } : { a: [-0.5, 1.0] },
-          lying: true, floor: true, limp: lp,
+          pel: [0, -10], tor: -0.62, head: -1.05,
+          lN: { a: [1.53, 0.04] }, lF: { a: [1.74, 0.4] },
+          aN: { h: (J) => [J.Sn[0] - 4, -5.5], b: -1 }, aF: { h: (J) => at(J, J.N, 8, -26), b: 1 },
+          lying: true, floor: true, limp: true, flat: true, handN: 'limp',
         };
       }
       const g = q.prop === 'gourd';
       return {
         pel: [0, -11], tor: -1.12, head: g ? 0.55 : 0.9,
-        lN: { a: [1.52, 0.06] }, lF: { a: [2.3, 2.55] },
+        lN: { a: [1.52, 0.06] }, lF: { f: (J) => [J.P[0] + 30, -ANK] },
         aF: { a: [0.05, 1.5] },
         aN: g ? { h: (J) => add(J.Hc, [13, -20]), b: -1 } : { h: (J) => add(J.Kf, [-2, -3]), b: 1 },
         lying: true, floor: true,
@@ -366,7 +401,7 @@
     swordPoint(q) {
       return {
         ground: true, tor: 0.16, head: 0.02, lN: { a: [0.85, 0.95] }, lF: { a: [-0.62, 0.02] },
-        aN: { a: [1.56, 0.0] }, aF: { a: [-2.15, -0.85] }, handF: 'point', windMin: 0.45,
+        aN: { a: [1.56, 0.0] }, aF: { h: (J) => at(J, J.N, 3, 46), b: -1 }, wF: 0.75, handF: 'point', windMin: 0.45,
       };
     },
     flySword(q) {
@@ -396,10 +431,15 @@
       };
     },
     embrace(q) {
-      const f = q.sp.sex === 'f';
-      return {
-        ground: true, tor: f ? 0.15 : 0.08, head: f ? 0.5 : 0.48, lN: { a: [0.09, 0.04] }, lF: { a: [-0.05, 0.0] },
-        aN: { h: (J) => at(J, J.N, f ? 38 : 42, f ? -36 : -24), b: 1 }, aF: { h: (J) => at(J, J.N, f ? 34 : 38, f ? -42 : -32), b: 1 },
+      // 相拥：gap 为两人骨盆相距（本人局部单位）。双臂绕到对方背后；女子低头把脸贴在对方胸前，男子下巴落在她头顶
+      const f = q.sp.sex === 'f', gap = q.o.gap ?? 22;
+      const br = 0.012 * Math.sin(q.t * 1.2 + q.ph);
+      return f ? {
+        ground: true, tor: 0.17 + br, head: 0.72, lN: { a: [0.1, 0.06] }, lF: { a: [-0.07, 0.02] },
+        aN: { h: (J) => [gap + 16, -108], b: 1 }, aF: { h: (J) => [gap + 12, -116], b: 1 }, handN: 'limp', handF: 'limp',
+      } : {
+        ground: true, tor: 0.12 + br, head: 0.62, lN: { a: [0.12, 0.05] }, lF: { a: [-0.06, 0.0] },
+        aN: { h: (J) => [gap + 14, -100], b: 1 }, aF: { h: (J) => [gap + 10, -112], b: 1 }, handN: 'limp', handF: 'limp',
       };
     },
     fall(q) {
@@ -433,10 +473,13 @@
       };
     },
     laugh(q) {
-      const sh = 0.012 * Math.sin(q.t * 15) * (0.6 + 0.4 * Math.sin(q.t * 1.3));
+      // 仰天大笑：上身后仰，头向天，一手按腹（酒剑仙则高举葫芦），另一臂向后甩开；双肩 7Hz 抖动
+      const sh = 0.03 * Math.sin(q.t * TAU * 7) * (0.65 + 0.35 * Math.sin(q.t * 1.3 + q.ph));
+      const jj = q.prop === 'gourd' && q.sp.who === 'jiujianxian';
       return {
-        ground: true, tor: -0.15 + sh, head: -0.68 + sh * 2, lN: { a: [0.2, 0.04] }, lF: { a: [-0.17, 0.0] },
-        aN: { a: [0.62, 0.18] }, aF: { a: [-0.62, 0.15] }, handN: 'open', handF: 'open',
+        ground: true, tor: -0.3 + sh, head: -0.9 + sh * 1.5, lN: { a: [0.26, 0.06] }, lF: { a: [-0.22, 0.0] },
+        aN: jj ? { a: [2.72 + sh * 2, 0.3] } : { h: (J) => at(J, J.P, 11.5, 21), b: 1 },
+        aF: { a: [-1.5 + sh * 3, 0.5] }, handN: jj ? 'fist' : 'open', handF: 'open', laughing: true,
       };
     },
   };
@@ -476,22 +519,54 @@
   }
   function footDir(F, K, A) {
     const fn = fnorm(K, A);
-    if (F.J.ground && A[1] > -ANK - 2.5) return [1, 0];
-    return rotV(fn, 0.3);
+    if (F.PS.lying) return nrm(add(mul(nrm(sub(A, K)), 0.45), fn)); // 卧姿脚尖朝上
+    if (!F.J.ground || F.PS.falling) return rotV(fn, 0.3);
+    // 着地姿势：脚抬得越高脚尖越下垂，但脚尖不穿过地面
+    const sw = rotV(fn, 0.3), dirAt = (u) => nrm([lerp(1, sw[0], u), lerp(0, sw[1], u)]);
+    const lowY = (d) => Math.max(A[1] + d[1] * 13.2 + d[0] * ANK * 0.55, A[1] + d[1] * 10.5 + d[0] * ANK);
+    let u = clamp((-ANK - A[1] - 0.5) / 7);
+    for (let i = 0; i < 5 && u > 0 && lowY(dirAt(u)) > -0.3; i++) u *= 0.6;
+    if (u < 0.02) return [1, 0];
+    return dirAt(u);
   }
 
   // ---------- 部件：手、臂、袖 ----------
-  function hand(g, F, W, d, kind, col) {
-    const n = perp(d);
+  // 手：并拢的手掌像一只圆头的“手套”微微弯曲，另加拇指；剑指时食中二指并直伸出。远景只画掌形
+  function capsule(g, F, pts, w0, w1, col) {
+    taper(g, pts, (u) => thin(F, lerp(w0, w1, u)), col);
+    const e = pts[pts.length - 1]; g.beginPath(); g.arc(e[0], e[1], thin(F, w1) / 2, 0, TAU); g.fill();
+  }
+  function hand(g, F, W, d, kind, col, tuck) {
+    if (tuck) W = ma(W, d, -tuck);
+    const n = perp(d), line = F.pal.line, ln = line && F.px < 0.7;
     g.fillStyle = col;
-    if (kind === 'fist') { g.beginPath(); g.arc(W[0] + d[0] * 3, W[1] + d[1] * 3, 3.3, 0, TAU); g.fill(); return; }
-    if (kind === 'point') {
-      fillC(g, [ma(W, n, 2.3), ma(ma(W, d, 5), n, 2.2), ma(ma(W, d, 6.5), n, -1.4), ma(W, n, -2.4)], col);
-      taper(g, [ma(ma(W, d, 4.5), n, 0.9), ma(ma(W, d, 8.5), n, 0.8), ma(ma(W, d, 12), n, 0.7)], (u) => thin(F, lerp(2.1, 1.2, u)), col);
+    if (kind === 'fist') {
+      g.beginPath(); g.ellipse(W[0] + d[0] * 2.8, W[1] + d[1] * 2.8, 3.3, 2.7, angOf(d), 0, TAU); g.fill();
+      if (ln) { g.strokeStyle = ca(line, 0.7); g.lineWidth = thin(F, 0.6); g.stroke(); }
       return;
     }
-    fillC(g, [ma(W, n, 2.2), ma(ma(W, d, 5), n, 2.3), ma(ma(W, d, 8.4), n, 1), corner(ma(ma(W, d, 9.2), n, -0.2)), ma(ma(W, d, 6.2), n, -1.9),
-      ma(ma(W, d, 3.4), n, -2.9), ma(W, n, -2.1)], col);
+    if (F.px > 0.8) { capsule(g, F, [W, ma(W, d, 3), ma(W, d, 6)], 3.6, 2.6, col); return; }
+    const curl = kind === 'limp' ? 0.42 : kind === 'point' ? 0 : 0.2;
+    const c1 = rotV(d, -curl), c2 = rotV(d, -curl * 2.2);
+    let tipPts;
+    if (kind === 'point') {
+      // 剑指：掌短，食中二指并拢直伸，余指收在掌心
+      const pb = ma(W, d, 4.4);
+      capsule(g, F, [W, ma(W, d, 2.4), pb], 3.8, 3.3, col);
+      tipPts = [ma(ma(W, d, 3.6), n, 0.6), ma(ma(W, d, 7.5), n, 0.5), ma(ma(W, d, 11), n, 0.4)];
+      capsule(g, F, tipPts, 1.9, 1.35, col);
+      g.beginPath(); g.arc(...ma(ma(W, d, 4.6), n, -1.3), 1.45, 0, TAU); g.fill();
+    } else {
+      const p1 = ma(W, d, 4.6), p2 = ma(p1, c1, 3), p3 = ma(p2, c2, 2.4);
+      tipPts = [W, p1, p2, p3];
+      capsule(g, F, tipPts, 3.7, 2.3, col);
+    }
+    const tb = ma(ma(W, d, 2.2), n, -1.5), td = rotV(d, kind === 'point' ? -0.3 : -0.62);
+    capsule(g, F, [tb, ma(tb, td, 2), ma(tb, rotV(td, 0.3), 3.4)], 1.7, 1.15, col);
+    if (ln) {
+      g.strokeStyle = ca(line, 0.55); g.lineWidth = thin(F, 0.5);
+      g.beginPath(); curve(g, tipPts.map((p) => ma(p, n, kind === 'point' ? 0.9 : 1.6)), true); g.stroke();
+    }
   }
 
   function limb(g, pts, ws, col) {
@@ -509,63 +584,85 @@
   function arm(g, F, side) {
     const { J, sp, pal } = F;
     const S = J['S' + side], E = J['E' + side], W = J['W' + side], d = side === 'n' ? J.dn : J.df;
-    const col = side === 'n' ? pal.ink : pal.far;
+    const col = side === 'n' ? pal.armN : pal.armF, hc = side === 'n' ? pal.hand : pal.handF;
     const kind = F.PS['hand' + side.toUpperCase()] || (F.holds[side] ? 'fist' : 'open');
     const sl = F.PS.dancing && sp.sleeve === 'cuff' ? 'cuff' : sp.sleeve;
+    const line = pal.line, la = side === 'n' ? 0.85 : 0.55;
     if (sl === 'narrow' || sl === 'cuff' || sl === 'rolled') {
       const ws = sp.sex === 'f' ? [8.5, 6.8, 5.2] : [10, 7.8, 6];
-      limb(g, [S, E, W], ws, sl === 'rolled' ? pal.ink : col);
-      if (sl === 'cuff') { g.strokeStyle = mixc(pal.accent, '#000000', 0.15); g.lineWidth = 6.4; g.lineCap = 'butt'; g.beginPath(); const c0 = mid(E, W, 0.62), c1 = mid(E, W, 0.96); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]); g.stroke(); g.lineCap = 'round'; }
-      if (sl === 'rolled') { g.strokeStyle = pal.accent; g.lineWidth = 7.4; g.beginPath(); const c0 = mid(E, W, 0.12), c1 = mid(E, W, 0.3); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]); g.stroke(); }
+      limb(g, [S, E, W], ws, col);
+      if (sl === 'rolled') {
+        // 挽起的袖子：小臂露出
+        limb(g, [mid(E, W, 0.22), W], [ws[1] * 0.85, ws[2] * 0.9], hc);
+        g.strokeStyle = pal.accent; g.lineWidth = 7.4; g.beginPath(); const c0 = mid(E, W, 0.08), c1 = mid(E, W, 0.26); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]); g.stroke();
+      }
+      if (sl === 'cuff') {
+        // 护腕：深色皮革，边缘一道亮线
+        const c0 = mid(E, W, 0.5), c1 = mid(E, W, 0.98);
+        g.strokeStyle = pal.bracer; g.lineWidth = 7; g.lineCap = 'butt'; g.beginPath(); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]); g.stroke();
+        g.strokeStyle = ca(pal.metal, 0.75); g.lineWidth = thin(F, 0.8); const k0 = ma(c0, perp(d), 3.4), k1 = ma(c0, perp(d), -3.4);
+        g.beginPath(); g.moveTo(k0[0], k0[1]); g.lineTo(k1[0], k1[1]); g.stroke(); g.lineCap = 'round';
+      }
       if (sp.garment === 'miao') { g.strokeStyle = pal.accent; g.lineWidth = 5; g.lineCap = 'butt'; g.beginPath(); const c0 = mid(E, W, 0.6), c1 = mid(E, W, 0.82); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]); g.stroke(); g.strokeStyle = pal.accent3; g.lineWidth = 1.8; g.beginPath(); const c2 = mid(E, W, 0.88); g.moveTo(c1[0], c1[1]); g.lineTo(c2[0], c2[1]); g.stroke(); g.lineCap = 'round'; }
-      hand(g, F, W, d, kind, col);
+      hand(g, F, W, d, kind, hc);
       return;
     }
-    // 广袖：袖兜朝重力一侧下垂，前臂竖起时袖口滑向肘部
+    // 广袖：袖兜朝重力一侧下垂；小臂上举时袖口整个滑到肘部，袖子从肘下垂成兜
     const D = sp.sd * (F.PS.sleeveK || 1);
     const grav = F.grav, T = F.T, wind = F.wind, t = F.t;
     const fd = nrm(sub(W, E));
-    const slide = clamp((-dot(fd, grav) - 0.2) * 1.1, 0, 0.72);
+    const upness = -dot(fd, grav);
+    const slide = A.smooth((upness - 0.12) / 0.5);
     const C = mid(W, E, slide);
     let n = perp(fd); if (dot(n, grav) < 0) n = mul(n, -1);
     const par = Math.abs(dot(fd, grav));
     n = nrm(add(mul(n, 1 - par * 0.85), mul(nrm([T[0], 0.35]), par * 0.85)));
+    // 滑到肘部后，袖兜改为顺重力（略随风）下垂
+    n = nrm(add(mul(n, 1 - slide), mul(nrm(add(grav, mul(T, 0.35 + 0.3 * wind))), slide)));
     const ph = (side === 'n' ? 0 : 1.9) + F.ph;
     const fl = (0.25 + wind) * Math.sin(t * 2.4 + ph), fl2 = (0.25 + wind) * Math.sin(t * 3.1 + ph + 1.1);
     const tw = mul(T, wind * D * 0.5);
     const o = mul(n, -1);
-    // 袖口一线、袖角最低点、袖腹：手臂越竖直，袖兜越收窄
-    const Dw = D * lerp(0.66, 0.46, par) * (1 - 0.35 * slide);
+    const ax = slide > 0.5 ? nrm(sub(E, S)) : fd;
+    const Dw = D * lerp(0.66, 0.46, par) * (1 - 0.3 * slide);
     const cuffT = ma(C, o, 4.4);
-    const cuffB = add(ma(ma(ma(C, n, Dw), grav, D * 0.16), fd, 3), mul(tw, 0.55));
-    const cuffM = add(mid(cuffT, cuffB, 0.5), add(mul(fd, 2.4), mul(tw, 0.2)));
-    const tip = add(add(ma(ma(cuffB, grav, D * 0.3), fd, -D * 0.16), mul(tw, 0.5)), mul(perp(T), fl * 2.2));
-    const belly = add(ma(ma(mid(E, C, 0.38), n, Dw * 0.86), grav, D * 0.2), add(mul(tw, 0.55), mul(perp(T), fl2 * 1.4)));
+    const cuffB = add(ma(ma(ma(C, n, Dw), grav, D * 0.16), ax, 3), mul(tw, 0.55));
+    const cuffM = add(mid(cuffT, cuffB, 0.5), add(mul(ax, 2.4), mul(tw, 0.2)));
+    const tip = add(add(ma(ma(cuffB, grav, D * 0.3), ax, -D * 0.16), mul(tw, 0.5)), mul(perp(T), fl * 2.2));
+    // 手臂越平，袖腹垂得越低
+    const belly = add(ma(ma(mid(E, C, 0.38), n, Dw * 0.86), grav, D * lerp(0.36, 0.2, par)), add(mul(tw, 0.55), mul(perp(T), fl2 * 1.4)));
     const pit = ma(ma(S, grav, 11), J.fw, -1.5);
     const cap = ma(ma(S, J.up, 3.4), J.fw, side === 'n' ? -1 : -3);
-    const pts = floorC(F, [cap, ma(S, o, 6.2), ma(E, o, 5.2), corner(cuffT), cuffM, corner(cuffB), tip, belly, pit]);
-    if (sp.ragged) pts.splice(7, 0, corner(ma(mid(tip, belly, 0.3), n, -3)), corner(mid(tip, belly, 0.55)));
+    const top = [cap, ma(S, o, 6.2), ma(E, o, 5.2)];
+    if (slide < 0.5 && par < 0.6) top.push(ma(mid(E, C, 0.55), o, 3.6 + 1.2 * par));
+    const pts = floorC(F, [...top, corner(cuffT), cuffM, corner(cuffB), tip, belly, pit]);
+    if (sp.ragged) pts.splice(pts.length - 2, 0, corner(ma(mid(tip, belly, 0.3), n, -3)), corner(mid(tip, belly, 0.55)));
     g.beginPath(); pathC(g, pts);
-    if (sp.sheer) {
-      const gr = g.createLinearGradient(E[0], E[1], tip[0], tip[1]);
-      gr.addColorStop(0, col); gr.addColorStop(1, mixc(col, pal.accent, 0.2));
+    const end = pal.sleeveEnd ? (side === 'n' ? pal.sleeveEnd : mixc(pal.sleeveEnd, pal.ink, 0.12)) : sp.sheer ? mixc(col, pal.accent, 0.2) : null;
+    if (end) {
+      const gr = g.createLinearGradient(S[0], S[1], tip[0], tip[1]);
+      gr.addColorStop(0, col); gr.addColorStop(0.42, col); gr.addColorStop(1, end);
       g.fillStyle = gr;
     } else g.fillStyle = col;
     g.fill();
+    if (line) { g.strokeStyle = ca(line, la); g.lineWidth = thin(F, 0.8); g.stroke(); }
     // 中衣袖口与里衬
-    const ia = ma(C, o, 3.8), ib = ma(ma(C, n, D * 0.22), fd, 2.6);
+    const ia = ma(C, o, 3.8), ib = ma(ma(C, n, D * 0.22), ax, 2.6);
     g.strokeStyle = ca(pal.inner, side === 'n' ? 0.4 : 0.25); g.lineWidth = thin(F, 1.7); g.lineCap = 'butt';
     g.beginPath(); g.moveTo(ia[0], ia[1]); g.lineTo(ib[0], ib[1]); g.stroke(); g.lineCap = 'round';
     g.strokeStyle = ca(pal.lining, side === 'n' ? 0.8 : 0.5); g.lineWidth = thin(F, 1.3);
     g.beginPath(); g.moveTo(cuffT[0], cuffT[1]); g.quadraticCurveTo(cuffM[0], cuffM[1], mid(cuffM, cuffB, 0.6)[0], mid(cuffM, cuffB, 0.6)[1]); g.stroke();
-    if (slide > 0.05) limb(g, [C, W], [5.6, 5.2], col);
+    if (slide > 0.05) {
+      limb(g, [C, W], [5.6, 5.2], pal.innerSleeve);
+      if (line) { g.strokeStyle = ca(line, la * 0.8); g.lineWidth = thin(F, 0.6); g.beginPath(); const e0 = ma(C, perp(fd), 2.8), e1 = ma(W, perp(fd), 2.6); g.moveTo(e0[0], e0[1]); g.lineTo(e1[0], e1[1]); g.stroke(); }
+    }
     // 水袖：舞姿时从袖口甩出长绢
     if (F.PS.dancing && (sp.sex === 'f')) {
       const a0 = angOf(fd), aim = aimAng(F, 0.55);
       const pts2 = flow(C, a0, aim, 84, 12, 0.8, 0.5, 1.6, t, ph + 0.7, 3.2);
       g.globalAlpha *= 0.7; silk(g, pts2, 9, 4, ca(pal.gauze || pal.accent, 1), null, t, ph, 1.2); g.globalAlpha /= 0.7;
     }
-    hand(g, F, W, d, kind, col);
+    hand(g, F, W, d, kind, hc, slide < 0.3 ? 2.6 : 0);
   }
 
   // ---------- 部件：腿、脚 ----------
@@ -573,8 +670,9 @@
     const fd = footDir(F, K, A), fn = perp(fd);
     const pts = [ma(A, fd, -3.6), corner(ma(ma(A, fd, -4.2), fn, ANK * 0.95)), ma(ma(A, fd, 10.5), fn, ANK),
       corner(ma(ma(A, fd, 13.2), fn, ANK * 0.55)), ma(ma(A, fd, 7), fn, 1.4), ma(A, fd, 3.2)];
-    fillC(g, pts, col);
-    if (boot) limb(g, [mid(K, A, 0.62), A], [8.6, 8], col);
+    if (boot) limb(g, [mid(K, A, boot.from ?? 0.62), A], [8.8, 8], boot.col || col);
+    fillC(g, pts, boot ? boot.col || col : col);
+    if (F.pal.line) { g.strokeStyle = ca(F.pal.line, 0.7); g.lineWidth = thin(F, 0.6); g.beginPath(); pathC(g, pts); g.stroke(); }
   }
   function leg(g, F, H, K, A, col, opt = {}) {
     const ws = opt.ws || [15, 10.5, 8.4];
@@ -591,6 +689,36 @@
   }
 
   // ---------- 下裳 ----------
+  // 墨色晕染：腰间浓墨，往下摆渐淡成角色色，下摆略透
+  function washGrad(g, F, p0, p1) {
+    const pal = F.pal;
+    const gr = g.createLinearGradient(p0[0], p0[1], p1[0], p1[1]);
+    gr.addColorStop(0, pal.panel);
+    gr.addColorStop(0.32, mixc(pal.panel, pal.hem, 0.16));
+    gr.addColorStop(0.78, mixc(pal.panel, pal.hem, 0.74, lerp(1, pal.hemA, 0.55)));
+    gr.addColorStop(1, ca(pal.hem, pal.hemA));
+    return gr;
+  }
+  // 枯笔：沿下摆两三道断续的渐细笔触
+  function dryBrush(g, F, pts, upv, k0) {
+    const pal = F.pal, n = pts.length;
+    if (F.px > 1.2 || n < 2) return;
+    for (let k = 0; k < 3; k++) {
+      const r = A.h2(k + k0 * 7, 51), off = 2 + k * 2.4 + r * 1.2;
+      const u0 = 0.06 + 0.3 * A.h2(k, 52 + k0), u1 = Math.min(0.98, u0 + 0.35 + 0.4 * A.h2(k, 53 + k0));
+      const seg = [];
+      for (let i = 0; i <= 6; i++) {
+        const u = lerp(u0, u1, i / 6), x = u * (n - 1), j = Math.min(n - 2, Math.floor(x));
+        seg.push(ma(mid(pts[j], pts[j + 1], x - j), upv, off + Math.sin(i * 1.7 + k) * 0.6));
+      }
+      taper(g, seg, (u) => thin(F, (1.5 - k * 0.35) * Math.sin(PI * Math.min(1, u * 1.15 + 0.04))), ca(pal.brush, 0.34 - k * 0.08));
+    }
+  }
+  function outline(g, F, path, a = 0.85) {
+    if (!F.pal.line) return;
+    g.strokeStyle = ca(F.pal.line, a); g.lineWidth = thin(F, 0.8);
+    path ? g.stroke(path) : g.stroke();
+  }
   // 一整片：前缘贴前腿，后缘随风外扬；两腿分开时侧衩自然张开，露出裤腿
   function lowerGarment(g, F) {
     const { J, sp, pal, T, wind, t } = F;
@@ -621,6 +749,101 @@
     const WB = highW ? at(J, J.N, -sp.chest + 0.5, -19) : at(J, J.P, -sp.waist - 1, 15);
     const wide = dressy ? (g0 === 'longgown' ? 9 : 12) : 8;
     const hipF = fwd(J, J.P, highW ? 10 : 10.5), hipB = fwd(J, J.P, -12);
+    const waveL = (a, b, k, kf) => {
+      const out = [];
+      for (let i = 1; i <= 2; i++) {
+        const p = mid(a, b, i / 3);
+        const q = [p[0], p[1] - k * (1 + 1.4 * Math.sin(t * 2.1 + i * 2.3 + F.ph)) * (i % 2 ? 1 : -0.5)];
+        out.push(kf ? flare(q, kf, 0.5) : q);
+      }
+      return out;
+    };
+    const legOpt = () => ({
+      boot: g0 !== 'short' && g0 !== 'miao' ? { col: pal.boot, from: g0 === 'jin' ? 0.42 : 0.62 } : null,
+      band: g0 === 'short' ? mixc(pal.leg, '#ffffff', 0.25) : g0 === 'miao' ? pal.silver : null,
+      ws: sp.sex === 'f' ? [13, 9, 7] : [15, 10.5, 8.4],
+    });
+    // 裤腿与靴
+    if (!dressy && !sp.nuwa && !F.PS.ledge) {
+      const opt = legOpt();
+      leg(g, F, J.Hf, J.Kf, J.Af, mixc(pal.leg, '#ffffff', 0.05), opt);
+      leg(g, F, J.Hn, J.Kn, J.An, pal.leg, opt);
+    } else if (!sp.nuwa && !F.PS.ledge && !F.PS.lying && (g0 === 'longgown' || F.PS.walking || F.PS.seated || F.PS.kneeling)) {
+      foot(g, F, J.Kf, J.Af, pal.shoeF); foot(g, F, J.Kn, J.An, pal.shoe);
+    }
+    // 卧姿长衣：上缘随双腿起伏，下缘铺地成波浪，轻纱拖过脚尖
+    if (F.PS.lying && (dressy || long) && !sp.nuwa) {
+      const legs = [[J.Hn, J.Kn, J.An], [J.Hf, J.Kf, J.Af]];
+      const pad = dressy ? 9.5 : 8;
+      const topAt = (f) => {
+        let best = null;
+        for (const [H, K, Aa] of legs) {
+          const p = alongLeg(H, K, Aa, f), nn = f > 0.5 ? fnorm(K, Aa) : fnorm(H, K);
+          const q = ma(p, nn[1] < 0 ? nn : mul(nn, -1), pad - f * 3);
+          if (!best || q[1] < best[1]) best = q;
+        }
+        return best;
+      };
+      const ld = nrm(sub(mid(J.An, J.Af), J.P)), sx = ld[0] >= 0 ? 1 : -1;
+      const far = dot(sub(J.An, J.P), ld) > dot(sub(J.Af, J.P), ld) ? J.An : J.Af;
+      const tip = [far[0] + sx * (dressy ? 15 : 4), -0.4], trail = [far[0] + sx * (30 + 6 * Math.sin(t * 0.9 + F.ph)), -0.4];
+      const hb = [J.P[0] - sx * 6, -0.4];
+      const ground = [];
+      for (let i = 1; i <= 5; i++) {
+        const u = i / 6, x = lerp(tip[0], hb[0], u);
+        ground.push([x, -0.6 - 1.4 * Math.abs(Math.sin(i * 1.9 + F.ph + t * 0.6))]);
+      }
+      const tops = [0.12, 0.34, 0.56, 0.78, 0.97].map(topAt).map((p) => [p[0], Math.min(p[1], -2)]);
+      const shape = [WF, ...tops, corner(tip), ...ground, corner(hb), WB];
+      const path = new Path2D(); pathT(path, shape.map((p) => [p[0], Math.min(p[1], -0.4), p[2]]), 0.7);
+      g.fillStyle = washGrad(g, F, J.P, far); g.fill(path);
+      if (pal.gauze && dressy) { g.fillStyle = ca(pal.gauze, 0.14); g.fill(path); }
+      outline(g, F, path);
+      // 拖地轻纱（只有长裙才有）
+      if (dressy) {
+        const gz = [tops[3], add(tops[4], [sx * 4, 2]), corner(trail), [lerp(trail[0], far[0], 0.5), -1.2], corner([far[0] - sx * 10, -0.4])];
+        g.beginPath(); pathT(g, gz, 0.6);
+        g.fillStyle = ca(pal.gauze || pal.hem, 0.32); g.fill();
+        if (pal.gauze) { g.strokeStyle = ca(pal.gauze, 0.35); g.lineWidth = thin(F, 0.6); g.stroke(); }
+      }
+      dryBrush(g, F, [tip, ...ground, hb], [0, -1], 1);
+      return;
+    }
+    // 坐、跪、卧：取髋、膝、踝外扩点的凸包作衣裳外形，贴地处压平
+    if (F.PS.seated || F.PS.kneeling || F.PS.lying) {
+      const pad = dressy ? 9.5 : 8;
+      // 坐墙头：衣摆只到小腿，下面露出小腿和鞋
+      if (F.PS.ledge) for (const k of ['f', 'n']) {
+        const K = J['K' + k], Aa = J['A' + k], c = k === 'n' ? pal.leg : mixc(pal.leg, '#ffffff', 0.05);
+        limb(g, [mid(K, Aa, 0.2), Aa], sp.sex === 'f' ? [9, 7] : [10.5, 8.4], c);
+        foot(g, F, K, Aa, k === 'n' ? pal.shoe : pal.shoeF, g0 !== 'short' && g0 !== 'miao' && !dressy ? { col: pal.boot } : null);
+      }
+      const base = [WF, WB, hipF, hipB, at(J, J.P, -10, -6), at(J, J.P, 8, -6)];
+      if (F.PS.ledge) base.push(at(J, J.P, -12, -16), at(J, J.P, -4, -20));
+      const path = new Path2D();
+      let farPt = J.P;
+      // 每条腿各取一个凸包，两腿之间保留衣裳的凹陷
+      for (const k of ['n', 'f']) {
+        const H = J['H' + k], K = J['K' + k], Aa = J['A' + k];
+        const e = F.PS.ledge ? alongLeg(H, K, Aa, 0.7) : long || dressy ? Aa : alongLeg(H, K, Aa, frac);
+        const P0 = base.slice();
+        for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8; P0.push(add(K, mul(pol(a), pad)), add(e, mul(pol(a), pad * (long ? 0.85 : 0.7)))); }
+        if (frac > 0.5) P0.push(add(mid(K, e, 0.5), mul(fnorm(K, e), pad)));
+        let hl = hull(P0);
+        if (F.PS.floor) hl = hl.map((p) => [p[0], Math.min(p[1], -0.4)]);
+        // 背风一侧随风轻扬
+        hl = hl.map((p) => { const d = dot(sub(p, J.P), T); return d > 6 ? add(p, mul(T, wv * 6 * clamp((d - 6) / 40))) : p; });
+        pathT(path, hl, 0.85);
+        if (Math.hypot(e[0] - J.P[0], e[1] - J.P[1]) > Math.hypot(farPt[0] - J.P[0], farPt[1] - J.P[1])) farPt = e;
+      }
+      g.fillStyle = washGrad(g, F, at(J, J.P, 0, 12), farPt); g.fill(path);
+      if (pal.gauze && dressy) { g.fillStyle = ca(pal.gauze, 0.16); g.fill(path); }
+      outline(g, F, path);
+      g.strokeStyle = ca(pal.fold, 0.24); g.lineWidth = thin(F, 0.75);
+      const a1 = fwd(J, J.P, 2), b1 = mid(J.Kn, J.An, 0.6);
+      g.beginPath(); g.moveTo(a1[0], a1[1]); g.quadraticCurveTo(J.Kn[0], J.Kn[1] - 4, b1[0], b1[1]); g.stroke();
+      return;
+    }
     const hemF = add(hemAt(FH, FK, FA, 1, frac, wide), mul(T, wv * 3));
     let hemB = flare(hemAt(BH, BK, BA, -1, frac, dressy ? wide - 1 : wide + 3), 1, 1.1);
     if (g0 === 'gown' || g0 === 'priest') hemB = add(hemB, [-14 - 12 * wind, 0]);
@@ -636,65 +859,18 @@
     const slit = dressy ? 0 : clamp((sep - 6) / 34, 0, 1);
     const crotch = up(J, J.P, -(frac > 0.6 ? 24 : 8));
     const apex = mid(mid(hfIn, hbIn), crotch, slit * 0.82);
-    const waveL = (a, b, k, kf) => {
-      const out = [];
-      for (let i = 1; i <= 2; i++) {
-        const p = mid(a, b, i / 3);
-        const q = [p[0], p[1] - k * (1 + 1.4 * Math.sin(t * 2.1 + i * 2.3 + F.ph)) * (i % 2 ? 1 : -0.5)];
-        out.push(kf ? flare(q, kf, 0.5) : q);
-      }
-      return out;
-    };
-    // 裤腿与靴
-    if (!dressy && !sp.nuwa) {
-      const opt = { boot: g0 !== 'short' && g0 !== 'miao', band: g0 === 'short' ? mixc(pal.ink, '#ffffff', 0.25) : g0 === 'miao' ? pal.silver : null,
-        ws: sp.sex === 'f' ? [13, 9, 7] : [15, 10.5, 8.4] };
-      leg(g, F, J.Hf, J.Kf, J.Af, mixc(pal.leg, '#ffffff', 0.05), opt);
-      leg(g, F, J.Hn, J.Kn, J.An, pal.leg, opt);
-    } else if (!sp.nuwa && (g0 === 'longgown' || F.PS.walking || F.PS.seated || F.PS.kneeling)) {
-      foot(g, F, J.Kf, J.Af, pal.far); foot(g, F, J.Kn, J.An, pal.ink);
-    }
-    // 坐、跪、卧：取髋、膝、踝外扩点的凸包作衣裳外形，贴地处压平
-    if (F.PS.seated || F.PS.kneeling || F.PS.lying) {
-      const pad = dressy ? 9.5 : 8;
-      const base = [WF, WB, hipF, hipB, at(J, J.P, -10, -6), at(J, J.P, 8, -6)];
-      if (F.PS.ledge) base.push(at(J, J.P, -12, -16), at(J, J.P, -4, -20));
-      const path = new Path2D();
-      // 每条腿各取一个凸包，两腿之间保留衣裳的凹陷
-      for (const k of ['n', 'f']) {
-        const H = J['H' + k], K = J['K' + k], Aa = J['A' + k];
-        const e = long || dressy ? Aa : alongLeg(H, K, Aa, frac);
-        const P0 = base.slice();
-        for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8; P0.push(add(K, mul(pol(a), pad)), add(e, mul(pol(a), pad * (long ? 0.85 : 0.7)))); }
-        if (frac > 0.5) P0.push(add(mid(K, e, 0.5), mul(fnorm(K, e), pad)));
-        let hl = hull(P0);
-        if (F.PS.floor) hl = hl.map((p) => [p[0], Math.min(p[1], -0.4)]);
-        // 背风一侧随风轻扬
-        hl = hl.map((p) => { const d = dot(sub(p, J.P), T); return d > 6 ? add(p, mul(T, wv * 6 * clamp((d - 6) / 40))) : p; });
-        pathT(path, hl, 0.9);
-      }
-      const gr = g.createLinearGradient(J.P[0] - 20, 0, J.P[0] + 100, 0);
-      gr.addColorStop(0, pal.panel); gr.addColorStop(1, mixc(pal.panel, pal.accent, dressy ? 0.12 : 0.06));
-      g.fillStyle = gr; g.fill(path);
-      if (pal.gauze && dressy) { g.fillStyle = ca(pal.gauze, 0.16); g.fill(path); }
-      g.strokeStyle = ca(pal.fold, 0.24); g.lineWidth = thin(F, 0.75);
-      const a1 = fwd(J, J.P, 2), b1 = mid(J.Kn, J.An, 0.6);
-      g.beginPath(); g.moveTo(a1[0], a1[1]); g.quadraticCurveTo(J.Kn[0], J.Kn[1] - 4, b1[0], b1[1]); g.stroke();
-      return;
-    }
     const shape = [corner(WF), highW ? at(J, J.P, 10, 6) : hipF];
     if (useKnee) shape.push(kneeF);
-    shape.push(corner(hemF), ...waveL(hemF, hfIn, 0.8));
-    if (dressy) shape.push(...waveL(hfIn, hemB, 1.2, 0.9));
-    else shape.push(corner(hfIn), slit > 0.05 ? corner(apex) : apex, corner(hbIn), ...waveL(hbIn, hemB, 1, 0.95));
+    const wF = waveL(hemF, hfIn, 0.8), wB = dressy ? waveL(hfIn, hemB, 1.2, 0.9) : waveL(hbIn, hemB, 1, 0.95);
+    shape.push(corner(hemF), ...wF);
+    if (dressy) shape.push(...wB);
+    else shape.push(corner(hfIn), slit > 0.05 ? corner(apex) : apex, corner(hbIn), ...wB);
     shape.push(corner(hemB));
     if (useKnee) shape.push(shinB, kneeB);
     shape.push(flare(highW ? at(J, J.P, -12, 6) : hipB, 0.25), corner(WB));
     const path = new Path2D(); pathC(path, shape);
-    const y0 = useKnee ? FK[1] : J.P[1], y1 = Math.max(hemF[1], hemB[1]);
-    const gr = g.createLinearGradient(0, y0, 0, y1 + 2);
-    gr.addColorStop(0, pal.panel); gr.addColorStop(1, mixc(pal.panel, pal.accent, dressy ? 0.1 : 0.06));
-    g.fillStyle = gr; g.fill(path);
+    const y1 = Math.max(hemF[1], hemB[1]);
+    g.fillStyle = washGrad(g, F, mid(WF, WB), mid(hemF, hemB)); g.fill(path);
     if (g0 === 'miao') {
       g.save(); g.clip(path);
       g.strokeStyle = ca(pal.fold, 0.5); g.lineWidth = thin(F, 0.7);
@@ -714,7 +890,9 @@
         const c = add(mid(a, b, 0.55), mul(T, 2 + i * 2));
         g.beginPath(); g.moveTo(a[0], a[1]); g.quadraticCurveTo(c[0], c[1], b[0], b[1]); g.stroke();
       }
+      if (frac > 0.35) dryBrush(g, F, dressy ? [hemF, ...wF, ...wB, hemB] : [hemF, ...wF, hfIn], J.up, 0);
     }
+    outline(g, F, path);
     // 轻纱罩裙：沿裙身外扩，越往下越飘越浓
     if (pal.gauze && (g0 === 'dress' || g0 === 'gown')) {
       const out = (p, u, k) => {
@@ -731,20 +909,29 @@
       gz.push(out(highW ? at(J, J.P, -12, 6) : hipB, 0.3, 1), corner(at(J, J.N, -sp.chest - 0.5, -17)));
       g.beginPath(); pathC(g, gz);
       const gg = g.createLinearGradient(0, J.N[1] - 17, 0, y1);
-      gg.addColorStop(0, ca(pal.gauze, 0.05)); gg.addColorStop(0.55, ca(pal.gauze, 0.14)); gg.addColorStop(1, ca(pal.gauze, 0.3));
+      const ga = pal.line ? 0.75 : 1;
+      gg.addColorStop(0, ca(pal.gauze, 0.05 * ga)); gg.addColorStop(0.55, ca(pal.gauze, 0.14 * ga)); gg.addColorStop(1, ca(pal.gauze, 0.3 * ga));
       g.fillStyle = gg; g.fill();
-      g.strokeStyle = ca(pal.gauze, 0.3); g.lineWidth = thin(F, 0.6); g.stroke();
+      g.strokeStyle = ca(pal.line ? mixc(pal.gauze, pal.line, 0.35) : pal.gauze, 0.32); g.lineWidth = thin(F, 0.6); g.stroke();
     }
   }
 
   // ---------- 女娲蛇尾 ----------
+  // 三种盘法：立（高盘）、低（坐跪时贴地盘起）、卧（沿地面伸展）；控制点相对骨盆，bs 为腹面所在一侧
+  const TAILS = {
+    up: { pel: -104, bs: -1, pts: [[0, 0], [-3, 24], [10, 52], [30, 76], [24, 94], [-6, 101], [-44, 99], [-74, 86], [-94, 62], [-90, 40], [-78, 34]] },
+    low: { pel: -62, bs: -1, pts: [[0, 0], [3, 20], [17, 40], [26, 55], [10, 61], [-20, 61], [-54, 58], [-80, 48], [-93, 30], [-86, 17]] },
+    lie: { pel: -16, bs: 1, pts: [[0, 0], [14, 9], [34, 14], [60, 15], [88, 14.5], [114, 13.5], [138, 12], [158, 9], [174, 3], [184, -6]] },
+  };
+  const tailKind = (pose) => (pose === 'lie' || pose === 'fall' ? 'lie' : pose === 'sit' || pose === 'kneel' ? 'low' : 'up');
   function tail(g, F) {
-    const { J, pal, t, wind } = F;
-    const P = J.P, ph = F.ph;
-    const base = [[0, 0], [-3, 24], [10, 52], [30, 76], [24, 94], [-6, 101], [-44, 99], [-74, 86], [-94, 62], [-90, 40], [-78, 34]];
-    const cp = base.map(([x, y], i) => {
-      const k = i / (base.length - 1), a = 2 + 9 * k * k;
-      return [P[0] + x + Math.sin(t * 1.15 - i * 0.75 + ph) * a * (k > 0.4 ? 1 : 0.4), P[1] + y + Math.cos(t * 0.9 - i * 0.6 + ph) * a * 0.55 * (i < 5 ? 0.2 : 1)];
+    const { J, pal, t } = F;
+    const P = J.P, ph = F.ph, L = TAILS[F.tailKind || 'up'];
+    const lie = L === TAILS.lie;
+    const cp = L.pts.map(([x, y], i) => {
+      const k = i / (L.pts.length - 1), a = 2 + 9 * k * k;
+      if (lie) return [P[0] + x + Math.sin(t * 1.1 - i * 0.7 + ph) * 2 * k, Math.min(-0.5, P[1] + y + Math.sin(t * 1.4 - i * 0.9 + ph) * a * 0.35 * k)];
+      return [P[0] + x + Math.sin(t * 1.15 - i * 0.75 + ph) * a * (k > 0.4 ? 1 : 0.4), Math.min(-0.5, P[1] + y + Math.cos(t * 0.9 - i * 0.6 + ph) * a * 0.55 * (i < 5 ? 0.2 : 1))];
     });
     // Catmull-Rom 采样
     const pts = [];
@@ -756,26 +943,44 @@
       }
     }
     pts.push(cp[cp.length - 1]);
+    const n = pts.length, bs = L.bs;
     const wf = (u) => (u < 0.08 ? lerp(19, 23, u / 0.08) : 23 * Math.pow(1 - (u - 0.08) / 0.92, 0.85) + 0.8);
-    const gr = g.createLinearGradient(P[0] - 60, P[1], P[0] + 30, P[1] + 100);
-    gr.addColorStop(0, pal.tail); gr.addColorStop(1, mixc(pal.tail, pal.scale, 0.28));
+    const nrmAt = (i) => { const d = nrm(sub(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)])); return mul(perp(d), -bs); }; // 指向腹面
+    // 背鳍：半透明薄鳍沿背脊起伏
+    const fin = [], fin2 = [];
+    for (let i = Math.round(n * 0.12); i < Math.round(n * 0.9); i++) {
+      const u = i / (n - 1), nn = nrmAt(i), w = wf(u);
+      const hgt = (5 + 3 * Math.sin(t * 2.4 - i * 0.45 + ph)) * (1 - u * 0.6);
+      fin.push(ma(pts[i], nn, -w * 0.42)); fin2.push(ma(pts[i], nn, -w * 0.42 - hgt));
+    }
+    if (fin.length > 2) {
+      g.beginPath(); curve(g, fin, true); curve(g, fin2.reverse(), false); g.closePath();
+      g.fillStyle = ca(pal.scale, 0.26); g.fill();
+      g.strokeStyle = ca(mixc(pal.scale, '#ffffff', 0.4), 0.4); g.lineWidth = thin(F, 0.6); g.beginPath(); curve(g, fin2, true); g.stroke();
+    }
+    // 尾身：珠光渐变
+    const gr = g.createLinearGradient(P[0], P[1], pts[n - 1][0], pts[n - 1][1]);
+    gr.addColorStop(0, pal.tail); gr.addColorStop(0.5, mixc(pal.tail, pal.scale, 0.22)); gr.addColorStop(1, mixc(pal.tail, pal.scale, 0.45));
     taper(g, pts, wf, gr);
-    // 腹鳞亮带与鳞纹
-    const n = pts.length;
-    g.strokeStyle = ca(pal.scale, 0.3); g.lineWidth = 2.2;
-    g.beginPath();
-    for (let i = 2; i < n; i++) { const u = i / (n - 1), d = nrm(sub(pts[i], pts[i - 1])), q = ma(pts[i], perp(d), -wf(u) * 0.32); i > 2 ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
-    g.stroke();
-    g.lineWidth = Math.max(0.6, F.px);
-    for (let i = 2; i < n - 2; i++) {
-      const u = i / (n - 1), d = nrm(sub(pts[i + 1], pts[i - 1])), nn = perp(d), w = wf(u);
-      const sh = 0.5 + 0.5 * Math.sin(t * 2.2 - i * 0.5);
-      g.strokeStyle = ca(pal.scale, 0.18 + 0.32 * sh);
-      for (let r = -1; r <= 1; r += 2) {
-        const c = ma(pts[i], nn, r * w * 0.18 + (i % 2) * w * 0.08), a = angOf(d);
-        g.beginPath(); g.arc(c[0], c[1], w * 0.2, a + PI * 0.55, a + PI * 1.45); g.stroke();
+    // 腹面浅色亮带
+    const belly = pts.map((p, i) => ma(p, nrmAt(i), wf(i / (n - 1)) * 0.26));
+    taper(g, belly, (u) => wf(u) * 0.36, ca(mixc(pal.scale, '#ffffff', 0.35), 0.42));
+    // 鳞：两行错位的大鳞片，越近尾尖越淡越小
+    if (F.px < 1.1) for (let i = 3; i < n - 3; i += 2) {
+      const u = i / (n - 1), d = nrm(sub(pts[i + 1], pts[i - 1])), nn = nrmAt(i), w = wf(u), a = angOf(d);
+      const sh = 0.5 + 0.5 * Math.sin(t * 2.2 - i * 0.5 + ph);
+      const al = (0.16 + 0.3 * sh) * (1 - u * 0.8);
+      for (let r = 0; r < 2; r++) {
+        const c = ma(ma(pts[i], nn, (r ? 0.05 : -0.2) * w), d, r ? w * 0.22 : 0);
+        g.strokeStyle = ca(mixc(pal.scale, '#ffffff', 0.3), al); g.lineWidth = thin(F, 0.9);
+        g.beginPath(); g.arc(c[0], c[1], w * 0.26, a + PI * 0.6, a + PI * 1.4); g.stroke();
       }
     }
+    // 尾尖鳍
+    const e = pts[n - 1], ed = nrm(sub(e, pts[n - 3])), en = perp(ed), fw2 = 4 * Math.sin(t * 2.6 + ph);
+    g.fillStyle = ca(pal.scale, 0.38);
+    g.beginPath(); g.moveTo(...ma(e, ed, -4)); g.quadraticCurveTo(...ma(ma(e, ed, 6), en, 9 + fw2), ...ma(ma(e, ed, 14), en, 4 + fw2));
+    g.quadraticCurveTo(...ma(e, ed, 7), ...ma(ma(e, ed, 13), en, -6 + fw2 * 0.5)); g.quadraticCurveTo(...ma(ma(e, ed, 4), en, -6), ...ma(e, ed, -4)); g.fill();
   }
 
   // ---------- 上身 ----------
@@ -788,7 +993,21 @@
       at(J, J.P, -11, 0), at(J, J.P, -wa - 1.5, 16), at(J, J.N, -9.8, -14), at(J, J.N, -8.6, -2.5),
     ];
     if (f) pts.splice(4, 0, at(J, J.N, ch + 0.8, -17.5));
-    fillC(g, pts, sp.garment === 'miao' || sp.garment === 'jin' ? pal.ink : pal.panelTop);
+    g.beginPath(); pathC(g, pts);
+    if (pal.line) {
+      // 浅色衣料：背侧略深，显出体积
+      const gr = g.createLinearGradient(...at(J, J.N, -10, -10), ...at(J, J.N, ch, -10));
+      gr.addColorStop(0, mixc(pal.panelTop, pal.hem, 0.35)); gr.addColorStop(0.6, pal.panelTop); gr.addColorStop(1, pal.panelTop);
+      g.fillStyle = gr;
+    } else g.fillStyle = pal.panelTop;
+    g.fill();
+    outline(g, F, null, 0.8);
+    if (sp.garment === 'jin') {
+      // 劲装：深色宽腰封与铜扣
+      const a = at(J, J.P, -wa - 1.5, 13), b = at(J, J.P, wa + 1, 13), c = at(J, J.P, -wa - 1.2, 19.5), d = at(J, J.P, wa + 0.6, 19.5);
+      fillC(g, [corner(a), corner(b), corner(d), corner(c)], pal.bracer);
+      g.fillStyle = pal.metal; g.beginPath(); g.arc(...at(J, J.P, wa - 1, 16.2), 1.6, 0, TAU); g.fill();
+    }
     // 交领：浅色中衣领口斜下
     // 交领：自颈前斜下，掩向腋下
     const nf = at(J, J.N, 3.4, 2.2), c1 = at(J, J.N, 6.8, -8), c2 = at(J, J.N, 1, -21);
@@ -839,6 +1058,7 @@
     const y = highW ? -19 : 15, base = highW ? J.N : J.P;
     const a = at(J, base, -(highW ? sp.chest : sp.waist + 1.2), y), b = at(J, base, (highW ? sp.chest : sp.waist + 0.5) + 0.3, y);
     if (layer === 'band') {
+      if (sp.garment === 'jin') return;
       g.strokeStyle = pal.sash; g.lineWidth = highW ? 3.2 : 4.4; g.lineCap = 'butt';
       g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); g.lineCap = 'round';
       return;
@@ -864,8 +1084,16 @@
     const H = headTf(F);
     // 颈
     const f = sp.sex === 'f';
-    fillC(g, [corner(H.p(-5.4, 6.5)), corner(H.p(f ? 2 : 3, 9.5)), corner(at(J, J.N, f ? 4 : 4.8, 0)), corner(at(J, J.N, f ? -3.8 : -4.6, 0))], pal.ink);
-    inHead(g, F, () => fillC(g, f ? FACE_F : FACE_M, pal.ink));
+    const neck = [corner(H.p(-5.4, 6.5)), corner(H.p(f ? 2 : 3, 9.5)), corner(at(J, J.N, f ? 4 : 4.8, 0)), corner(at(J, J.N, f ? -3.8 : -4.6, 0))];
+    fillC(g, neck, pal.skin);
+    inHead(g, F, () => {
+      g.beginPath(); pathC(g, f ? FACE_F : FACE_M); g.fillStyle = pal.skin; g.fill();
+      if (pal.line) { g.strokeStyle = ca(pal.line, 0.9); g.lineWidth = thin(F, 0.75); g.stroke(); }
+    });
+    if (pal.line) {
+      const a = H.p(f ? 2 : 3, 9.5), b = at(J, J.N, f ? 4 : 4.8, 0.5);
+      g.strokeStyle = ca(pal.line, 0.7); g.lineWidth = thin(F, 0.6); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
   }
 
   // 飘发：一绺主发加若干细丝
@@ -874,7 +1102,9 @@
     const ww = clamp(0.05 + 0.5 * F.wind * k, 0, 0.85);
     const aim = aimAng(F, ww);
     const amp = 0.09 * (0.45 + F.wind) * k;
-    const pts = floorC(F, flow(anchor, a0, aim, L, 12, 0.85, amp, 1.7, t, F.ph, 3.2));
+    // 头向后垂（倚卧）时，头发离开头皮就顺重力直落
+    if (F.PS.limp) a0 = lerp(a0, aim + Math.atan2(Math.sin(a0 - aim), Math.cos(a0 - aim)) * 0.25, 0.8);
+    const pts = floorC(F, flow(anchor, a0, aim, L, 12, F.PS.limp ? 2.4 : 0.85, amp, 1.7, t, F.ph, 3.2));
     taper(g, pts, (u) => (u < 0.22 ? lerp(w0 * 0.75, w0, u / 0.22) : lerp(w0, 1.1, Math.pow((u - 0.22) / 0.78, 1.25))), pal.hair);
     for (let i = 0; i < nStr; i++) {
       const r = A.h2(i, 31), off = (r - 0.5) * w0 * 0.5;
@@ -1049,8 +1279,10 @@
       inHead(g, F, () => {
         fillC(g, [corner([-9.5, -8]), [-11.4, -14], corner([-8.6, -26]), [-4, -24.5], corner([0.4, -30.4]), [3.4, -24], corner([7.8, -25.4]), [6.8, -15], corner([7, -9])], pal.ink);
         g.strokeStyle = pal.accent2; g.lineWidth = 1; g.beginPath(); g.moveTo(-10, -10.5); g.lineTo(7, -11); g.stroke();
+        // 手持月杖时冠上只留一颗银珠，免得两弯新月并排
         g.fillStyle = pal.moon;
-        g.beginPath(); g.arc(0.8, -36, 6.4, 0.5, PI * 2 - 0.5 + 0.0); g.arc(3.4, -37.4, 5.3, PI * 2 - 0.75, 0.75, true); g.closePath(); g.fill();
+        if (F.holds.n === 'prop' && F.prop === 'staff') { g.beginPath(); g.arc(0.4, -32.4, 2.2, 0, TAU); g.fill(); }
+        else { g.beginPath(); g.arc(0.8, -36, 6.4, 0.5, PI * 2 - 0.5 + 0.0); g.arc(3.4, -37.4, 5.3, PI * 2 - 0.75, 0.75, true); g.closePath(); g.fill(); }
         g.fillStyle = pal.accent; g.beginPath(); g.arc(-1.2, -16, 1.8, 0, TAU); g.fill();
       });
       return;
@@ -1164,15 +1396,29 @@
     const c = at(J, J.N, -7, -12);
     const flap = 0.62 + 0.38 * Math.abs(Math.sin(t * 1.4 + F.ph));
     const base = angOf(nrm(add(mul(J.fw, -1), mul(J.up, 0.25))));
+    const w1 = pal.wing1, w2 = pal.wing2;
     g.save(); g.translate(c[0], c[1]); g.rotate(base); g.scale(1, flap);
-    const gr = g.createLinearGradient(0, -40, 46, 30);
-    gr.addColorStop(0, ca(pal.accent, 0.55)); gr.addColorStop(1, ca(pal.accent2, 0.5));
-    g.fillStyle = gr;
-    g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(10, -46, 52, -48, 50, -18); g.bezierCurveTo(48, -6, 22, -2, 0, 0); g.fill();
-    g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(16, 6, 40, 14, 34, 32); g.bezierCurveTo(26, 42, 6, 22, 0, 0); g.fill();
-    g.strokeStyle = ca('#ffffff', 0.35); g.lineWidth = 0.7;
-    for (const [x, y] of [[40, -30], [46, -16], [28, -36], [30, 24], [22, 28]]) { g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(x * 0.5, y * 0.4, x, y); g.stroke(); }
-    g.fillStyle = ca('#ffffff', 0.45); g.beginPath(); g.arc(38, -24, 3, 0, TAU); g.fill(); g.beginPath(); g.arc(26, 20, 2.2, 0, TAU); g.fill();
+    const upW = new Path2D(); upW.moveTo(0, 0); upW.bezierCurveTo(10, -46, 52, -48, 50, -18); upW.bezierCurveTo(48, -6, 22, -2, 0, 0);
+    const loW = new Path2D(); loW.moveTo(0, 0); loW.bezierCurveTo(16, 6, 40, 14, 34, 32); loW.bezierCurveTo(26, 42, 6, 22, 0, 0);
+    const gr = g.createRadialGradient(3, -2, 1, 18, -8, 56);
+    gr.addColorStop(0, ca('#fffbf0', 0.82)); gr.addColorStop(0.32, ca(w1, 0.8)); gr.addColorStop(0.78, ca(mixc(w1, w2, 0.6), 0.78)); gr.addColorStop(1, ca(w2, 0.85));
+    g.fillStyle = gr; g.fill(upW); g.fill(loW);
+    // 翅脉与眼斑
+    g.strokeStyle = ca('#ffffff', 0.6); g.lineWidth = thin(F, 0.7);
+    for (const [x, y] of [[40, -30], [47, -17], [28, -37], [16, -36], [30, 24], [22, 30], [36, 14]]) { g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(x * 0.5, y * 0.4, x, y); g.stroke(); }
+    g.strokeStyle = ca(mixc(w2, '#5a2030', 0.35), 0.55); g.lineWidth = thin(F, 1.1);
+    g.stroke(upW); g.stroke(loW);
+    g.fillStyle = ca('#3a1e2a', 0.45); g.beginPath(); g.arc(38, -25, 4.6, 0, TAU); g.fill();
+    g.fillStyle = ca(pal.accent2, 0.9); g.beginPath(); g.arc(38, -25, 3, 0, TAU); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(37.2, -25.8, 1.1, 0, TAU); g.fill();
+    g.fillStyle = ca('#ffffff', 0.7); g.beginPath(); g.arc(26, 22, 2.2, 0, TAU); g.fill(); g.beginPath(); g.arc(46, -12, 1.4, 0, TAU); g.fill();
+    if (F.night) {
+      // 夜里翅缘发光
+      const op = g.globalCompositeOperation; g.globalCompositeOperation = 'lighter';
+      g.strokeStyle = ca(w1, 0.5); g.lineWidth = 2.6; g.stroke(upW); g.stroke(loW);
+      g.strokeStyle = ca('#ffffff', 0.45); g.lineWidth = thin(F, 0.8); g.stroke(upW); g.stroke(loW);
+      g.globalCompositeOperation = op;
+    }
     g.restore();
   }
   function shawl(g, F, layer) {
@@ -1230,21 +1476,62 @@
     g.strokeStyle = pal.tassel; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-3.6, 8.6); g.lineTo(3.6, 8.6); g.stroke();
     g.restore();
   }
+  // 道具几何（不画）：剑尖、灯笼、杖头、伞顶、葫芦口……绘制和 fig.points 共用
+  function propGeom(F) {
+    const { J, t, sp, pose } = F;
+    const G = {};
+    const W = J.Wn, d = J.dn;
+    if (F.swordMode === 'hand') {
+      const grip = ma(W, d, 3), dir = pose === 'swordUp' ? nrm(add(d, [0.02, -0.2])) : d;
+      G.sword = { grip, dir, L: 94 }; G.swordHilt = ma(grip, dir, -7); G.swordTip = ma(grip, dir, 100);
+    } else if (F.swordMode === 'feet') {
+      const y = J.ground ? 3.2 : J.P[1] + 99, x0 = Math.min(J.An[0], J.Af[0]) - 26;
+      G.sword = { grip: [x0, y], dir: [1, 0], L: 92 }; G.swordHilt = [x0, y]; G.swordTip = [x0 + 98, y];
+    } else if (F.swordMode === 'planted') {
+      const grip = [J.Kn[0] + 12, -64];
+      G.sword = { grip, dir: [0, 1], L: 60 }; G.swordHilt = ma(grip, [0, 1], -7); G.swordTip = [grip[0], grip[1] + 66];
+    }
+    if (F.gourdMode === 'hand') {
+      if (pose === 'drink') { G.gourd = ma(W, d, 2); G.gourdMouth = G.gourd; }
+      else if (pose === 'lie') { G.gourd = ma(W, d, 2); G.gourdMouth = G.gourd; }
+      else { G.gourd = ma(W, d, 3); G.gourdMouth = G.gourd; }
+    } else if (F.gourdMode === 'waist') {
+      const p = at(J, J.P, 5, 13), sw = 0.18 * Math.sin(t * 1.9 + F.ph) + (F.PS.walking ? 0.2 * Math.sin(F.PS.gait) : 0);
+      G.gourdHang = p; G.gourdSw = sw; G.gourd = add(p, mul(pol(PI / 2 + sw), 5)); G.gourdMouth = G.gourd;
+    }
+    if (F.holds.n === 'prop') {
+      const pr = F.prop;
+      if (pr === 'umbrella') { G.umbrellaTop = [W[0] + 2, W[1] - 70]; }
+      else if (pr === 'lantern') { const sw = 0.12 * Math.sin(t * 1.7 + F.ph), tip2 = add(W, [8, -4]); G.lanternSw = sw; G.lanternRod = tip2; G.lantern = add(tip2, mul(pol(PI / 2 + sw), 14)); }
+      else if (pr === 'staff') {
+        const by = sp.who === 'baiyue';
+        const top = [W[0] + 1.5, -(by ? 216 : 176) / (sp.h / 180)];
+        G.staffBase = top; G.staffBot = [W[0] - 1.5, J.ground ? 0 : W[1] + 100];
+        G.staffTop = by ? [top[0], top[1] - 13] : [top[0] + 1.5, top[1] - 7.5];
+      } else if (pr === 'fan') { const c = ma(W, d, 2), a0 = -PI / 2 - 0.15 + 0.08 * Math.sin(t * 2.2 + F.ph); G.fan = c; G.fanA = a0; G.fanTip = add(c, mul(pol(a0), 17)); }
+      else if (pr === 'whip') {
+        const h1 = ma(W, d, 11), lash = pose === 'swordPoint' || pose === 'reach';
+        G.whip = lash ? flow(h1, angOf(d), angOf(d) + 0.4, 120, 14, 1, 0.5, 2.6, t, F.ph, 3.5) : flow(h1, angOf(d), PI / 2 - 0.4, 46, 10, 1, 0.45, 2.1, t, F.ph, 5);
+        G.whipHandle = h1; G.whipTip = G.whip[G.whip.length - 1];
+      }
+    }
+    return G;
+  }
   function heldProp(g, F) {
-    const { J, pal, t, sp } = F;
+    const { J, pal, t, sp, G } = F;
     const W = J.Wn, d = J.dn;
     const pr = F.prop, pose = F.pose;
-    if (F.swordMode === 'hand') F.swordTip = swordBlade(g, F, ma(W, d, 3), pose === 'swordUp' ? nrm(add(d, [0.02, -0.2])) : d);
+    if (F.swordMode === 'hand') swordBlade(g, F, G.sword.grip, G.sword.dir, G.sword.L);
     if (F.gourdMode === 'hand') {
       if (pose === 'drink') {
         const mouth = headTf(F).p(9, 6);
-        const gp = ma(W, d, 2), ang = angOf(sub(mouth, gp)) - PI / 2 + PI;
+        const gp = G.gourd, ang = angOf(sub(mouth, gp)) - PI / 2 + PI;
         gourdAt(g, F, gp, ang + PI, 1);
         const lip = ma(gp, nrm(sub(mouth, gp)), 2);
         g.strokeStyle = ca('#f3e6c4', 0.65); g.lineWidth = thin(F, 0.9);
         g.beginPath(); g.moveTo(lip[0], lip[1]); g.quadraticCurveTo(lerp(lip[0], mouth[0], 0.5) + 1.5, lerp(lip[1], mouth[1], 0.5), mouth[0], mouth[1]); g.stroke();
-      } else if (pose === 'lie') gourdAt(g, F, ma(W, d, 2), 2.6, 1);
-      else gourdAt(g, F, ma(W, d, 3), 0.15 * Math.sin(t * 1.8 + F.ph), 1.1);
+      } else if (pose === 'lie') gourdAt(g, F, G.gourd, 2.6, 1);
+      else gourdAt(g, F, G.gourd, 0.15 * Math.sin(t * 1.8 + F.ph) + (pose === 'laugh' ? PI : 0), 1.1);
     }
     if (pose === 'drink' && F.gourdMode !== 'hand') {
       // 没有葫芦就举一只酒杯
@@ -1253,47 +1540,44 @@
     }
     if (F.holds.n !== 'prop') return;
     if (pr === 'umbrella') {
-      const top = [W[0] + 2, W[1] - 64];
-      g.strokeStyle = pal.wood; g.lineWidth = 1.8; g.beginPath(); g.moveTo(W[0], W[1] + 10); g.lineTo(top[0], top[1]); g.stroke();
-      const c = F.o.umbrellaColor || pal.umbrella;
+      const top = G.umbrellaTop;
+      g.strokeStyle = pal.wood; g.lineWidth = 1.8; g.beginPath(); g.moveTo(W[0], W[1] + 10); g.lineTo(top[0], top[1] + 6); g.stroke();
+      const c = F.o.umbrellaColor || pal.umbrella, cy = top[1] + 6;
       const gr = g.createLinearGradient(top[0] - 50, 0, top[0] + 50, 0);
       gr.addColorStop(0, mixc(c, '#000000', 0.25)); gr.addColorStop(0.55, mixc(c, '#ffffff', 0.15)); gr.addColorStop(1, mixc(c, '#000000', 0.3));
       g.fillStyle = gr;
-      g.beginPath(); g.moveTo(top[0] - 54, top[1] + 20); g.quadraticCurveTo(top[0] - 44, top[1] - 4, top[0], top[1] - 6);
-      g.quadraticCurveTo(top[0] + 44, top[1] - 4, top[0] + 54, top[1] + 20);
-      for (let k = 6; k >= -6; k--) g.lineTo(top[0] + k * 9, top[1] + 20 + (k % 2 ? 3 : 0));
+      g.beginPath(); g.moveTo(top[0] - 54, cy + 20); g.quadraticCurveTo(top[0] - 44, cy - 4, top[0], cy - 6);
+      g.quadraticCurveTo(top[0] + 44, cy - 4, top[0] + 54, cy + 20);
+      for (let k = 6; k >= -6; k--) g.lineTo(top[0] + k * 9, cy + 20 + (k % 2 ? 3 : 0));
       g.closePath(); g.fill();
       g.strokeStyle = ca('#2a1010', 0.3); g.lineWidth = 0.8;
-      for (let k = -5; k <= 5; k++) { g.beginPath(); g.moveTo(top[0], top[1] - 6); g.quadraticCurveTo(top[0] + k * 6, top[1] + 4, top[0] + k * 9, top[1] + 20); g.stroke(); }
+      for (let k = -5; k <= 5; k++) { g.beginPath(); g.moveTo(top[0], cy - 6); g.quadraticCurveTo(top[0] + k * 6, cy + 4, top[0] + k * 9, cy + 20); g.stroke(); }
     } else if (pr === 'lantern') {
-      const sw = 0.12 * Math.sin(t * 1.7 + F.ph);
-      const tip2 = add(W, [8, -4]);
+      const sw = G.lanternSw, tip2 = G.lanternRod, c = G.lantern;
       g.strokeStyle = pal.wood; g.lineWidth = 1.4; g.beginPath(); g.moveTo(W[0], W[1]); g.lineTo(tip2[0], tip2[1]); g.stroke();
-      const c = add(tip2, mul(pol(PI / 2 + sw), 14));
       g.strokeStyle = ca(pal.ink, 0.8); g.lineWidth = 0.7; g.beginPath(); g.moveTo(tip2[0], tip2[1]); g.lineTo(c[0], c[1] - 7); g.stroke();
       const gr = g.createLinearGradient(0, c[1] - 8, 0, c[1] + 8);
       gr.addColorStop(0, '#ffd894'); gr.addColorStop(1, '#d8582e');
       g.fillStyle = gr; g.beginPath(); g.ellipse(c[0], c[1], 6.2, 8, sw, 0, TAU); g.fill();
       g.fillStyle = pal.ink; g.fillRect(c[0] - 3, c[1] - 9.4, 6, 2); g.fillRect(c[0] - 3, c[1] + 7.6, 6, 2);
-      F.lanternAt = c;
     } else if (pr === 'staff') {
-      const top = [W[0] + 1.5, -(sp.who === 'baiyue' ? 196 : 176) / (sp.h / 180)];
-      const bot = [W[0] - 1.5, J.ground ? 0 : W[1] + 100];
+      const top = G.staffBase, bot = G.staffBot;
       g.strokeStyle = pal.wood; g.lineWidth = 2.8; g.beginPath(); g.moveTo(bot[0], bot[1]); g.lineTo(top[0], top[1]); g.stroke();
       if (sp.who === 'baiyue') {
+        // 拜月杖头：仰月（两角朝天），托一颗紫珠
+        const c = G.staffTop;
         g.fillStyle = pal.moon;
-        g.beginPath(); g.arc(top[0], top[1] - 10, 11, 0.35, PI * 2 - 0.35 + 0.0); g.arc(top[0] + 4.5, top[1] - 12, 9.4, PI * 2 - 0.65, 0.65, true); g.closePath(); g.fill();
-        g.fillStyle = pal.accent2; g.beginPath(); g.arc(top[0], top[1] - 1, 2.6, 0, TAU); g.fill();
-        F.staffTop = [top[0], top[1] - 10];
+        g.beginPath(); g.arc(c[0], c[1], 13, -0.32, PI + 0.32); g.arc(c[0], c[1] - 5.5, 10.6, PI + 0.62, -0.62, true); g.closePath(); g.fill();
+        g.strokeStyle = pal.moon; g.lineWidth = 2; g.beginPath(); g.moveTo(top[0], top[1]); g.lineTo(c[0], c[1] + 12); g.stroke();
+        g.fillStyle = pal.accent2; g.beginPath(); g.arc(c[0], c[1] - 1, 3.2, 0, TAU); g.fill();
       } else {
         g.strokeStyle = pal.wood; g.lineWidth = 2.6; g.beginPath(); g.moveTo(top[0], top[1]); g.quadraticCurveTo(top[0] + 9, top[1] - 8, top[0] + 3, top[1] - 13); g.quadraticCurveTo(top[0] - 4, top[1] - 12, top[0] - 1, top[1] - 6); g.stroke();
         g.fillStyle = '#8fd0b8'; g.beginPath(); g.arc(top[0] + 1.5, top[1] - 7.5, 2.3, 0, TAU); g.fill();
         const tp = flow([top[0] - 1, top[1] + 2], PI / 2, aimAng(F, 0.4 + 0.5 * F.wind), 16, 6, 1.4, 0.3, 2.6, t, F.ph, 3);
         taper(g, tp, (u) => thin(F, lerp(1.4, 0.4, u)), '#c84a3a');
-        F.staffTop = [top[0] + 1.5, top[1] - 7.5];
       }
     } else if (pr === 'fan') {
-      const c = ma(W, d, 2), a0 = -PI / 2 - 0.15 + 0.08 * Math.sin(t * 2.2 + F.ph);
+      const c = G.fan, a0 = G.fanA;
       g.fillStyle = pal.paper; g.beginPath(); g.moveTo(c[0], c[1]); g.arc(c[0], c[1], 17, a0 - 0.95, a0 + 0.95); g.closePath(); g.fill();
       g.fillStyle = ca(pal.ink, 0.25); g.beginPath(); g.arc(c[0], c[1], 17, a0 - 0.95, a0 + 0.95); g.arc(c[0], c[1], 6, a0 + 0.95, a0 - 0.95, true); g.closePath(); g.fill();
       g.fillStyle = pal.paper; g.beginPath(); g.arc(c[0], c[1], 16, a0 - 0.95, a0 + 0.95); g.arc(c[0], c[1], 7, a0 + 0.95, a0 - 0.95, true); g.closePath(); g.fill();
@@ -1301,25 +1585,13 @@
       for (let k = 0; k <= 8; k++) { const a = a0 - 0.95 + (k * 1.9) / 8; g.beginPath(); g.moveTo(c[0], c[1]); g.lineTo(c[0] + Math.cos(a) * 16.5, c[1] + Math.sin(a) * 16.5); g.stroke(); }
       g.strokeStyle = ca(pal.ink, 0.55); g.lineWidth = thin(F, 0.8); g.beginPath(); g.moveTo(c[0] + 4, c[1] - 11); g.quadraticCurveTo(c[0] - 2, c[1] - 9, c[0] - 5, c[1] - 12); g.stroke();
     } else if (pr === 'whip') {
-      const h1 = ma(W, d, 11);
+      const h1 = G.whipHandle;
       g.strokeStyle = pal.wood; g.lineWidth = 2.4; g.beginPath(); g.moveTo(W[0], W[1]); g.lineTo(h1[0], h1[1]); g.stroke();
-      const lash = F.pose === 'swordPoint' || F.pose === 'reach';
-      const pts = lash ? flow(h1, angOf(d), angOf(d) + 0.4, 120, 14, 1, 0.5, 2.6, t, F.ph, 3.5) : flow(h1, angOf(d), PI / 2 - 0.4, 46, 10, 1, 0.45, 2.1, t, F.ph, 5);
-      taper(g, pts, (u) => thin(F, lerp(1.8, 0.5, u)), pal.whip);
+      taper(g, G.whip, (u) => thin(F, lerp(1.8, 0.5, u)), pal.whip);
     }
   }
-  function plantedSword(g, F) {
-    const { J } = F;
-    const x = J.Kn[0] + 12, grip = [x, -64];
-    swordBlade(g, F, grip, [0.0, 1], 60);
-  }
-  function feetSword(g, F) {
-    const { J } = F;
-    const y = J.ground ? 3.2 : J.P[1] + 99;
-    const x0 = Math.min(J.An[0], J.Af[0]) - 26;
-    F.swordTip = swordBlade(g, F, [x0, y], [1, 0.0], 92);
-    F.swordHilt = [x0, y];
-  }
+  function plantedSword(g, F) { swordBlade(g, F, F.G.sword.grip, F.G.sword.dir, F.G.sword.L); }
+  function feetSword(g, F) { swordBlade(g, F, F.G.sword.grip, F.G.sword.dir, F.G.sword.L); }
 
   // ---------- 整体 ----------
   function body(g, F) {
@@ -1342,8 +1614,8 @@
     torso(g, F);
     sash(g, F, 'band');
     if (F.gourdMode === 'waist') {
-      const p = at(F.J, F.J.P, 5, 13), sw = 0.18 * Math.sin(F.t * 1.9 + F.ph) + (F.PS.walking ? 0.2 * Math.sin(F.PS.gait) : 0);
-      g.strokeStyle = pal.tassel; g.lineWidth = 0.9; const q = add(p, mul(pol(PI / 2 + sw), 5)); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
+      const p = F.G.gourdHang, q = F.G.gourd, sw = F.G.gourdSw;
+      g.strokeStyle = pal.tassel; g.lineWidth = 0.9; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
       gourdAt(g, F, q, -sw, 0.95);
     }
     if (sp.bells) bells(g, F);
@@ -1362,50 +1634,60 @@
     if (sp.shawl) shawl(g, F, 'front');
   }
 
-  // 光与特效（直接画在主画布上，用加色）
-  function fxBack(g, F, x, y, S) {
+  // 光与特效（直接画在主画布上）：夜里用加色发光；白天（纸面）改为普通叠加的淡色光晕，免得纸上出现白斑
+  function fxGlow(g, F, x, y, r, col, a) {
+    if (F.night) A.glow(g, x, y, r, col, a);
+    else A.glow(g, x, y, r * 0.7, mixc(col, '#6a8cb0', 0.25), a * 0.42);
+  }
+  function fxBack(g, F) {
     const gl = F.glow;
     if (gl <= 0) return;
-    const col = F.glowColor;
+    const { x, y, S } = F, col = F.glowColor;
     const op = g.globalCompositeOperation;
-    g.globalCompositeOperation = 'lighter';
+    if (F.night) g.globalCompositeOperation = 'lighter';
     const cy = y - 95 * S;
-    A.glow(g, x, cy, 150 * S, col, 0.35 * gl * F.alpha);
-    A.glow(g, x, cy - 20 * S, 70 * S, '#ffffff', 0.18 * gl * F.alpha);
+    fxGlow(g, F, x, cy, 150 * S, col, 0.35 * gl * F.alpha);
+    if (F.night) A.glow(g, x, cy - 20 * S, 70 * S, '#ffffff', 0.18 * gl * F.alpha);
     if (F.sp.nuwa) {
+      const tk = TAILS[F.tailKind], ty = y + (tk.pel + 40) * S;
       for (let i = 0; i < 9; i++) {
         const a = F.t * 0.6 + (i * TAU) / 9, r = (70 + 20 * Math.sin(F.t + i)) * S;
-        A.glow(g, x + Math.cos(a) * r, cy + Math.sin(a) * r * 0.55, 9 * S, col, (0.35 + 0.3 * Math.sin(F.t * 2 + i)) * gl * F.alpha);
+        fxGlow(g, F, x + Math.cos(a) * r, ty + Math.sin(a) * r * 0.55, 9 * S, col, (0.35 + 0.3 * Math.sin(F.t * 2 + i)) * gl * F.alpha);
       }
     }
     g.globalCompositeOperation = op;
   }
-  function fxFront(g, F, x, y, S, f) {
+  function fxFront(g, F) {
+    const { x, y, S, facing: f, G } = F;
     const op = g.globalCompositeOperation;
     const W = (p) => [x + p[0] * S * f, y + p[1] * S];
-    g.globalCompositeOperation = 'lighter';
-    if (F.swordMode === 'feet' && F.swordHilt) {
-      const h = W(F.swordHilt), tp = W(F.swordTip);
-      const len = Math.abs(tp[0] - h[0]);
-      const gr = g.createLinearGradient(h[0] - len * 1.6 * f, 0, tp[0], 0);
-      gr.addColorStop(0, 'rgba(160,220,255,0)'); gr.addColorStop(0.7, `rgba(170,225,255,${0.35 * F.alpha})`); gr.addColorStop(1, `rgba(230,250,255,${0.6 * F.alpha})`);
-      g.fillStyle = gr;
-      g.beginPath(); g.moveTo(tp[0], tp[1]); g.lineTo(h[0] - len * 1.6 * f, h[1] - 7 * S); g.lineTo(h[0] - len * 1.6 * f, h[1] + 9 * S); g.closePath(); g.fill();
-      A.glow(g, tp[0], tp[1], 22 * S, '#bfe8ff', 0.55 * F.alpha);
-    }
     const fx = (F.o.fx ?? 1) * F.alpha;
-    if (F.swordTip && F.swordMode === 'hand') A.glow(g, W(F.swordTip)[0], W(F.swordTip)[1], 14 * S, '#d8f0ff', 0.3 * fx);
-    if (F.lanternAt) { const c = W(F.lanternAt); A.glow(g, c[0], c[1], 44 * S, '#ffb35c', 0.55 * fx); A.glow(g, c[0], c[1], 12 * S, '#fff0c8', 0.55 * fx); }
-    if (F.staffTop && F.sp.who === 'baiyue') { const c = W(F.staffTop); A.glow(g, c[0], c[1], 20 * S, '#b9a8ff', 0.28 * fx); }
+    if (fx <= 0) return;
+    if (F.night) g.globalCompositeOperation = 'lighter';
+    if (F.swordMode === 'feet' && G.swordHilt) {
+      // 御剑尾光：夜里是发光的剑气，白天是一道淡青的风痕
+      const h = W(G.swordHilt), tp = W(G.swordTip);
+      const len = Math.abs(tp[0] - h[0]), e = h[0] - len * 1.6 * f;
+      const c0 = F.night ? '170,225,255' : '96,150,190', c1 = F.night ? '230,250,255' : '120,175,210', k = F.night ? 1 : 0.5;
+      const gr = g.createLinearGradient(e, 0, tp[0], 0);
+      gr.addColorStop(0, `rgba(${c0},0)`); gr.addColorStop(0.7, `rgba(${c0},${0.35 * fx * k})`); gr.addColorStop(1, `rgba(${c1},${0.6 * fx * k})`);
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(tp[0], tp[1]); g.lineTo(e, h[1] - 7 * S); g.lineTo(e, h[1] + 9 * S); g.closePath(); g.fill();
+      fxGlow(g, F, tp[0], tp[1], 22 * S, '#bfe8ff', 0.55 * fx);
+    }
+    if (G.swordTip && F.swordMode === 'hand') { const c = W(G.swordTip); fxGlow(g, F, c[0], c[1], 14 * S, '#d8f0ff', 0.3 * fx); }
+    if (G.lantern) { const c = W(G.lantern); fxGlow(g, F, c[0], c[1], 44 * S, '#ffb35c', 0.55 * fx); if (F.night) A.glow(g, c[0], c[1], 12 * S, '#fff0c8', 0.55 * fx); }
+    if (G.staffTop && F.sp.who === 'baiyue') { const c = W(G.staffTop); fxGlow(g, F, c[0], c[1], 22 * S, '#b9a8ff', 0.3 * fx); }
     g.globalCompositeOperation = op;
   }
 
   // ---------- 准备 ----------
+  const nameHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return A.hash(h); };
   function prepare(who, s, t, o) {
     const sp = spec(who, o);
     const pose = POSES[o.pose] ? o.pose : 'stand';
     const facing = o.facing < 0 ? -1 : 1;
-    const ph = (o.seed ?? 0) * 1.37 + (who.length * 0.7);
+    const ph = (o.seed ?? 0) * 1.37 + nameHash(who) * TAU;
     let prop = o.prop || sp.prop;
     if (prop === 'none') prop = null;
     const q = { t, o, sp, ph, prop, sword: prop === 'sword' };
@@ -1413,15 +1695,22 @@
     carry(q, PS, pose);
     if (o.lean) PS.tor = (PS.tor || 0) + o.lean;
     if (o.head) PS.head = (PS.head || 0) + o.head;
+    let tailK = null;
     if (sp.nuwa) {
-      PS.pel = [0, -104]; PS.ground = false;
-      PS.lN = { a: [0.04, 0] }; PS.lF = { a: [-0.04, 0] };
+      // 女娲：上身照常摆姿势，腰下换成蛇尾；按姿势选盘法
+      tailK = tailKind(pose);
+      PS.pel = [0, TAILS[tailK].pel]; PS.ground = false; PS.planted = false; PS.walking = false;
+      PS.seated = PS.kneeling = PS.lying = false;
+      const la = tailK === 'lie' ? 1.35 : tailK === 'low' ? 0.3 : 0.04;
+      PS.lN = { a: [la, 0] }; PS.lF = { a: [la - 0.08, 0] };
       if (pose === 'stand') { PS.aN = { h: (J) => at(J, J.N, 13, -22), b: 1 }; PS.aF = { h: (J) => at(J, J.N, 11, -18), b: 1 }; PS.head = -0.1; }
+      if (tailK === 'lie') { PS.tor = -0.82; PS.head = 0.3; PS.aN = { h: (J) => [J.Sn[0] + 6, -1.5], b: -1 }; PS.aF = { h: (J) => at(J, J.N, 9, -24), b: 1 }; PS.floor = true; PS.rot = 0; }
     }
     const breath = 0.45 * Math.sin(t * 1.5 + ph);
     const J = solve(PS, { breath });
     const wind = clamp(Math.max(o.wind ?? 0.35, PS.windMin || 0) * (0.86 + 0.28 * A.noise1(t * 0.45 + ph, 3)), 0, 1.2);
-    const wdir = (o.windDir ?? -facing) * facing;
+    // 风向按世界坐标（默认吹向左），面朝哪边都一致
+    const wdir = (o.windDir ?? -1) * facing;
     const T = nrm([wdir < 0 ? -1 : 1, -0.16 - 0.08 * Math.sin(t * 0.7 + ph) - (PS.flying ? 0.12 : 0)]);
     const grav = PS.grav ? nrm(PS.grav) : [0, 1];
     // 剑与葫芦放在哪
@@ -1434,141 +1723,350 @@
     else if (hasSword && pose !== 'lie') swordMode = sp.swordAt;
     let gourdMode = null;
     if (prop === 'gourd' || sp.gourd) {
-      if (pose === 'drink' || (pose === 'lie' && prop === 'gourd') || (prop === 'gourd' && sp.who === 'jiujianxian' && CARRY[pose])) gourdMode = 'hand';
+      if (pose === 'drink' || (pose === 'lie' && prop === 'gourd') || (prop === 'gourd' && sp.who === 'jiujianxian' && (CARRY[pose] || pose === 'laugh'))) gourdMode = 'hand';
       else gourdMode = 'waist';
       if (swordMode === 'hand') gourdMode = 'waist';
     }
     const holds = { n: null, f: null };
     if (swordMode === 'hand' || gourdMode === 'hand' || pose === 'drink') holds.n = 'held';
-    else if (prop && ['umbrella', 'lantern', 'staff', 'fan', 'whip'].includes(prop) && pose !== 'fall') holds.n = 'prop';
+    else if (prop && ['umbrella', 'lantern', 'staff', 'fan', 'whip'].includes(prop) && pose !== 'fall' && !(sp.nuwa && tailK === 'lie')) holds.n = 'prop';
     if (swordMode === 'planted') holds.f = 'held';
-    const ink = o.ink || sp.ink, accent = o.accent || sp.accent;
+    // 设色：tone 'color'（默认）给每个角色一块服饰色并做墨色晕染；'silhouette' 为纯剪影；给了 ink 或 ghost 时默认剪影
+    const ghost = o.ghost ? (o.ghost === true ? 1 : +o.ghost) : 0;
+    const night = o.night ?? !!o.rim;
+    const tone = o.tone || (o.ink || ghost ? 'silhouette' : 'color');
+    const colr = tone === 'color', light = colr && !!sp.light;
+    const accent = o.accent || sp.accent;
+    let ink = o.ink || sp.ink;
+    if (ghost) ink = night ? mixc(accent, '#ffffff', 0.6) : mixc(o.ink || sp.ink, '#ffffff', 0.55);
+    const cloth = light ? sp.cloth : null;
+    const top = colr ? (light ? cloth : sp.top || ink) : ink;
+    const hem = colr ? sp.hem || top : mixc(ink, accent, sp.sheer ? 0.14 : 0.08);
     const pal = {
-      ink, accent, far: mixc(ink, '#ffffff', 0.07), leg: mixc(ink, '#000000', 0.15),
-      panel: o.ink ? ink : sp.panel || ink, panelTop: o.ink ? ink : sp.panelTop || ink,
-      hair: o.whiteHair ? '#e6e2da' : o.ink && !sp.hairCol ? mixc(ink, '#000000', 0.2) : sp.hairCol || mixc(ink, '#000000', 0.28),
+      ink, accent, top, hem,
+      armN: top, armF: light ? mixc(cloth, sp.line, 0.1) : mixc(top, '#ffffff', 0.07),
+      panelTop: top, panel: colr ? (light ? cloth : sp.panel || mixc(top, ink, 0.4)) : ink,
+      hemA: colr ? sp.hemA ?? (light ? 0.88 : 0.8) : 1,
+      sleeveEnd: colr ? sp.sleeveEnd || null : null,
+      skin: light ? sp.skin : ink, line: light ? sp.line : null,
+      leg: colr && sp.leg ? sp.leg : mixc(ink, '#000000', 0.15),
+      boot: mixc(ink, '#000000', 0.12), bracer: mixc(ink, '#000000', 0.25),
+      hair: o.whiteHair ? '#e6e2da' : (o.ink || ghost) && !sp.hairCol ? mixc(ink, '#000000', 0.2) : ghost ? mixc(ink, '#000000', 0.15) : sp.hairCol || mixc(ink, '#000000', 0.28),
       ribbon: o.ribbon || sp.ribbon, tassel: o.tassel || sp.tassel, inner: sp.inner, accent2: sp.accent2 || accent, accent3: sp.accent3 || accent,
       lining: sp.lining || accent, sash: o.sash || (sp.garment === 'jin' ? sp.accent : accent),
-      fold: mixc(ink, '#ffffff', 0.32), innerTone: mixc(ink, '#c8a888', 0.28),
+      fold: light ? mixc(cloth, sp.line, 0.4) : mixc(top, '#ffffff', 0.3),
+      brush: light ? mixc(hem, sp.line, 0.45) : mixc(hem, '#ffffff', 0.3),
+      innerTone: mixc(ink, '#c8a888', 0.28), innerSleeve: light ? mixc(cloth, sp.inner, 0.5) : top,
       gauze: sp.gauze === null ? null : sp.gauze, shawl: sp.shawl || accent, flower: sp.flower || '#f6dce6', heart: sp.heart || '#d8708e',
       silver: sp.silver || '#dfe3ea', moon: sp.moon || '#dfe2f6', crown: '#c8d2d8', pin: '#d8b25e',
       blade: '#e8eef0', bladeTip: '#aab8c0', metal: '#b89a5a', scabbard: mixc(ink, '#3a2a20', 0.4),
       gourd: '#a8602c', wood: '#3a2a1e', paper: '#efe5cf', umbrella: '#b8322a', whip: '#5a1c1a', straw: '#7a6a4c',
-      tail: sp.tailInk ? (o.ink ? ink : sp.tailInk) : ink, scale: sp.scale || '#bdeee9', capeLining: sp.accent || '#5d3290',
+      tail: sp.tailInk ? (o.ink || ghost ? ink : sp.tailInk) : ink, scale: sp.scale || '#bdeee9', capeLining: sp.accent || '#5d3290',
+      wing1: mixc(accent, '#ffb020', 0.3), wing2: mixc(sp.accent2 || accent, '#ff4f8f', 0.25),
     };
+    pal.hand = light ? sp.skin : sp.sex === 'f' && colr ? mixc(sp.inner, ink, 0.55) : ink;
+    pal.handF = light ? mixc(sp.skin, sp.line, 0.12) : sp.sex === 'f' && colr ? mixc(sp.inner, ink, 0.62) : mixc(ink, '#ffffff', 0.07);
+    pal.shoe = light ? mixc(hem, sp.line, 0.35) : ink; pal.shoeF = light ? mixc(pal.shoe, sp.line, 0.15) : mixc(ink, '#ffffff', 0.07);
     pal.sashHi = mixc(pal.sash, '#ffffff', 0.4);
     if (o.whiteHair && sp.beard) sp.beardCol = '#e6e2da';
-    const glow = o.glow ?? sp.glow;
-    const rim = o.rim === true ? '#ffe9c4' : o.rim || null;
+    const glow = o.glow ?? (ghost && night ? 0.3 * ghost : sp.glow);
+    let rim = o.rim === true ? '#ffe9c4' : o.rim || null;
+    if (ghost && o.rim === undefined) rim = night ? '#f2f8ff' : mixc(accent, '#ffffff', 0.15);
     const F = {
-      sp, pal, J, PS, t, o, pose, prop, facing, ph, wind, T, grav, swordMode, gourdMode, holds,
-      alpha: o.alpha ?? 1, part: o.part || 'all', glow, glowColor: o.glowColor || rim || (sp.nuwa ? '#bff3ee' : pal.accent), rim, px: 1,
+      sp, pal, J, PS, t, o, pose, prop, facing, ph, wind, T, grav, swordMode, gourdMode, holds, night, tone, tailKind: tailK,
+      alpha: o.alpha ?? (ghost ? (night ? 0.58 : 0.5) : 1), part: o.part || 'all', glow,
+      glowColor: o.glowColor || rim || (sp.nuwa ? '#bff3ee' : pal.accent), rim, px: 1, x: 0, y: 0, S: 1, dev: 1,
     };
+    F.G = propGeom(F);
     return F;
   }
 
   // 局部包围盒（未翻转）：骨架外扩，再并上道具与飘带可能到达的范围
   function bbox(F) {
-    const J = F.J;
+    const J = F.J, G = F.G;
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     const inc = (p, m = 0) => { x0 = Math.min(x0, p[0] - m); x1 = Math.max(x1, p[0] + m); y0 = Math.min(y0, p[1] - m); y1 = Math.max(y1, p[1] + m); };
     for (const k of PTS) inc(J[k]);
+    // 下风一侧留足飘带、发丝、衣摆的余量，上风一侧少留
     const mx = 62 + 46 * F.wind + (F.PS.dancing ? 60 : 0) + (F.sp.cape || F.sp.wings ? 30 : 0) + (F.sp.shawl ? 20 : 0);
-    x0 -= mx; x1 += mx; y0 -= 52; y1 += 14;
-    if (F.swordMode === 'hand') { inc(ma(J.Wn, J.dn, 110), 8); inc(ma(J.Wn, J.dn, -40), 8); }
-    if (F.swordMode === 'feet') { x0 = Math.min(x0, -80); x1 = Math.max(x1, 80); }
-    if (F.prop === 'staff' || F.prop === 'umbrella') { inc([J.Wn[0], -215], 70); }
-    if (F.sp.nuwa) { inc(add(J.P, [-120, 112])); inc(add(J.P, [50, 112])); }
+    const mn = 30 + (F.PS.dancing ? 50 : 0) + (F.sp.wings ? 20 : 0) + (F.sp.sleeve === 'wide' ? 8 : 0);
+    if (F.T[0] < 0) { x0 -= mx; x1 += mn; } else { x0 -= mn; x1 += mx; }
+    y0 -= 52; y1 += 14;
+    for (const k of ['swordTip', 'swordHilt', 'lantern', 'staffTop', 'fanTip', 'gourd']) if (G[k]) inc(G[k], 30);
+    if (G.whip) for (const p of G.whip) inc(p, 8);
+    if (G.umbrellaTop) { inc(add(G.umbrellaTop, [-60, -4])); inc(add(G.umbrellaTop, [60, 32])); }
+    if (G.staffBot) inc(G.staffBot, 6);
+    if (F.sp.nuwa) for (const p of TAILS[F.tailKind].pts) inc(add(J.P, p), 32);
     if (F.PS.dancing) y0 -= 40;
-    return [x0, x1, y0, y1];
+    return [x0, x1, Math.max(y0, -600), Math.min(y1, 400)];
   }
 
-  // ---------- 离屏合成（透明度与轮廓光） ----------
-  let bufA = null, bufB = null, bufC = null;
-  function buf(c, w, h) {
-    if (!c) c = document.createElement('canvas');
-    if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
+  // ---------- 离屏合成（透明度、轮廓光、飞白） ----------
+  // 缓冲池：尺寸按 64 像素分桶，每次整张清空；同一画面无论之前画过什么，结果和耗时都一样
+  const pool = new Map();
+  let poolPx = 0;
+  function getBuf(slot, w, h) {
+    const W = Math.max(64, Math.ceil(w / 64) * 64), H = Math.max(64, Math.ceil(h / 64) * 64), key = slot + W + 'x' + H;
+    let c = pool.get(key);
+    if (c) { pool.delete(key); pool.set(key, c); } else {
+      c = document.createElement('canvas'); c.width = W; c.height = H;
+      pool.set(key, c); poolPx += W * H;
+      for (const [k2, v] of pool) {
+        if (poolPx <= 24e6 || pool.size <= 3) break;
+        if (k2 === key) continue;
+        pool.delete(k2); poolPx -= v.width * v.height; v.width = v.height = 1;
+      }
+    }
+    const x = c.getContext('2d');
+    x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+    x.clearRect(0, 0, W, H);
     return c;
   }
+  // 飞白：缓存的竖向干笔纹，在剪影上抠去一成，边缘出现枯笔的透白。
+  // 纹理按缓冲倍率分档预渲染，铺贴时只做整数平移，避免逐像素重采样
+  const fbStore = new Map();
+  function feibaiTex(k) {
+    const lv = Math.round(Math.log2(k) * 4), key = lv;
+    let c = fbStore.get(key);
+    if (c) return c;
+    const kq = Math.pow(2, lv / 4), N = Math.max(16, Math.round(128 * kq));
+    c = document.createElement('canvas'); c.width = c.height = N;
+    const g = c.getContext('2d'), r = A.rng(907);
+    g.scale(N / 128, N / 128); g.lineCap = 'round';
+    for (let i = 0; i < 70; i++) {
+      const x = r() * 128, y = r() * 128, L = 8 + r() * 26, w = 0.4 + r() * 1.3, a = PI / 2 + (r() - 0.5) * 0.35;
+      g.strokeStyle = `rgba(0,0,0,${0.35 + r() * 0.65})`; g.lineWidth = w;
+      for (const ox of [-128, 0, 128]) for (const oy of [-128, 0, 128]) {
+        g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + Math.cos(a) * L, y + oy + Math.sin(a) * L); g.stroke();
+      }
+    }
+    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(0,0,0,${r() * 0.6})`; g.fillRect(r() * 128, r() * 128, 0.8, 0.8 + r() * 2); }
+    c.pat = null;
+    fbStore.set(key, c);
+    return c;
+  }
+  function place(F, x, y, s, g) {
+    const m = g.getTransform();
+    F.x = x; F.y = y; F.S = s * F.sp.h / 180; F.dev = Math.hypot(m.a, m.b) || 1; F.px = 1 / (F.S * F.dev);
+  }
+  const needsBuf = (F, alpha) => !!F.rim || alpha < 0.999 || !!F.o.wash;
+  function rimDir(F) {
+    if (F.o.rimDir) return nrm(F.o.rimDir);
+    if (F.o.light) return nrm([F.o.light[0] - F.x, F.o.light[1] - (F.y - 95 * F.S)]);
+    return [-0.8, -0.6];
+  }
+  // 把人物画进离屏缓冲，返回缓冲及其在当前坐标系中的位置
+  function toBuf(F, g) {
+    const S = F.S, f = F.facing;
+    const [bx0, bx1, Y0a, Y1] = bbox(F);
+    let X0 = f > 0 ? bx0 : -bx1, Y0 = Y0a;
+    const X1 = f > 0 ? bx1 : -bx0;
+    let k = S * F.dev;
+    k = Math.min(k, 2600 / (X1 - X0), 2600 / (Y1 - Y0));
+    // 缓冲原点对齐设备像素，贴回时 1:1 不发糊
+    const m = g.getTransform();
+    if (!m.b && !m.c && m.a > 0 && m.d > 0 && Math.abs(k - S * F.dev) < 1e-6) {
+      const dx = m.a * (F.x + X0 * S) + m.e, dy = m.d * (F.y + Y0 * S) + m.f;
+      X0 -= (dx - Math.floor(dx)) / (m.a * S); Y0 -= (dy - Math.floor(dy)) / (m.d * S);
+    }
+    const pw = Math.ceil((X1 - X0) * k) + 1, ph = Math.ceil((Y1 - Y0) * k) + 1;
+    const c = getBuf('A', pw, ph), a = c.getContext('2d');
+    a.setTransform(k * f, 0, 0, k, -X0 * k, -Y0 * k);
+    F.px = 1 / k;
+    body(a, F);
+    a.setTransform(1, 0, 0, 1, 0, 0);
+    if (F.o.feibai !== false && k > 0.45) {
+      // 纹理随人物局部坐标走（整数平移逐块贴），人物移动时纹理不游动
+      const tex = feibaiTex(k), N = tex.width;
+      const ox = Math.round((((-X0 * k) % N) + N) % N) - N, oy = Math.round((((-Y0 * k) % N) + N) % N) - N;
+      a.globalCompositeOperation = 'destination-out'; a.globalAlpha = F.o.feibai ?? 0.1;
+      // 只铺在胸口以下的衣裳上，脸和头发保持干净
+      const yc = Math.max(0, Math.floor((Math.min(F.J.N[1], F.J.P[1]) + 12 - Y0) * k));
+      a.save(); a.beginPath(); a.rect(0, yc, pw, ph - yc); a.clip();
+      for (let ty = oy; ty < ph; ty += N) if (ty + N > yc) for (let tx = ox; tx < pw; tx += N) a.drawImage(tex, tx, ty);
+      a.restore();
+      a.globalAlpha = 1; a.globalCompositeOperation = 'source-over';
+    }
+    let rim = null;
+    if (F.rim) {
+      // 轮廓光：在缩小的剪影上求“朝光一侧的边”（剪影减去背光方向平移后的剪影），贴回时放大，自然柔和
+      const dq = k > 2 ? 4 : k > 0.6 ? 2 : 1, hw = Math.ceil(pw / dq), hh = Math.ceil(ph / dq);
+      const cb = getBuf('B', hw, hh), b = cb.getContext('2d'), cc = getBuf('C', hw, hh), c3 = cc.getContext('2d');
+      b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'low';
+      if (dq === 4) {
+        // 分两次各缩一半，每次都是 2×2 平均，边缘不起锯齿
+        const w2 = Math.ceil(pw / 2), h2 = Math.ceil(ph / 2), cd = getBuf('D', w2, h2), d2 = cd.getContext('2d');
+        d2.imageSmoothingEnabled = true; d2.imageSmoothingQuality = 'low';
+        d2.drawImage(c, 0, 0, pw, ph, 0, 0, w2, h2);
+        b.drawImage(cd, 0, 0, w2, h2, 0, 0, hw, hh);
+      } else b.drawImage(c, 0, 0, pw, ph, 0, 0, hw, hh);
+      c3.drawImage(cb, 0, 0);
+      b.globalCompositeOperation = 'source-in'; b.fillStyle = F.rim; b.fillRect(0, 0, cb.width, cb.height);
+      const rd = rimDir(F), rw = clamp((1.55 * k * (F.o.rimWidth || 1)) / dq, 0.3, 6);
+      b.globalCompositeOperation = 'destination-out';
+      b.drawImage(cc, -rd[0] * rw, -rd[1] * rw);
+      if (dq > 2) {
+        // 低分辨率的光带放大前先做一次四点模糊，斜边上不出现台阶
+        c3.globalCompositeOperation = 'copy'; c3.drawImage(cb, 0, 0); c3.globalCompositeOperation = 'source-over';
+        b.globalCompositeOperation = 'copy'; b.globalAlpha = 0.25; b.drawImage(cc, -0.5, -0.5);
+        b.globalCompositeOperation = 'lighter';
+        b.drawImage(cc, 0.5, -0.5); b.drawImage(cc, -0.5, 0.5); b.drawImage(cc, 0.5, 0.5);
+        b.globalAlpha = 1;
+      }
+      b.globalCompositeOperation = 'source-over';
+      rim = { c: cb, w: hw, h: hh, a: (F.o.rimAlpha ?? 0.95) * clamp(0.45 + k * 0.7, 0.5, 1), runs: null };
+      // 大图时只放大有轮廓光的块：按 16 像素分块扫描透明度，同一行相邻的块合成一段
+      if (hw * hh > 40000) {
+        const d = b.getImageData(0, 0, hw, hh).data, TS = 16, runs = [];
+        for (let y0 = 0; y0 < hh; y0 += TS) {
+          let st = -1;
+          const y1 = Math.min(hh, y0 + TS);
+          for (let x0 = 0; x0 <= hw; x0 += TS) {
+            let on = false;
+            if (x0 < hw) {
+              const x1 = Math.min(hw, x0 + TS);
+              for (let y = y0; y < y1 && !on; y++) for (let x = x0, i = (y * hw + x0) * 4 + 3; x < x1; x++, i += 4) if (d[i] > 3) { on = true; break; }
+            }
+            if (on && st < 0) st = x0;
+            if (!on && st >= 0) { runs.push([st, y0, Math.min(hw, x0) - st, y1 - y0]); st = -1; }
+          }
+        }
+        rim.runs = runs;
+      }
+    }
+    return { c, pw, ph, k, rim, wx: F.x + X0 * S, wy: F.y + Y0 * S, ww: (pw / k) * S, wh: (ph / k) * S };
+  }
+  // 画人物本体（不含特效）
+  function paint(g, F, alpha) {
+    if (!needsBuf(F, alpha)) {
+      g.save(); g.translate(F.x, F.y); g.scale(F.S * F.facing, F.S);
+      body(g, F);
+      g.restore();
+      return;
+    }
+    blit(g, toBuf(F, g), alpha);
+  }
+  // 贴回缓冲：先剪影，再叠放大的轮廓光（轮廓光本身就落在剪影之内）
+  function blit(g, B, alpha, dx = 0, dy = 0) {
+    const ga = g.globalAlpha;
+    g.globalAlpha = ga * alpha;
+    g.drawImage(B.c, 0, 0, B.pw, B.ph, B.wx + dx, B.wy + dy, B.ww, B.wh);
+    if (B.rim) {
+      const sm = g.imageSmoothingEnabled, q = g.imageSmoothingQuality;
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'low';
+      g.globalAlpha = ga * alpha * B.rim.a;
+      const R = B.rim, sx = B.ww / R.w, sy = B.wh / R.h;
+      if (R.runs) for (const [x, y, w, h] of R.runs) g.drawImage(R.c, x, y, w, h, B.wx + dx + x * sx, B.wy + dy + y * sy, w * sx, h * sy);
+      else g.drawImage(R.c, 0, 0, R.w, R.h, B.wx + dx, B.wy + dy, B.ww, B.wh);
+      g.imageSmoothingEnabled = sm; g.imageSmoothingQuality = q;
+    }
+    g.globalAlpha = ga;
+  }
 
+  // 对外接口：draw / pair / cradle / embrace / points / walkSpeed / height。
+  // 常用 opts：facing pose wind windDir(世界方向) alpha stage form ink accent rim light(光源世界坐标) glow prop tone('color'|'silhouette')
+  // ghost night fx feibai wash seed phase speed stride lean head part seat cradle flat limp gap holdN holdF
   const fig = (XYT.fig = XYT.fig || {});
   fig.draw = function (g, who, x, y, s, t, opts) {
     const o = opts || {};
+    if (!(s > 0)) return;
     const F = prepare(who, s, t, o);
-    if (F.alpha <= 0.004 || s <= 0) return;
-    const S = s * F.sp.h / 180, f = F.facing;
-    const m = g.getTransform(), dev = Math.hypot(m.a, m.b) || 1;
-    F.px = 1 / (S * dev);
-    if (F.part !== 'front') fxBack(g, F, x, y, S);
-    if (!F.rim && F.alpha >= 0.999) {
-      g.save(); g.translate(x, y); g.scale(S * f, S);
-      body(g, F);
-      g.restore();
+    if (F.alpha <= 0.004) return;
+    place(F, x, y, s, g);
+    if (F.part !== 'front') fxBack(g, F);
+    paint(g, F, F.alpha);
+    if (F.part !== 'back') fxFront(g, F);
+  };
+  const args = (a) => (Array.isArray(a) ? a : [a.who, a.x, a.y, a.s, a.t, a.opts]);
+  // 两人相拥：先画甲（不含近侧手臂），再画乙，最后补上甲搭在乙背上的手臂。
+  // 半透明或要分隔缝（sep）时三步先合成到一张缓冲，再整体贴回，重叠处不会出现双倍浓度的接缝
+  fig.pair = function (g, a, b, popts) {
+    const [wa, xa, ya, sa, ta, oa] = args(a), [wb, xb, yb, sb, tb, ob] = args(b);
+    const po = popts || {};
+    const FA = prepare(wa, sa, ta, oa || {}), FB = prepare(wb, sb, tb, ob || {});
+    place(FA, xa, ya, sa, g); place(FB, xb, yb, sb, g);
+    const common = Math.max(FA.alpha, FB.alpha);
+    if (common <= 0.004) return;
+    const sep = po.sep ?? (ob && ob.sep) ?? 0;
+    fxBack(g, FA); fxBack(g, FB);
+    if (common >= 0.999 && !(sep > 0)) {
+      FA.part = 'back'; paint(g, FA, FA.alpha); paint(g, FB, FB.alpha); FA.part = 'front'; paint(g, FA, FA.alpha);
     } else {
-      const [bx0, bx1, by0, by1] = bbox(F);
-      const X0 = f > 0 ? bx0 : -bx1, X1 = f > 0 ? bx1 : -bx0;
-      let k = S * dev;
-      const maxPx = 2600;
-      k = Math.min(k, maxPx / (X1 - X0), maxPx / (by1 - by0));
-      const pw = Math.ceil((X1 - X0) * k), ph = Math.ceil((by1 - by0) * k);
-      bufA = buf(bufA, pw, ph);
-      const a = bufA.getContext('2d');
-      a.setTransform(1, 0, 0, 1, 0, 0); a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
-      a.clearRect(0, 0, pw + 2, ph + 2);
-      a.setTransform(k * f, 0, 0, k, -X0 * k, -by0 * k);
-      F.px = 1 / k;
-      body(a, F);
-      if (F.rim) {
-        // 轮廓光：半分辨率求“朝光一侧的边”，放大后只留在剪影之内，边缘自然柔和
-        const dq = 2, hw = Math.ceil(pw / dq), hh = Math.ceil(ph / dq);
-        bufB = buf(bufB, hw, hh); bufC = buf(bufC, hw, hh);
-        const b = bufB.getContext('2d'), c2 = bufC.getContext('2d');
-        c2.setTransform(1, 0, 0, 1, 0, 0); c2.globalCompositeOperation = 'copy'; c2.imageSmoothingEnabled = true; c2.imageSmoothingQuality = 'high';
-        c2.drawImage(bufA, 0, 0, pw, ph, 0, 0, hw, hh);
-        const rd = o.rimDir || [-f * 0.8, -0.6], rl = Math.hypot(rd[0], rd[1]) || 1;
-        const rw = clamp((1.55 * k * (o.rimWidth || 1)) / dq, 0.3, 6);
-        b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1;
-        b.globalCompositeOperation = 'copy'; b.drawImage(bufC, 0, 0, hw, hh, 0, 0, hw, hh);
-        b.globalCompositeOperation = 'source-in'; b.fillStyle = F.rim; b.fillRect(0, 0, hw, hh);
-        b.globalCompositeOperation = 'destination-out'; b.drawImage(bufC, 0, 0, hw, hh, (-rd[0] / rl) * rw, (-rd[1] / rl) * rw, hw, hh);
-        a.setTransform(1, 0, 0, 1, 0, 0); a.globalCompositeOperation = 'source-atop'; a.globalAlpha = (o.rimAlpha ?? 0.95) * clamp(0.45 + k * 0.7, 0.5, 1);
-        a.imageSmoothingEnabled = true; a.imageSmoothingQuality = 'medium';
-        a.drawImage(bufB, 0, 0, hw, hh, 0, 0, pw, ph);
-        a.globalAlpha = 1; a.globalCompositeOperation = 'source-over';
-      }
-      const ga = g.globalAlpha;
-      g.globalAlpha = ga * F.alpha;
-      g.drawImage(bufA, 0, 0, pw, ph, x + X0 * S, y + by0 * S, pw / k * S, ph / k * S);
+      const wb0 = (F) => { const [x0, x1, y0, y1] = bbox(F), f = F.facing; return [F.x + (f > 0 ? x0 : -x1) * F.S, F.x + (f > 0 ? x1 : -x0) * F.S, F.y + y0 * F.S, F.y + y1 * F.S]; };
+      const r1 = wb0(FA), r2 = wb0(FB);
+      const m = g.getTransform(), dev = FA.dev;
+      let X0 = Math.min(r1[0], r2[0]), Y0 = Math.min(r1[2], r2[2]);
+      const X1 = Math.max(r1[1], r2[1]), Y1 = Math.max(r1[3], r2[3]);
+      const k = Math.min(dev, 3000 / (X1 - X0), 3000 / (Y1 - Y0));
+      if (!m.b && !m.c && m.a > 0 && m.d > 0 && Math.abs(k - dev) < 1e-6) { X0 -= ((m.a * X0 + m.e) % 1 + 1) % 1 / m.a; Y0 -= ((m.d * Y0 + m.f) % 1 + 1) % 1 / m.d; }
+      const pw = Math.ceil((X1 - X0) * k) + 1, ph = Math.ceil((Y1 - Y0) * k) + 1;
+      const P = getBuf('P', pw, ph), p = P.getContext('2d');
+      p.setTransform(k, 0, 0, k, -X0 * k, -Y0 * k);
+      FA.part = 'back'; paint(p, FA, FA.alpha / common);
+      if (sep > 0) {
+        // 乙的剪影外扩一圈抠掉甲，两人之间留一道透出背景的细缝
+        const B = toBuf(FB, p), d = sep / k;
+        p.globalCompositeOperation = 'destination-out';
+        for (let i = 0; i < 8; i++) { const an = (i * TAU) / 8; p.drawImage(B.c, 0, 0, B.pw, B.ph, B.wx + Math.cos(an) * d, B.wy + Math.sin(an) * d, B.ww, B.wh); }
+        p.globalCompositeOperation = 'source-over';
+        blit(p, B, FB.alpha / common);
+      } else paint(p, FB, FB.alpha / common);
+      FA.part = 'front'; paint(p, FA, FA.alpha / common);
+      const ga = g.globalAlpha; g.globalAlpha = ga * common;
+      g.drawImage(P, 0, 0, pw, ph, X0, Y0, pw / k, ph / k);
       g.globalAlpha = ga;
     }
-    if (F.part !== 'back') fxFront(g, F, x, y, S, f);
-  };
-  // 两人相拥：先画甲（不含近侧手臂），再画乙，最后补上甲搭在乙背上的手臂
-  fig.pair = function (g, a, b) {
-    const A0 = Array.isArray(a) ? a : [a.who, a.x, a.y, a.s, a.t, a.opts];
-    const B0 = Array.isArray(b) ? b : [b.who, b.x, b.y, b.s, b.t, b.opts];
-    fig.draw(g, A0[0], A0[1], A0[2], A0[3], A0[4], Object.assign({}, A0[5], { part: 'back' }));
-    fig.draw(g, B0[0], B0[1], B0[2], B0[3], B0[4], B0[5]);
-    fig.draw(g, A0[0], A0[1], A0[2], A0[3], A0[4], Object.assign({}, A0[5], { part: 'front' }));
+    FA.part = 'all'; fxFront(g, FA); fxFront(g, FB);
   };
 
-  // 关键点（世界坐标），用于挂特效：头、双手、剑尖、腰、头顶
+  // 共用选项：两个人物都要的光、风、透明度等
+  const SHARED = ['rim', 'light', 'rimDir', 'rimWidth', 'rimAlpha', 'wind', 'windDir', 'night', 'alpha', 'ghost', 'tone', 'facing', 'fx', 'feibai', 'wash'];
+  const shared = (o) => { const r = {}; for (const k of SHARED) if (o[k] !== undefined) r[k] = o[k]; return r; };
+  // 怀抱：甲跪地，近侧手臂托住乙的后背，乙上身被托起、头向后垂、一臂垂地。opts.who/held 指定两人，opts.a/b 各自的额外选项
+  fig.cradle = function (g, x, y, s, t, opts) {
+    const o = opts || {}, A0 = o.who || 'xiaoyao', B0 = o.held || 'linger', f = o.facing < 0 ? -1 : 1;
+    const c = shared(o);
+    const bo = Object.assign({ pose: 'lie', flat: true, limp: true }, c, { wind: (c.wind ?? 0.35) * 0.5 }, o.b);
+    const SA = s * spec(A0, o.a || {}).h / 180;
+    const bp = fig.points(B0, 0, y, s, t, bo);
+    const reach = o.reach ?? 50;
+    const xB = x + f * reach * SA - bp.back[0];
+    const hold = (p, dy) => [(p[0] + xB - x) * f / SA, (p[1] - y) / SA + dy];
+    const ao = Object.assign({ pose: 'kneel', cradle: true }, c, o.a, { holdN: hold(bp.back, -1), holdF: hold(bp.waist, 3) });
+    fig.pair(g, [A0, x, y, s, t, ao], [B0, xB, y, s, t, bo], { sep: o.sep ?? 0 });
+  };
+  // 相拥：两人面对面站在 x 两侧；sep 默认 1.2 像素，在两人剪影之间留一道细缝
+  fig.embrace = function (g, x, y, s, t, opts) {
+    const o = opts || {}, A0 = o.who || 'xiaoyao', B0 = o.with || 'linger';
+    const c = shared(o), f = o.facing < 0 ? -1 : 1;
+    const gapW = (o.gap ?? 22) * s;
+    const SA = s * spec(A0, o.a || {}).h / 180, SB = s * spec(B0, o.b || {}).h / 180;
+    const ao = Object.assign({ pose: 'embrace' }, c, o.a, { facing: f, gap: gapW / SA });
+    const bo = Object.assign({ pose: 'embrace' }, c, o.b, { facing: -f, gap: gapW / SB });
+    fig.pair(g, [A0, x - (f * gapW) / 2, y, s, t, ao], [B0, x + (f * gapW) / 2, y, s, t, bo], { sep: o.sep ?? 1.2 });
+  };
+
+  // 关键点（世界坐标），用于挂特效
   fig.points = function (who, x, y, s, t, opts) {
     const o = opts || {};
     const F = prepare(who, s, t, o);
-    const S = s * F.sp.h / 180, f = F.facing, J = F.J;
+    const S = s * F.sp.h / 180, f = F.facing, J = F.J, G = F.G;
     const W = (p) => [x + p[0] * S * f, y + p[1] * S];
     const H = headTf(F);
-    const out = { head: W(J.Hc), top: W(H.p(0, -14)), mouth: W(H.p(9, 6)), handN: W(ma(J.Wn, J.dn, 5)), handF: W(ma(J.Wf, J.df, 5)), waist: W(at(J, J.P, 0, 15)), pelvis: W(J.P), chest: W(at(J, J.N, 4, -14)),
-      footN: W(add(J.An, [4, ANK])), footF: W(add(J.Af, [4, ANK])) };
-    if (F.swordMode === 'hand') out.swordTip = W(ma(ma(J.Wn, J.dn, 9), F.pose === 'swordUp' ? nrm(add(J.dn, [0.02, -0.2])) : J.dn, 94));
+    const out = {
+      head: W(J.Hc), top: W(H.p(0, -14)), mouth: W(H.p(9, 6)), handN: W(ma(J.Wn, J.dn, 5)), handF: W(ma(J.Wf, J.df, 5)),
+      waist: W(at(J, J.P, 0, 15)), pelvis: W(J.P), chest: W(at(J, J.N, 4, -14)), back: W(at(J, J.N, -F.sp.chest, -10)),
+      shoulderN: W(J.Sn), shoulderF: W(J.Sf), elbowN: W(J.En), elbowF: W(J.Ef), kneeN: W(J.Kn), kneeF: W(J.Kf),
+      footN: W(add(J.An, [4, ANK])), footF: W(add(J.Af, [4, ANK])),
+    };
+    for (const k of ['swordTip', 'swordHilt', 'lantern', 'staffTop', 'umbrellaTop', 'gourdMouth', 'fanTip', 'whipTip']) if (G[k]) out[k] = W(G[k]);
+    if (F.sp.nuwa) out.tailTip = W(add(J.P, TAILS[F.tailKind].pts.slice(-1)[0]));
     return out;
   };
-  // 步行时脚下不打滑的前进速度（逻辑像素/秒）
+  // 步行时脚下不打滑的前进速度（逻辑像素/秒）：支撑脚每周期随身体后移一个步幅
   fig.walkSpeed = function (who, s, opts) {
     const o = opts || {}, sp = spec(who, o);
-    const amp = sp.sex === 'f' ? 0.3 : 0.36;
-    return 4 * (LT + LS) * Math.sin(amp) * 0.85 * (o.speed || 1) * s * sp.h / 180;
+    return strideOf(sp, o) * WALK_HZ * (o.speed || 1) * s * sp.h / 180;
   };
   fig.height = (who, opts) => spec(who, opts || {}).h;
   fig.who = Object.keys(CHARS);
@@ -1576,6 +2074,7 @@
   fig.stages = Object.keys(STAGES);
 
   // ---------- 预览画廊 ----------
+  const MOON = [1120, 410];
   function galleryBg(g, c) {
     const { W, H } = A;
     A.fillV(g, 0, H / 2, [[0, '#efe7d6'], [1, '#e2d7c1']]);
@@ -1603,7 +2102,7 @@
         items.forEach((it, i) => {
           for (const night of [false, true]) {
             const x = dx * (i + 0.5) + (it.dx || 0), y = night ? 692 : 332;
-            const o = Object.assign({ wind: 0.45, seed: i }, it.o, night ? Object.assign({ rim: '#ffe2b0' }, it.night || {}) : {});
+            const o = Object.assign({ wind: 0.45, seed: i }, it.o, night ? Object.assign({ rim: '#ffe2b0', light: MOON, night: true }, it.night || {}) : it.day || {});
             if (!it.noShadow) shadow(g, x, y, 34 * (it.s || 1), night);
             if (it.pre) it.pre(g, x, y, c.t, night);
             fig.draw(g, it.who, x, y, it.s || 1, c.t, o);
@@ -1641,8 +2140,8 @@
       { who: 'jinyuan', label: '刘晋元', o: {} },
       { who: 'storyteller', label: '说书人', o: {} },
       { who: 'villager', label: '路人×4', noShadow: true, s: 0.7, dx: -28, o: { pose: 'walk' },
-        pre(g, x, y, t, night) { [1, 2].forEach((v, k) => fig.draw(g, 'villager', x - 50 + k * 30, y - 6, 0.55, t, { variant: v, pose: k ? 'stand' : 'walk', seed: v, rim: night ? '#ffe2b0' : null, facing: k ? -1 : 1 })); },
-        post(g, x, y, t, night) { fig.draw(g, 'villager', x + 50, y, 0.65, t, { variant: 3, seed: 3, pose: 'walk', facing: -1, rim: night ? '#ffe2b0' : null }); } },
+        pre(g, x, y, t, night) { [1, 2].forEach((v, k) => fig.draw(g, 'villager', x - 50 + k * 30, y - 6, 0.55, t, { variant: v, pose: k ? 'stand' : 'walk', seed: v, rim: night ? '#ffe2b0' : null, light: MOON, facing: k ? -1 : 1 })); },
+        post(g, x, y, t, night) { fig.draw(g, 'villager', x + 50, y, 0.65, t, { variant: 3, seed: 3, pose: 'walk', facing: -1, rim: night ? '#ffe2b0' : null, light: MOON }); } },
     ]);
     const XO = { stage: 'hero' };
     gallery('kit_figures_poses', '人物·姿势（一）', [
@@ -1669,7 +2168,7 @@
       { who: 'yueru', label: 'whip', o: { pose: 'reach', prop: 'whip' } },
       { who: 'storyteller', label: 'fan', o: { pose: 'walk' } },
       { who: 'laolao', label: 'staff·walk', o: { pose: 'walk' } },
-      { who: 'linger', label: '虚影 ink+alpha', o: { pose: 'lookBack', ink: '#e9eef3', alpha: 0.55, glow: 0.35, glowColor: '#cfe4ff' }, night: { rim: null } },
+      { who: 'linger', label: '虚影 ghost', o: { pose: 'lookBack', ghost: true }, night: { rim: undefined } },
       { who: 'xiaoyao', label: 'old·drink', o: { stage: 'old', pose: 'drink' } },
     ]);
     // 双人：相拥、耳语、怀抱
@@ -1679,26 +2178,20 @@
         galleryBg(g, c);
         const t = c.t;
         for (const night of [false, true]) {
-          const y = night ? 692 : 332, r = night ? '#ffe2b0' : null, w = 0.4;
+          const y = night ? 692 : 332, base = night ? { rim: '#ffe2b0', light: MOON, night: true } : {}, w = 0.4;
           shadow(g, 165, y, 48, night);
-          fig.pair(g, ['xiaoyao', 152, y, 1, t, { pose: 'embrace', rim: r, wind: w }], ['linger', 178, y, 1, t, { pose: 'embrace', facing: -1, rim: r, wind: w, windDir: -1 }]);
-          label(g, 165, y + 22, '相拥 fig.pair', night);
+          fig.embrace(g, 165, y, 1, t, Object.assign({ wind: w }, base));
+          label(g, 165, y + 22, '相拥 fig.embrace', night);
           shadow(g, 440, y, 50, night);
-          fig.draw(g, 'xiaoyao', 466, y, 1, t, { pose: 'whisper', facing: -1, rim: r, wind: w, windDir: -1, head: 0.1, lean: -0.12 });
-          fig.draw(g, 'linger', 424, y, 1, t, { pose: 'whisper', rim: r, wind: w, windDir: -1 });
+          fig.draw(g, 'xiaoyao', 466, y, 1, t, Object.assign({ pose: 'whisper', facing: -1, wind: w, head: 0.1, lean: -0.12 }, base));
+          fig.draw(g, 'linger', 424, y, 1, t, Object.assign({ pose: 'whisper', wind: w }, base));
           label(g, 450, y + 22, '耳语', night);
-          shadow(g, 760, y, 80, night);
-          // 怀抱：让灵儿的头落在逍遥双手之间
-          const xo = { pose: 'kneel', cradle: true, rim: r, wind: w };
-          const hp = fig.points('xiaoyao', 700, y, 1, t, xo);
-          const lo = { pose: 'lie', flat: true, limp: true, rim: r, wind: 0.2, windDir: -1 };
-          const lp = fig.points('linger', 0, 0, 1, t, lo);
-          const tx = hp.handN[0] - lp.head[0] - 4;
-          fig.pair(g, ['xiaoyao', 700, y, 1, t, xo], ['linger', tx, y, 1, t, lo]);
-          label(g, 760, y + 22, '怀抱（kneel cradle + lie flat）', night);
+          shadow(g, 740, y, 80, night);
+          fig.cradle(g, 690, y, 1, t, Object.assign({ wind: w }, base));
+          label(g, 750, y + 22, '怀抱 fig.cradle', night);
           shadow(g, 1040, y, 60, night);
-          fig.draw(g, 'anu', 1010, y, 1, t, { pose: 'stand', rim: r, wind: w });
-          fig.draw(g, 'tangyu', 1060, y, 1, t, { pose: 'stand', facing: -1, rim: r, wind: w, windDir: 1 });
+          fig.draw(g, 'anu', 1012, y, 1, t, Object.assign({ pose: 'stand', wind: w }, base));
+          fig.draw(g, 'tangyu', 1062, y, 1, t, Object.assign({ pose: 'stand', facing: -1, wind: w }, base));
           label(g, 1035, y + 22, '阿奴 · 唐钰', night);
         }
       },
@@ -1715,7 +2208,7 @@
           list.forEach(([w, p], i) => {
             const row = i % 2, x = 60 + i * 86, y = (night ? 692 : 332) - 40 - row * 0;
             const s = row ? 0.25 : 0.33;
-            fig.draw(g, w, x, y, s, t, { pose: p, wind: 0.5, seed: i, rim: night ? '#ffe2b0' : null });
+            fig.draw(g, w, x, y, s, t, { pose: p, wind: 0.5, seed: i, rim: night ? '#ffe2b0' : null, light: MOON, night });
             g.font = '11px sans-serif'; g.textAlign = 'center'; g.fillStyle = night ? 'rgba(230,236,255,0.6)' : 'rgba(40,30,20,0.6)';
             g.fillText(`${p} ${Math.round(s * 180)}px`, x, y + 18);
           });
