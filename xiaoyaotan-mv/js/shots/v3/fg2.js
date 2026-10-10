@@ -763,7 +763,7 @@
       }
       if (!any) return;
       const recede = u > w.up + w.hold;
-      const a0 = (w.big ? 0.4 : 0.28) * (recede ? 0.85 : 1);
+      const a0 = (w.big ? 0.4 : 0.28) * (1 - 0.15 * smooth((u - w.up - w.hold) / 0.35));
       // 水膜：近岸厚、前沿薄，映出天光
       g.beginPath(); g.moveTo(xs[0], SHORE - 2);
       for (let i = 0; i < xs.length; i++) g.lineTo(xs[i], Math.max(SHORE - 2, fy[i]));
