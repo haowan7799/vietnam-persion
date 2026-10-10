@@ -321,10 +321,55 @@
         g.save();
         g.translate(640, 330); g.scale(z, z); g.translate(-640, -330);
 
-        // ---- 天空底色、星、暗云 ----
-        const sky = g.createLinearGradient(0, 0, 0, YW);
-        sky.addColorStop(0, '#060914'); sky.addColorStop(0.55, '#0c1326'); sky.addColorStop(1, '#1b2640');
-        g.fillStyle = sky; g.fillRect(-60, -60, W + 120, YW + 62);
+        // ---- 天空（1/3 分辨率缓冲，柔和的东西都画在这里再一次放大贴回）：底色、暗云、红/金环境光、光晕、被照亮的烟与云底 ----
+        const SB = rawCanvas('fg5_fw_sky', 428, 162);
+        const sb = SB.g;
+        sb.setTransform(1 / 3, 0, 0, 1 / 3, 0, 0);
+        const sky = sb.createLinearGradient(0, 0, 0, 480);
+        sky.addColorStop(0, '#060914'); sky.addColorStop(0.53, '#0c1326'); sky.addColorStop(0.97, '#1b2640'); sky.addColorStop(1, '#1b2640');
+        sb.fillStyle = sky; sb.fillRect(0, 0, W + 4, 486);
+        sb.globalAlpha = 0.7; sb.drawImage(cloudTex('#141c2e'), 0, 0, W, 220); sb.globalAlpha = 1;
+        sb.globalCompositeOperation = 'lighter';
+        if (redAmb > 0.002) {
+          const ra = Math.min(1, redAmb);
+          const rg = sb.createRadialGradient(640, 230, 0, 640, 230, 900);
+          rg.addColorStop(0, `rgba(215,50,32,${0.8 * ra})`); rg.addColorStop(0.4, `rgba(170,34,28,${0.55 * ra})`); rg.addColorStop(1, `rgba(96,16,20,${0.4 * ra})`);
+          sb.fillStyle = rg; sb.fillRect(0, 0, W + 4, 486);
+        }
+        if (G > 0.01) {
+          const cx = gx / G, cy = gy / G, ga = Math.min(0.6, G * 0.45);
+          const gg = sb.createRadialGradient(cx, cy, 0, cx, cy, 760);
+          gg.addColorStop(0, `rgba(150,124,86,${ga})`); gg.addColorStop(0.5, `rgba(70,60,48,${ga * 0.6})`); gg.addColorStop(1, 'rgba(30,26,22,0)');
+          sb.fillStyle = gg; sb.fillRect(0, 0, W + 4, 486);
+          sb.globalAlpha = Math.min(0.6, G * 0.5); sb.drawImage(cloudTex('#c9b48a'), 0, 0, W, 220);
+        }
+        if (R + redAmb > 0.01) { sb.globalAlpha = Math.min(0.8, R * 0.35 + redAmb * 0.4); sb.drawImage(cloudTex('#d0482e'), 0, 0, W, 220); }
+        for (let i = 0; i < SHELLS.length; i++) {
+          const B = SHELLS[i], tau = t - T[i];
+          if (tau < 0) continue;
+          const L = Ls[i];
+          // 烟：绽开后慢慢出现、扩散、略上浮；被自己与别的烟火照亮时才看得见
+          const sm = smooth(tau / 0.8) * (1 - 0.5 * smooth((tau - 3) / 5));
+          const lit = Math.min(1.2, L * 0.9 + (isRed(B) ? 0 : G * 0.25) + R * 0.35 + redAmb * 0.3);
+          if (sm > 0.01 && lit > 0.01) {
+            const litCol = (isRed(B) || R + redAmb > G) ? '#c4442e' : '#bcac8c';
+            sb.globalAlpha = Math.min(1, 0.2 * sm * lit);
+            const st = softTex(litCol);
+            for (const p of B.smoke) {
+              const rr = B.R * p.s * (0.45 + 0.35 * smooth(tau / 3)) + 5 * tau;
+              const x = B.x + p.ox * B.R + 2 * Math.sin(tau * 0.3 + p.ph), y = B.y + p.oy * B.R - 3 * tau;
+              sb.drawImage(st, x - rr, y - rr, rr * 2, rr * 2);
+            }
+          }
+          if (L > 0.005) {
+            const gr = B.R * 2.5;
+            sb.globalAlpha = Math.min(1, 0.4 * L);
+            sb.drawImage(glowTex(isRed(B) ? '#ff4a30' : '#ffd9a0'), B.x - gr, B.y - gr, gr * 2, gr * 2);
+          }
+        }
+        g.imageSmoothingEnabled = true;
+        g.drawImage(SB.c, 0, 0, 427, 160, 0, 0, W + 1, 480);
+        // 星：极淡，被烟火光冲淡
         {
           const sa = 0.55 * (1 - 0.7 * Math.min(1, LL)) * (1 - 0.85 * Math.min(1, redAmb));
           if (sa > 0.02) {
@@ -337,56 +382,6 @@
             g.globalAlpha = 1;
           }
         }
-        g.globalAlpha = 0.7; g.drawImage(cloudTex('#141c2e'), 0, 0, W, 220); g.globalAlpha = 1;
-
-        // ---- 光层（1/4 分辨率）：红/金环境光、各朵烟花的光晕、被照亮的烟与云底 ----
-        prof(g, 'light');
-        const LB = rawCanvas('fg5_fw_lb', 320, 120);
-        const lb = LB.g;
-        lb.setTransform(0.25, 0, 0, 0.25, 0, 0);
-        lb.globalCompositeOperation = 'lighter';
-        if (redAmb > 0.002) {
-          const ra = Math.min(1, redAmb);
-          const rg = lb.createRadialGradient(640, 230, 0, 640, 230, 900);
-          rg.addColorStop(0, `rgba(215,50,32,${0.8 * ra})`); rg.addColorStop(0.4, `rgba(170,34,28,${0.55 * ra})`); rg.addColorStop(1, `rgba(96,16,20,${0.4 * ra})`);
-          lb.fillStyle = rg; lb.fillRect(0, 0, W, 480);
-        }
-        if (G > 0.01) {
-          const cx = gx / G, cy = gy / G, ga = Math.min(0.6, G * 0.45);
-          const gg = lb.createRadialGradient(cx, cy, 0, cx, cy, 760);
-          gg.addColorStop(0, `rgba(150,124,86,${ga})`); gg.addColorStop(0.5, `rgba(70,60,48,${ga * 0.6})`); gg.addColorStop(1, 'rgba(30,26,22,0)');
-          lb.fillStyle = gg; lb.fillRect(0, 0, W, 480);
-        }
-        if (G > 0.01) { lb.globalAlpha = Math.min(0.6, G * 0.5); lb.drawImage(cloudTex('#c9b48a'), 0, 0, W, 220); }
-        if (R + redAmb > 0.01) { lb.globalAlpha = Math.min(0.8, R * 0.35 + redAmb * 0.4); lb.drawImage(cloudTex('#d0482e'), 0, 0, W, 220); }
-        for (let i = 0; i < SHELLS.length; i++) {
-          const B = SHELLS[i], tau = t - T[i];
-          if (tau < 0) continue;
-          const L = Ls[i];
-          // 烟：绽开后慢慢出现、扩散、略上浮；被自己与别的烟火照亮时才看得见
-          const sm = smooth(tau / 0.8) * (1 - 0.5 * smooth((tau - 3) / 5));
-          const lit = Math.min(1.2, L * 0.9 + (isRed(B) ? 0 : G * 0.25) + R * 0.35 + redAmb * 0.3);
-          if (sm > 0.01 && lit > 0.01) {
-            const litCol = (isRed(B) || R + redAmb > G) ? '#c4442e' : '#bcac8c';
-            lb.globalAlpha = Math.min(1, 0.2 * sm * lit);
-            const st = softTex(litCol);
-            for (const p of B.smoke) {
-              const rr = B.R * p.s * (0.45 + 0.35 * smooth(tau / 3)) + 5 * tau;
-              const x = B.x + p.ox * B.R + 2 * Math.sin(tau * 0.3 + p.ph), y = B.y + p.oy * B.R - 3 * tau;
-              lb.drawImage(st, x - rr, y - rr, rr * 2, rr * 2);
-            }
-          }
-          if (L > 0.005) {
-            const gr = B.R * 2.5;
-            lb.globalAlpha = Math.min(1, 0.4 * L);
-            lb.drawImage(glowTex(isRed(B) ? '#ff4a30' : '#ffd9a0'), B.x - gr, B.y - gr, gr * 2, gr * 2);
-          }
-        }
-        g.save();
-        g.globalCompositeOperation = 'lighter';
-        g.imageSmoothingEnabled = true;
-        g.drawImage(LB.c, 0, 0, 320, 120, 0, 0, W, 480);
-        g.restore();
 
         // ---- 升空光尾与星点 ----
         prof(g, 'stars');

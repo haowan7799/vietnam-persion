@@ -426,22 +426,33 @@
     }
 
     // 墙头枯草：逆光里的几簇细草，顺风（向左）轻摆，叶缘带金光
-    const TUFTS = [[300, 7, 14, 1], [356, 5, 10, 2], [604, 8, 18, 3], [626, 4, 11, 4], [712, 6, 15, 5], [780, 5, 12, 6], [168, 6, 12, 7]];
+    const TUFTS = [[300, 9, 15, 1], [352, 6, 11, 2], [606, 11, 19, 3], [634, 6, 12, 4], [714, 9, 16, 5], [782, 7, 13, 6], [168, 8, 13, 7], [470, 5, 10, 8]];
     function drawTufts(g, t) {
+      const y0 = RIDGE + 1.5;
       for (const [cx, n, hh, seed] of TUFTS) {
-        for (let i = 0; i < n; i++) {
-          const k = seed * 31 + i;
-          const x = cx + (h2(k, 1) - 0.5) * 16, len = hh * (0.55 + 0.6 * h2(k, 2));
-          const lean = -0.25 - 0.35 * h2(k, 3) + (h2(k, 4) - 0.5) * 0.5;
-          const sw = 0.06 * Math.sin(TAU * t * (0.45 + 0.4 * h2(k, 5)) + k) + 0.03 * Math.sin(TAU * t * 1.1 + k * 2.3) - 0.05;
-          const a = lean + sw;
-          const tx = x + Math.sin(a) * len, ty = RIDGE + 1 - Math.cos(a) * len;
-          const mx = x + Math.sin(a * 0.4) * len * 0.55, my = RIDGE + 1 - Math.cos(a * 0.4) * len * 0.55;
-          const near = Math.exp(-Math.abs(x - SUN.x) / 120);
-          g.strokeStyle = rgba('#ffd9a0', 0.35 + 0.5 * near); g.lineWidth = 2.2;
-          g.beginPath(); g.moveTo(x, RIDGE + 2); g.quadraticCurveTo(mx, my, tx, ty); g.stroke();
-          g.strokeStyle = '#2a2230'; g.lineWidth = 1.2;
-          g.beginPath(); g.moveTo(x, RIDGE + 2); g.quadraticCurveTo(mx, my, tx, ty); g.stroke();
+        const near = Math.exp(-Math.abs(cx - SUN.x) / 140);
+        for (let pass = 0; pass < 2; pass++) {
+          for (let i = 0; i < n; i++) {
+            const k = seed * 31 + i;
+            const x = cx + (h2(k, 1) - 0.5) * 12, len = hh * (0.5 + 0.6 * h2(k, 2));
+            // 扇形散开，整体顺风向左偏；梢部弯得多、根部直
+            const fan = (i / Math.max(1, n - 1) - 0.5) * 0.9 + (h2(k, 4) - 0.5) * 0.2;
+            const sw = 0.05 * Math.sin(TAU * t * (0.5 + 0.35 * h2(k, 5)) + k) + 0.025 * Math.sin(TAU * t * 1.05 + k * 2.3);
+            const a = fan - 0.22 + sw;
+            const mx = x + Math.sin(a * 0.45) * len * 0.5, my = y0 - Math.cos(a * 0.45) * len * 0.5;
+            const tx = mx + Math.sin(a * 1.25) * len * 0.5, ty = my - Math.cos(a * 1.25) * len * 0.5;
+            if (pass === 0) { g.strokeStyle = rgba('#ffd9a0', 0.3 + 0.55 * near); g.lineWidth = 2.1; }
+            else { g.strokeStyle = '#2a2230'; g.lineWidth = 1.1; }
+            g.beginPath(); g.moveTo(x, y0); g.quadraticCurveTo(mx, my, tx, ty); g.stroke();
+            // 少数草穗：梢头一粒细长的穗，逆光发亮
+            if (h2(k, 6) < 0.35) {
+              const pa = a * 1.4;
+              g.save(); g.translate(tx, ty); g.rotate(pa);
+              g.fillStyle = pass === 0 ? rgba('#ffe0aa', 0.45 + 0.5 * near) : 'rgba(60,44,50,0.9)';
+              g.beginPath(); g.ellipse(0, -3, pass === 0 ? 2.2 : 1.3, pass === 0 ? 4.6 : 3.6, 0, 0, TAU); g.fill();
+              g.restore();
+            }
+          }
         }
       }
     }
