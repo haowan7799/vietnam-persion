@@ -53,7 +53,8 @@
     const TR = 226;                                  // 横披（上方固定格心）下沿
     const MUL = [582, 782];                          // 两根竖棂
     const FLOOR = 570;                               // 墙脚线
-    const WL = 402;                                  // 对岸水线
+    const DY = 28;                                   // 对岸整体下移：老人的白发衬在暗的远山与天上，不压在雪白的屋顶线上
+    const WL = 402 + DY;                             // 对岸水线
     const MAN = { x: 470, y: 600, h: 300 };
     const SNOW = '#dfe8f2', WARM = '#f3c47a', AMBER = '#e9a24a';
     const DIR = [0.88, 0.475];                       // 雪帘推进方向（风向右、雪下落）
@@ -63,9 +64,9 @@
       const r = A.rng(4407);
       const hill = (x) => 34 * Math.exp(-Math.pow((x - 640) / 170, 2)) + 12 * Math.exp(-Math.pow((x - 900) / 110, 2));
       const rows = [
-        { base: (x) => 356 - hill(x), sc: 0.6, dim: 0.5 },
-        { base: (x) => 378 - hill(x) * 0.3, sc: 0.8, dim: 0.75 },
-        { base: () => 392, sc: 1.0, dim: 1.0 },
+        { base: (x) => 356 + DY - hill(x), sc: 0.6, dim: 0.5 },
+        { base: (x) => 378 + DY - hill(x) * 0.3, sc: 0.8, dim: 0.75 },
+        { base: () => 392 + DY, sc: 1.0, dim: 1.0 },
       ];
       const houses = [], lights = [];
       rows.forEach((row, ri) => {
@@ -85,10 +86,10 @@
         }
       });
       // 塔：在坡顶
-      const pag = { x: 700, b: 356 - hill(700) + 4, h: 104, w: 24 };
+      const pag = { x: 700, b: 356 + DY - hill(700) + 4, h: 104, w: 24 };
       lights.push({ x: pag.x, y: pag.b - pag.h * 0.62, w: 3, h: 4, col: AMBER, a: 0.75, ph: 12.3, kind: 'win', ri: 0 });
       // 河堤上一串灯
-      for (const lx of [430, 545, 655, 770, 880, 950]) lights.push({ x: lx, y: 388, w: 4, h: 5, col: '#ef9a50', a: 0.9, ph: lx * 0.37, kind: 'lan', ri: 2 });
+      for (const lx of [430, 545, 655, 770, 880, 950]) lights.push({ x: lx, y: 388 + DY, w: 4, h: 5, col: '#ef9a50', a: 0.9, ph: lx * 0.37, kind: 'lan', ri: 2 });
       return { houses, lights, pag, hill };
     })();
 
@@ -146,6 +147,9 @@
       let gr = g.createLinearGradient(0, 130, 0, WL);
       gr.addColorStop(0, '#1c2231'); gr.addColorStop(0.4, '#2d3345'); gr.addColorStop(0.72, '#4a4a59'); gr.addColorStop(1, '#5f5864');
       g.fillStyle = gr; g.fillRect(X0, 130, X1 - X0, WL - 128);
+      // 远山离得最远，下移得少；小镇、河堤整体下移 DY
+      const MY = Math.round(DY * 0.4);
+      g.save(); g.translate(0, MY);
       // 雪云底被镇上的灯映暖，靠右（灯多处）更明显
       g.save(); g.translate(720, 360); g.scale(1, 0.32);
       gr = g.createRadialGradient(0, 0, 0, 0, 0, 380);
@@ -158,12 +162,15 @@
       g.fillStyle = '#353b4b'; g.fill();
       g.save(); g.clip();
       gr = g.createLinearGradient(0, 262, 0, 350); gr.addColorStop(0, 'rgba(150,162,182,0.22)'); gr.addColorStop(0.3, 'rgba(70,74,90,0)'); gr.addColorStop(1, 'rgba(96,90,100,0.6)');
-      g.fillStyle = gr; g.fillRect(X0, 250, X1 - X0, 110);
+      g.fillStyle = gr; g.fillRect(X0, 250, X1 - X0, 110 + DY);
       g.restore();
+      g.restore();
+      g.save(); g.translate(0, DY);
       // 镇后的小山坡（积雪，被灯映着）
-      g.beginPath(); g.moveTo(X0, WL);
+      const wl = WL - DY;                            // 平移坐标系里的水线
+      g.beginPath(); g.moveTo(X0, wl);
       for (let x = X0; x <= X1; x += 4) g.lineTo(x, 362 - town.hill(x) * 1.15 - 3 * A.noise1(x / 30, 8));
-      g.lineTo(X1, WL); g.closePath();
+      g.lineTo(X1, wl); g.closePath();
       gr = g.createLinearGradient(0, 320, 0, 380); gr.addColorStop(0, '#6c7383'); gr.addColorStop(1, '#4d4f5c');
       g.fillStyle = gr; g.fill();
       g.fillStyle = 'rgba(80,80,94,0.3)'; g.fillRect(X0, 250, X1 - X0, 130);
@@ -175,9 +182,10 @@
       g.fillStyle = 'rgba(84,82,96,0.14)'; g.fillRect(X0, 300, X1 - X0, 92);
       for (const hs of town.houses) if (hs.ri === 2) drawHouse(g, hs);
       // 河堤：石岸，顶上一线雪
-      g.fillStyle = '#23262f'; g.fillRect(X0, 392, X1 - X0, WL - 392);
+      g.fillStyle = '#23262f'; g.fillRect(X0, 392, X1 - X0, wl - 392);
       g.fillStyle = '#9aa9bb'; g.fillRect(X0, 391, X1 - X0, 2);
-      for (let x = X0 + 8; x < X1; x += 23 + 9 * A.hash(x | 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(x, 393, 1, WL - 393); }
+      for (let x = X0 + 8; x < X1; x += 23 + 9 * A.hash(x | 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(x, 393, 1, wl - 393); }
+      g.restore();
       // 水面：远处映着天光，近处暗
       gr = g.createLinearGradient(0, WL, 0, 515);
       gr.addColorStop(0, '#3f404c'); gr.addColorStop(0.3, '#272a36'); gr.addColorStop(1, '#11141c');
@@ -214,10 +222,10 @@
       blurInto(g, 630, 385, 7, (q) => q.drawImage(outside(), 0, 0, 630, 385));
     });
     // 密雪纹理（可平铺）：圆润的雪片，顺落向略拉长（运动模糊）
-    function snowTile(key, n, r0, r1, a0, seed) {
+    function snowTile(key, n, r0, r1, a0, seed, col) {
       return K.cache('fg8_f4_tile' + key, 280, 240, 1, (g) => {
         const r = A.rng(seed), ang = Math.atan2(DIR[1] + 0.6, DIR[0] * 0.5);
-        const spr = dot('snowt', '#eef2f7', 0.45);
+        const spr = dot('snowt' + (col || ''), col || '#eef2f7', 0.45);
         for (let i = 0; i < n; i++) {
           const x = r() * 280, y = r() * 240, rr = r0 + (r1 - r0) * Math.pow(r(), 2.2), a = a0 * (0.35 + 0.65 * r());
           for (const ox of [-280, 0, 280]) for (const oy of [-240, 0, 240]) {
@@ -234,6 +242,69 @@
       const sx = x0 - fract((x0 - ox) / tw) * tw, sy = y0 - fract((y0 - oy) / th) * th;
       for (let y = sy; y < y1; y += th) for (let x = sx; x < x1; x += tw) g.drawImage(tile, x, y, tw, th);
     }
+
+    // 向内开到 90° 的窗扇：铰链在 hx，自由边朝镜头（透视梯形，格心无纸）；用调用者设好的 fillStyle 填
+    const LEAF_K = 1.198;
+    const leafX = (hx, u) => VPX + (hx - VPX) / lerp(1, 1 / LEAF_K, u);
+    function leafQuads(g, hx) {
+      const P = (u, v) => { // u: 0 铰链 → 1 自由边；v: 0 上 → 1 下
+        const kk = 1 / lerp(1, 1 / LEAF_K, u); // 透视插值
+        const x = VPX + (hx - VPX) * kk, yt = YH + (TR + 4 - YH) * kk, yb = YH + (IY1 - YH) * kk;
+        return [x, lerp(yt, yb, v)];
+      };
+      const quad = (u0, u1, v0, v1) => { const a = P(u0, v0), b = P(u1, v0), c = P(u1, v1), d = P(u0, v1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.closePath(); g.fill(); };
+      const fu = 0.12, fv = 0.035;
+      quad(0, 1, 0, fv); quad(0, 1, 1 - fv, 1); quad(0, fu, 0, 1); quad(1 - fu, 1, 0, 1);
+      // 格心：竖棂与横棂
+      for (let i = 1; i < 4; i++) { const u = lerp(fu, 1 - fu, i / 4); quad(u - 0.018, u + 0.018, fv, 1 - fv); }
+      for (let j = 1; j < 9; j++) { const v = lerp(fv, 1 - fv, j / 9); quad(fu, 1 - fu, v - 0.005, v + 0.005); }
+      // 腰板
+      quad(fu, 1 - fu, 0.66, 0.72);
+    }
+    // 窗光照亮的面（屏幕叠加，强弱随窗的亮度）：窗台面最亮，两侧窗洞侧面次之；窗扇朝窗心的一面靠铰链处亮、向自由边渐暗；竖棂、横枋的侧边一线
+    const litLayer = () => K.cache('fg8_f4_lit', 1280, 720, 0.5, (g) => {
+      const poly = (pts, a) => { g.fillStyle = `rgba(168,186,212,${a})`; g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); g.fill(); };
+      poly([[IX0, IY1], [IX1, IY1], [OX1, OY1], [OX0, OY1]], 0.85);
+      poly([[IX0, IY0], [OX0, OY0], [OX0, OY1], [IX0, IY1]], 0.55);
+      poly([[IX1, IY0], [OX1, OY0], [OX1, OY1], [IX1, IY1]], 0.42);
+      for (const [hx, a0] of [[IX0, 0.75], [IX1, 0.62]]) {
+        const x0 = hx, x1 = leafX(hx, 1), gr = g.createLinearGradient(x0, 0, x1, 0);
+        gr.addColorStop(0, `rgba(168,186,212,${a0})`); gr.addColorStop(1, `rgba(168,186,212,${a0 * 0.22})`);
+        g.fillStyle = gr; leafQuads(g, hx);
+      }
+      g.fillStyle = 'rgba(168,186,212,0.5)';
+      for (const mx of MUL) { g.fillRect(mx - 5, TR + 5, 1.6, IY1 - TR - 5); g.fillRect(mx + 3.4, TR + 5, 1.6, IY1 - TR - 5); }
+      g.fillRect(IX0, TR + 3.5, IX1 - IX0, 1.6);
+      g.fillRect(366, 504.5, 632, 1.6);
+    });
+    // 地板上的窗光：窗洞沿透视向镜头投下的一片梯形（槛墙挡住墙脚，墙前十几像素起最亮，向镜头渐淡但到画面底仍在），
+    // 中间（对岸灯火的方向）略暖、两边冷；减去人挡出的柔影（窗心在他右后方：影子向镜头、偏左，越远越淡越虚）。人不动，整张缓存
+    const floorLight = () => K.cache('fg8_f4_floorL', 1280, 160, 0.5, (g) => {
+      blurInto(g, 1280, 160, 10, (q) => {
+        q.translate(0, -560);
+        const per = (x, y) => VPX + (x - VPX) * (y - YH) / (FLOOR - YH);
+        const gr = q.createLinearGradient(0, FLOOR, 0, 720);
+        gr.addColorStop(0, 'rgba(0,0,0,0.12)'); gr.addColorStop(0.2, 'rgba(0,0,0,1)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.72)'); gr.addColorStop(1, 'rgba(0,0,0,0.42)');
+        q.fillStyle = gr;
+        q.beginPath(); q.moveTo(OX0 + 6, FLOOR); q.lineTo(OX1 - 6, FLOOR); q.lineTo(per(OX1 - 6, 724), 724); q.lineTo(per(OX0 + 6, 724), 724); q.closePath(); q.fill();
+      });
+      g.save(); g.globalCompositeOperation = 'destination-out';
+      blurInto(g, 1280, 160, 8, (q) => {
+        q.translate(0, -560);
+        const sg = q.createLinearGradient(0, MAN.y - 4, 0, 722);
+        sg.addColorStop(0, 'rgba(0,0,0,0.95)'); sg.addColorStop(0.35, 'rgba(0,0,0,0.6)'); sg.addColorStop(1, 'rgba(0,0,0,0.2)');
+        q.fillStyle = sg;
+        q.beginPath(); q.moveTo(MAN.x - 20, MAN.y - 4); q.lineTo(MAN.x + 18, MAN.y - 4);
+        q.quadraticCurveTo(MAN.x + 2, 640, MAN.x - 52, 722); q.lineTo(MAN.x - 270, 722);
+        q.quadraticCurveTo(MAN.x - 90, 626, MAN.x - 20, MAN.y - 4); q.closePath(); q.fill();
+      });
+      g.restore();
+      // 上色：两边冷白，中间偏暖
+      g.save(); g.globalCompositeOperation = 'source-in';
+      const hg = g.createLinearGradient(300, 0, 1060, 0);
+      hg.addColorStop(0, '#bccbe0'); hg.addColorStop(0.5, '#dcd6cc'); hg.addColorStop(1, '#bccbe0');
+      g.fillStyle = hg; g.fillRect(0, 0, 1280, 160); g.restore();
+    });
 
     // 屋内静景（窗洞透明）：梁、柱、墙、窗框格心、两扇向内打开的窗扇、地板
     const room = () => K.cache('fg8_f4_room', 1280, 720, 1, (g) => {
@@ -288,25 +359,8 @@
       // 两根竖棂
       for (const mx of MUL) { g.fillStyle = '#120f0c'; g.fillRect(mx - 5, IY0, 10, IY1 - IY0); g.fillStyle = 'rgba(110,124,148,0.10)'; g.fillRect(mx + 3.5, TR + 5, 1.5, IY1 - TR - 5); }
       // 向内开到 90° 的两扇窗扇（透视梯形，迎窗光的一面略亮，格心无纸）
-      const leaf = (hx, side) => {
-        const k = 1.198;
-        const P = (u, v) => { // u: 0 铰链 → 1 自由边；v: 0 上 → 1 下
-          const kk = 1 / lerp(1, 1 / k, u); // 透视插值
-          const x = VPX + (hx - VPX) * kk, yt = YH + (TR + 4 - YH) * kk, yb = YH + (IY1 - YH) * kk;
-          return [x, lerp(yt, yb, v)];
-        };
-        const quad = (u0, u1, v0, v1) => { const a = P(u0, v0), b = P(u1, v0), c = P(u1, v1), d = P(u0, v1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.closePath(); g.fill(); };
-        const wood = side < 0 ? '#252427' : '#1b1b1e';
-        g.fillStyle = wood;
-        const fu = 0.12, fv = 0.035;
-        quad(0, 1, 0, fv); quad(0, 1, 1 - fv, 1); quad(0, fu, 0, 1); quad(1 - fu, 1, 0, 1);
-        // 格心：竖棂与横棂
-        for (let i = 1; i < 4; i++) { const u = lerp(fu, 1 - fu, i / 4); quad(u - 0.018, u + 0.018, fv, 1 - fv); }
-        for (let j = 1; j < 9; j++) { const v = lerp(fv, 1 - fv, j / 9); quad(fu, 1 - fu, v - 0.005, v + 0.005); }
-        // 腰板
-        quad(fu, 1 - fu, 0.66, 0.72);
-      };
-      leaf(IX0, -1); leaf(IX1, 1);
+      g.fillStyle = '#252427'; leafQuads(g, IX0);
+      g.fillStyle = '#1b1b1e'; leafQuads(g, IX1);
       // 右墙上一幅挂轴（抽象的山水淡墨，几乎隐在暗里）
       const sx = 1092, sy0 = 150, sw = 78, sh = 300;
       g.fillStyle = '#1a1c22'; g.fillRect(sx - 4, sy0 - 10, sw + 8, sh + 22);
@@ -393,17 +447,17 @@
       fb.g.setTransform(d.m.a, d.m.b, d.m.c, d.m.d, d.m.e - d.x, d.m.f - d.y);
       S.draw(fb.g, 'old', 'standBack', x, y, h, t, { wind: 0.06, windDir: 1, rim: null, body: '#191c24' });
       // 亮边 = 剪影 − 剪影向左平移（设备像素）
-      const rw = Math.max(1, Math.round(1.9 * d.m.a));
+      const rw = Math.max(1, Math.round(2.0 * d.m.a));
       const rg = rb.g;
       rg.drawImage(fb.c, 0, 0);
       rg.globalCompositeOperation = 'source-in';
-      rg.fillStyle = mix('#cfd6df', '#f0d2a0', 0.35); rg.fillRect(0, 0, d.w, d.h);
+      rg.fillStyle = mix('#dfe6ee', '#f3d9ad', 0.3); rg.fillRect(0, 0, d.w, d.h);
       rg.globalCompositeOperation = 'destination-out';
       rg.drawImage(fb.c, -rw, 0);
       rg.globalCompositeOperation = 'destination-in';
       const sy = (yy) => d.m.d * yy + d.m.f - d.y;
       const gr = rg.createLinearGradient(0, sy(y + bb.top), 0, sy(y));
-      const ka = clamp(0.55 + 0.45 * L);
+      const ka = clamp(0.72 + 0.28 * L);
       gr.addColorStop(0, `rgba(0,0,0,${ka})`); gr.addColorStop(0.6, `rgba(0,0,0,${ka * 0.9})`);
       gr.addColorStop(clamp((IY1 - (y + bb.top)) / (-bb.top)), `rgba(0,0,0,${ka * 0.45})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
       rg.fillStyle = gr; rg.fillRect(0, 0, d.w, d.h);
@@ -421,7 +475,7 @@
       fb.g.globalCompositeOperation = 'source-atop';
       fb.g.fillStyle = 'rgba(12,14,22,0.62)'; fb.g.fillRect(0, 0, d.w, d.h);
       blitDev(g, fb, d); blitDev(g, rb, d);
-      if (lb) { g.save(); g.globalAlpha = 0.4 * clamp(wh); blitDev(g, lb, d); g.restore(); }
+      if (lb) { g.save(); g.globalAlpha = 0.45 * clamp(wh); blitDev(g, lb, d); g.restore(); }
     }
 
     // 雪雾柔光层：上冷下冷、中间（灯火所在的高度）偏暖
@@ -430,36 +484,13 @@
       const gr = g.createLinearGradient(0, 0, 0, h);
       gr.addColorStop(0, '#c4cfdc'); gr.addColorStop(0.42, '#e9e3d6'); gr.addColorStop(0.62, '#f1e2c4'); gr.addColorStop(1, '#c9d2dc');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      g.save(); g.translate(w * 0.55, h * 0.6); g.scale(1, 0.35);
+      g.save(); g.translate(w * 0.55, h * 0.64); g.scale(1, 0.35);
       const rg = g.createRadialGradient(0, 0, 0, 0, 0, w * 0.55);
       rg.addColorStop(0, 'rgba(248,226,182,0.55)'); rg.addColorStop(1, 'rgba(248,226,182,0)');
       g.fillStyle = rg; g.fillRect(-w, -w, 2 * w, 2 * w); g.restore();
     });
-    // 地板上的窗光池（墙前不远处最亮，沿透视向镜头渐淡，y≈650 前消失）减去人挡出的柔影；人不动，所以整张缓存
-    // 影子方向：窗面很宽（人身后到他右后方），影子从脚下向镜头散开，偏左；面光源，影子淡而软
-    const floorPool = () => K.cache('fg8_f4_pool', 960, 110, 0.5, (g) => {
-      blurInto(g, 960, 110, 9, (q) => {
-        q.translate(-200, -560);
-        const per = (x, y) => VPX + (x - VPX) * (y - YH) / (FLOOR - YH);   // 墙脚 x 沿地面向镜头的透视线
-        const gr = q.createLinearGradient(0, FLOOR, 0, 652);
-        // 槛墙挡住墙脚：光池从墙前十几像素处才最亮
-        gr.addColorStop(0, 'rgba(132,150,178,0.12)'); gr.addColorStop(0.2, 'rgba(132,150,178,0.58)'); gr.addColorStop(0.48, 'rgba(120,138,165,0.34)'); gr.addColorStop(1, 'rgba(120,138,165,0)');
-        q.fillStyle = gr;
-        q.beginPath(); q.moveTo(OX0 + 6, FLOOR); q.lineTo(OX1 - 6, FLOOR); q.lineTo(per(OX1 - 6, 652), 652); q.lineTo(per(OX0 + 6, 652), 652); q.closePath(); q.fill();
-      });
-      // 挖去人影（软边：先在临时画布上画好再模糊着挖）
-      g.save(); g.globalCompositeOperation = 'destination-out';
-      blurInto(g, 960, 110, 6, (q) => {
-        q.translate(-200, -560);
-        const sg = q.createLinearGradient(0, MAN.y - 4, 0, 648);
-        sg.addColorStop(0, 'rgba(0,0,0,0.95)'); sg.addColorStop(0.45, 'rgba(0,0,0,0.6)'); sg.addColorStop(1, 'rgba(0,0,0,0.15)');
-        q.fillStyle = sg;
-        q.beginPath(); q.moveTo(MAN.x - 20, MAN.y - 4); q.lineTo(MAN.x + 18, MAN.y - 4);
-        q.quadraticCurveTo(MAN.x + 4, 628, MAN.x - 26, 648); q.lineTo(MAN.x - 150, 642);
-        q.quadraticCurveTo(MAN.x - 70, 616, MAN.x - 20, MAN.y - 4); q.closePath(); q.fill();
-      });
-      g.restore();
-    });
+    const FP0 = DIR[0] * OX0 + DIR[1] * OY0, FP1 = DIR[0] * OX1 + DIR[1] * OY1;   // 窗洞左上角、右下角沿推进方向的位置
+    const FE = 130;                                  // 雪帘前沿的羽化宽度
     XYT.registerShot('f4_window', {
       name: '临窗望雪', zone: 'bottom', night: true, text: '#f3ead8', shadow: 'rgba(6,8,14,0.85)', accent: '#f3c47a', bloom: 0.42,
       draw(g, c) {
@@ -468,124 +499,154 @@
         g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
         g.fillStyle = '#10141f'; g.fillRect(0, 0, g.canvas.width, g.canvas.height); g.restore();
         const tDense = CT(c, 7, 3.092), tCurtain = CT(c, 11, 4.772), tWhite = CT(c, 14, 6.012);
-        // 雪量：起初稀疏 → 第44句第8字起渐密 → 第44句第12字雪帘
-        const D = 0.32 + 0.38 * smooth(ramp(lt, tDense, tDense + 1.5)) + 0.3 * smooth(ramp(lt, tCurtain, tCurtain + 0.9));
-        // 雪帘前沿：沿推进方向从窗左上扫到右下（1.25 s）
-        const fp0 = DIR[0] * OX0 + DIR[1] * OY0, fp1 = DIR[0] * OX1 + DIR[1] * OY1 + 160;
-        const fk = ramp(lt, tCurtain, tCurtain + 1.25), front = lerp(fp0, fp1, smooth(fk));
-        // 第44句第15字：只剩柔白的光（灯火还隐约暖着）
-        const whiten = 0.7 * smooth(ramp(lt, tCurtain + 0.6, tWhite)) + 0.06 * smooth(ramp(lt, tWhite, tWhite + 0.6));
-        const haze0 = 0.1 * smooth(ramp(lt, tDense, tDense + 1.5));
-        const L = clamp(0.18 + haze0 + 0.95 * whiten + 0.15 * smooth(fk));
+        // 第44句第8字起：1.5 秒内雪量增到约三倍（更多雪片 + 一层斜飘的密雪纹理）
+        const kDense = smooth(ramp(lt, tDense, tDense + 1.5));
+        const D = 0.3 + 0.7 * kDense;
+        // 第44句第12字：一道雪帘顺风斜着推过窗外，约 1.1 秒走完，第44句第15字前整窗盖满
+        const tFull = Math.min(tCurtain + 1.13, tWhite - 0.1);
+        const uC = ramp(lt, tCurtain, tFull);
+        const lead = lerp(FP0 - 12, FP1 + FE, 0.62 * uC + 0.38 * smooth(uC));   // 前沿：起步稍缓，之后近乎匀速
+        const vcAt = (x, y) => smooth(clamp((lead - (DIR[0] * x + DIR[1] * y)) / FE));
+        // 雪帘的浓度：刚到时薄，随后渐浓，封顶约 0.85（灯火还能透成柔和的光斑）
+        const vK = 0.5 + 0.35 * smooth(ramp(lt, tCurtain + 0.35, tFull + 0.12));
+        // 窗洞的平均覆盖（4×3 采样）→ 屋里被照亮的程度
+        let cov = 0;
+        if (uC > 0) for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) cov += vcAt(lerp(OX0, OX1, (i + 0.5) / 4), lerp(OY0, OY1, (j + 0.5) / 3));
+        cov /= 12;
+        const haze0 = 0.12 * kDense;
+        const wB = clamp(0.1 * kDense + cov * vK / 0.85 * 0.9);        // 窗的亮度（0 夜色 → 1 满窗柔白）
+        const L = clamp(0.18 + 0.82 * wB);
         const z = 1 + 0.03 * easeInOut(c.p);
         g.save();
         g.translate(560, 380); g.scale(z, z); g.translate(-560, -380);
 
         // ---- 窗外 ----
         // 静景先整张画（比窗洞大一圈，窗洞边上的半透明像素下面总有确定的内容），其余窗外层裁在放大 3 px 的窗洞里
-        if (fk < 1) g.drawImage(outside(), 370, 130, 630, 385);
+        const fullyVeiled = lead - FE > FP1 + 4;
+        if (!fullyVeiled) g.drawImage(outside(), 370, 130, 630, 385);
         g.save();
         g.beginPath(); g.rect(OX0 - 3, OY0 - 3, OX1 - OX0 + 6, OY1 - OY0 + 6); g.clip();
-        // 雪帘后的部分：模糊的远景 + 密雪 + 雪雾；前沿扫过之前用沿推进方向的渐变遮罩
-        const veil = (q) => {
-          q.drawImage(outsideBlur(), 370, 130, 630, 385);
-          q.fillStyle = rgba('#b9c4d2', 0.2); q.fillRect(OX0 - 3, OY0 - 3, OX1 - OX0 + 6, OY1 - OY0 + 6);
-          const T = lt - tCurtain;
-          tileFill(q, snowTile('m', 760, 0.9, 2.4, 0.75, 77), 34 * T, 52 * T, OX0 - 3, OY0 - 3, OX1 + 3, OY1 + 3);
+        const beat = 0.06 * c.be(0.3);
+        const lampA = (lg) => lg.a * (0.9 + 0.1 * A.noise1(lt * 2.3 + lg.ph, 5) + beat);
+        // 灯（清晰的窗光与水中倒影）：被雪帘盖过的渐隐，换成帘后的光斑（见下）
+        if (!fullyVeiled) {
+          g.globalCompositeOperation = 'lighter';
+          for (const lg of town.lights) {
+            const bl = vcAt(lg.x, lg.y);
+            if (bl > 0.98) continue;
+            const a = lampA(lg) * (1 - bl);
+            const spr = dot(lg.kind === 'lan' ? 'lan' : 'win', lg.col, 0.25);
+            // 靠窗边的灯：光晕收小收淡（否则被窗边切开，像窗外紧贴着一盏灯）
+            const ef = smooth((lg.x - OX0) / 40) * smooth((OX1 - lg.x) / 40);
+            const r = (3.2 + lg.w) * (lg.ri === 2 ? 1 : 0.8) * (0.5 + 0.5 * ef);
+            g.globalAlpha = clamp(a * 0.25 * ef);
+            g.drawImage(spr, lg.x - r * 1.6, lg.y - r * 1.6, r * 3.2, r * 3.2);
+            g.globalAlpha = clamp(a);
+            g.fillStyle = lg.col;
+            g.fillRect(lg.x - lg.w / 2, lg.y - lg.h / 2, lg.w, lg.h);
+            // 水中倒影：水线下对称处起，一串断续的横光，向下拉长
+            const ry = 2 * WL - lg.y;
+            const n = lg.ri === 2 ? 8 : 5;
+            for (let k = 0; k < n; k++) {
+              const yy = ry - 2 + k * (2.6 + k * 0.6);
+              if (yy > OY1) break;
+              const nn = A.noise1(lt * 1.6 + k * 1.7 + lg.ph, 9);
+              const ww = (lg.w * 0.9 + 2.5 * nn) * (1 + k * 0.12);
+              const xo = 2.2 * (A.noise1(lt * 1.1 + k * 0.9 + lg.ph, 11) - 0.5) * (1 + k * 0.2);
+              g.globalAlpha = clamp(a * 0.55 * (1 - k / n) * (0.4 + 0.6 * nn));
+              g.fillRect(lg.x - ww / 2 + xo, yy, ww, 1.1);
+            }
+          }
+          g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+        }
+        // 飘雪：远、中两层（近大远小，斜向右下）；雪片在窗洞外一圈的范围里循环，进出都在画外；雪帘到了就藏进帘里
+        const sprW = dot('snow', SNOW, 0.5), sprG = dot('snowg', '#8794a5', 0.5);
+        const flakes = (n, seed, size, vy, vx, aMax, th0, front) => {
+          const X0 = OX0 - 30, Y0 = OY0 - 30, Wd = OX1 - OX0 + 60, Hd = OY1 - OY0 + 60;
+          for (let i = 0; i < n; i++) {
+            const hA = A.h2(i, seed), hB = A.h2(i, seed + 1), hC = A.h2(i, seed + 2), hD = A.h2(i, seed + 3);
+            const th = th0 + (1 - th0) * hD;
+            const a = smooth((D - th) / 0.12 + 0.5) * aMax * (0.6 + 0.4 * hC);
+            if (a <= 0.004) continue;
+            const sp = 0.75 + 0.5 * hC;
+            const x = X0 + fract(hA + (vx * sp * lt + 4 * Math.sin(lt * (0.8 + hB) + hA * 9)) / Wd) * Wd;
+            const y = Y0 + fract(hB + (vy * sp * lt) / Hd) * Hd;
+            const r = size * (0.7 + 0.6 * hA);
+            const v = uC > 0 ? vcAt(x, y) * vK : 0;
+            if (front) {
+              // 雪帘前面的近处雪片：暗处是白的，衬着亮雾就显出灰色（逆光看雪）
+              const aw = a * (1 - 0.9 * v), ag = a * 1.0 * v;
+              if (aw > 0.004) { g.globalAlpha = aw; g.drawImage(sprW, x - r, y - r, r * 2, r * 2); }
+              if (ag > 0.004) { g.globalAlpha = ag; g.drawImage(sprG, x - r, y - r, r * 2, r * 2); }
+            } else {
+              const aw = a * (1 - v / 0.85);
+              if (aw <= 0.004) continue;
+              g.globalAlpha = aw;
+              g.drawImage(sprW, x - r, y - r, r * 2, r * 2);
+            }
+          }
+          g.globalAlpha = 1;
         };
-        // 雪帘层画在半分辨率的缓冲里（内容本来就是模糊的远景与密雪），前沿扫过之前用渐变遮罩；扫过之后整窗都是它
-        if (lt > tCurtain - 0.05) {
+        flakes(120, 101, 1.3, 26, 16, 0.55, 0.12);
+        flakes(90, 202, 2.3, 48, 30, 0.7, 0.12);
+        // 密雪纹理（远处成片的细雪，斜飘）：随第44句第8字淡入
+        if (kDense > 0.004 && !fullyVeiled) {
+          g.globalAlpha = 0.5 * kDense;
+          tileFill(g, snowTile('d', 520, 0.6, 1.5, 0.7, 55), 30 * lt, 44 * lt, OX0 - 3, OY0 - 3, OX1 + 3, OY1 + 3);
+          g.globalAlpha = 1;
+        }
+        // 雪帘到来前整窗只有一层很淡的雪雾
+        if (haze0 > 0.004) { g.globalAlpha = haze0; g.drawImage(hazeLayer(), OX0, OY0, OX1 - OX0, OY1 - OY0); g.globalAlpha = 1; }
+        // 雪帘：模糊的远景 + 柔白的雪雾 + 帘里的密雪（白片 + 衬着亮雾显灰的片），画在半分辨率的缓冲里；前沿扫过之前用沿推进方向的渐变遮罩
+        if (uC > 0) {
           const d = devBox(g, OX0 - 3, OY0 - 3, OX1 + 3, OY1 + 3), hs = 0.5;
           const w2 = Math.ceil(d.w * hs), h2 = Math.ceil(d.h * hs);
           const ob = buf('f4veil', w2, h2), q = ob.g;
           q.setTransform(d.m.a * hs, 0, 0, d.m.d * hs, (d.m.e - d.x) * hs, (d.m.f - d.y) * hs);
-          veil(q);
-          if (fk < 1) {
+          q.drawImage(outsideBlur(), 370, 130, 630, 385);
+          q.globalAlpha = vK; q.drawImage(hazeLayer(), OX0 - 3, OY0 - 3, OX1 - OX0 + 6, OY1 - OY0 + 6);
+          const T = lt - tCurtain;
+          q.globalAlpha = 0.55;
+          tileFill(q, snowTile('m', 760, 0.9, 2.4, 0.75, 77), 120 * T, 70 * T, OX0 - 3, OY0 - 3, OX1 + 3, OY1 + 3);
+          q.globalAlpha = 0.35 + 0.3 * (vK - 0.5) / 0.35;
+          tileFill(q, snowTile('g', 420, 1.0, 2.3, 0.85, 91, '#748194'), 150 * T + 97, 95 * T + 41, OX0 - 3, OY0 - 3, OX1 + 3, OY1 + 3);
+          q.globalAlpha = 1;
+          if (!fullyVeiled) {
             q.globalCompositeOperation = 'destination-in';
             const gx = DIR[0], gy = DIR[1];
-            const gr = q.createLinearGradient(gx * (front - 150), gy * (front - 150), gx * front, gy * front);
-            gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+            const gr = q.createLinearGradient(gx * (lead - FE), gy * (lead - FE), gx * lead, gy * lead);
+            for (let i = 0; i <= 6; i++) gr.addColorStop(i / 6, `rgba(0,0,0,${(1 - smooth(i / 6)).toFixed(3)})`);
             q.fillStyle = gr; q.fillRect(OX0 - 10, OY0 - 10, OX1 - OX0 + 20, OY1 - OY0 + 20);
           }
           g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true;
           g.drawImage(ob.c, 0, 0, w2, h2, d.x, d.y, w2 / hs, h2 / hs);
           g.restore();
-        }
-        // 灯：微微摇曳（随拍略亮）；雪帘过后化成光斑
-        g.globalCompositeOperation = 'lighter';
-        const beat = 0.06 * c.be(0.3);
-        for (const lg of town.lights) {
-          const pos = DIR[0] * lg.x + DIR[1] * lg.y;
-          const bl = smooth(clamp((front - pos) / 150));
-          const fl = 0.9 + 0.1 * A.noise1(lt * 2.3 + lg.ph, 5) + beat;
-          const a = lg.a * fl * (1 - 0.3 * bl);
-          const spr = dot(lg.kind === 'lan' ? 'lan' : 'win', lg.col, 0.25);
-          // 靠窗边的灯：光晕收小收淡（否则被窗边切开，像窗外紧贴着一盏灯）
-          const ef = smooth((lg.x - OX0) / 40) * smooth((OX1 - lg.x) / 40);
-          const r = lerp(3.2 + lg.w, 12 + lg.w * 2.4, bl) * (lg.ri === 2 ? 1 : 0.8) * (0.5 + 0.5 * ef);
-          g.globalAlpha = clamp(a * (0.25 + 0.12 * bl) * ef);
-          g.drawImage(spr, lg.x - r * 1.6, lg.y - r * 1.6, r * 3.2, r * 3.2);
-          if (bl > 0.98) continue;
-          g.globalAlpha = clamp(a * (1 - bl));
-          g.fillStyle = lg.col;
-          g.fillRect(lg.x - lg.w / 2, lg.y - lg.h / 2, lg.w, lg.h);
-          // 水中倒影：水线下对称处起，一串断续的横光，向下拉长
-          const ry = 2 * WL - lg.y;
-          const n = lg.ri === 2 ? 8 : 5;
-          for (let k = 0; k < n; k++) {
-            const yy = ry - 2 + k * (2.6 + k * 0.6);
-            if (yy > OY1) break;
-            const nn = A.noise1(lt * 1.6 + k * 1.7 + lg.ph, 9);
-            const ww = (lg.w * 0.9 + 2.5 * nn) * (1 + k * 0.12);
-            const xo = 2.2 * (A.noise1(lt * 1.1 + k * 0.9 + lg.ph, 11) - 0.5) * (1 + k * 0.2);
-            g.globalAlpha = clamp(a * 0.55 * (1 - k / n) * (0.4 + 0.6 * nn) * (1 - bl));
-            g.fillRect(lg.x - ww / 2 + xo, yy, ww, 1.1);
+          // 帘后的灯火化成柔和的暖色光斑
+          g.globalCompositeOperation = 'lighter';
+          for (const lg of town.lights) {
+            const bl = vcAt(lg.x, lg.y);
+            if (bl < 0.01) continue;
+            const ef = smooth((lg.x - OX0) / 50) * smooth((OX1 - lg.x) / 50);
+            const r = (12 + lg.w * 2.4) * (lg.ri === 2 ? 1 : 0.8) * (0.55 + 0.45 * ef) * (0.8 + 0.25 * bl);
+            g.globalAlpha = clamp(lampA(lg) * 0.42 * bl * ef * (1.15 - 0.45 * (vK - 0.5) / 0.35));
+            g.drawImage(dot(lg.kind === 'lan' ? 'lan' : 'win', lg.col, 0.25), lg.x - r * 1.6, lg.y - r * 1.6, r * 3.2, r * 3.2);
           }
+          g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
         }
-        g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-        // 飘雪：远、中两层（近大远小，斜向右下）；雪片在窗洞外一圈的范围里循环，进出都在画外
-        const flakes = (n, seed, size, vy, vx, aMax, wipe) => {
-          const spr = dot('snow', SNOW, 0.5);
-          const X0 = OX0 - 30, Y0 = OY0 - 30, Wd = OX1 - OX0 + 60, Hd = OY1 - OY0 + 60;
-          for (let i = 0; i < n; i++) {
-            const hA = A.h2(i, seed), hB = A.h2(i, seed + 1), hC = A.h2(i, seed + 2), hD = A.h2(i, seed + 3);
-            const th = 0.15 + 0.85 * hD;
-            const a = smooth((D - th) / 0.12 + 0.5) * aMax * (0.6 + 0.4 * hC);
-            if (a <= 0) continue;
-            const sp = 0.75 + 0.5 * hC;
-            const x = X0 + fract(hA + (vx * sp * lt + 4 * Math.sin(lt * (0.8 + hB) + hA * 9)) / Wd) * Wd;
-            const y = Y0 + fract(hB + (vy * sp * lt) / Hd) * Hd;
-            const r = size * (0.7 + 0.6 * hA);
-            const w = wipe ? smooth((front - (DIR[0] * x + DIR[1] * y)) / 150) : 1;
-            if (w <= 0) continue;
-            g.globalAlpha = a * w;
-            g.drawImage(spr, x - r, y - r, r * 2, r * 2);
-          }
-          g.globalAlpha = 1;
-        };
-        flakes(120, 101, 1.3, 26, 16, 0.55);
-        flakes(80, 202, 2.3, 48, 30, 0.7);
-        // 整窗雪雾：先是淡淡一层；第44句第15字时满窗柔白的光，中间灯火处偏暖
-        const hz = clamp(haze0 + whiten);
-        if (hz > 0) {
-          g.globalAlpha = hz;
-          g.drawImage(hazeLayer(), OX0, OY0, OX1 - OX0, OY1 - OY0);
-          g.globalAlpha = 1;
-        }
-        flakes(30, 303, 3.6, 80, 50, 0.85 * (1 - 0.6 * whiten));
-        // 雪帘里的近处大雪片：跟着前沿出现
-        if (lt > tCurtain - 0.05) flakes(60, 404, 4.2, 96, 62, 0.8 * (1 - 0.5 * whiten), true);
+        // 近处的大雪片：一开始就有几片慢慢斜飘；雪帘到来后更多，一直落到镜头结束（在雪帘前面）
+        flakes(34, 303, 3.6, 70, 46, 0.85, -0.25, true);
+        if (uC > 0) flakes(46, 404, 4.6, 96, 62, 0.85 * smooth(clamp(uC * 3)), 0.12, true);
         g.restore();
 
         // ---- 屋内 ----
         g.drawImage(room(), 0, 0, 1280, 720);
         roomLight(g, L);
-        // 窗整个变亮时：地板上铺开柔和的冷光，人挡出一道向镜头、偏左（窗心在他右后方）的淡影
-        if (whiten > 0.01) {
-          g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = clamp(0.9 * whiten);
-          g.drawImage(floorPool(), 200, 560, 960, 110);
-          g.restore();
-        }
+        // 窗光照亮窗台、窗洞侧面、窗扇朝窗心的一面
+        g.save(); g.globalCompositeOperation = 'screen';
+        g.globalAlpha = clamp(0.08 + 0.4 * wB); g.drawImage(litLayer(), 0, 0, 1280, 720);
+        // 地板上的窗光：窗洞沿透视投下的一片，人挡出一道向镜头、偏左的淡影
+        g.globalAlpha = 0.08 + 0.13 * wB; g.drawImage(floorLight(), 0, 560, 1280, 160);
+        g.restore();
         // 人脚下的接触阴影
         g.save();
         g.translate(MAN.x - 6, MAN.y + 2); g.scale(1, 0.16);
@@ -593,7 +654,7 @@
         gr.addColorStop(0, 'rgba(0,0,0,0.75)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
         g.fillStyle = gr; g.fillRect(-80, -80, 160, 160);
         g.restore();
-        drawMan(g, lt, L, whiten);
+        drawMan(g, lt, L, smooth(clamp((wB - 0.3) / 0.6)));
         g.restore();
       },
     });
@@ -644,78 +705,88 @@
       g.closePath();
     }
     const inStream = (x, y, pad) => Math.abs(x - cx(y)) < hw(y) + pad;
-    // 积雪的松（水墨）：树干两侧一枝枝下垂的枝团（左右长短、高低不一，偶尔露出树干），
-    // 枝团顶面留白即是雪（外缘一线淡灰），下沿是两种墨色的枝梢（齿状干笔）；顶上两层短枝对称收拢，一根细尖的梢，不压雪。
-    // far：0 近 → 1 远（墨色变淡）
+    // 积雪的松（水墨点叶）：一根微斜、略有起伏的干，干上一层层高低错落、左右不齐的枝团；
+    // 每团是许多浓淡、大小不一的墨点（下密上疏，向外微垂），团顶的雪是纸的留白（外缘一线极淡的墨）。
+    // 近、中、远三种尺寸；远处只剩三五个淡墨点。far：0 近 → 1 远（墨色变淡）
     function pine(g, x, y, h, seed, far) {
       const r = A.rng(seed);
-      const inkD = mix('#1b1e22', '#a9b0b7', far * 0.85), inkL = mix('#4a5057', '#c0c6cc', far * 0.85);
-      const snowT = mix('#f8f9fa', '#e8ebee', far), snowS = mix('#d0d6dd', '#d9dde2', far), edge = mix('#a7afb8', '#cdd2d7', far);
-      if (h < 9) {
-        g.fillStyle = inkL; g.beginPath(); g.moveTo(x, y - h); g.quadraticCurveTo(x + h * 0.3, y - h * 0.15, x, y); g.quadraticCurveTo(x - h * 0.3, y - h * 0.15, x, y - h); g.fill();
+      const inkD = mix('#15181c', '#a9b0b7', far * 0.85), inkM = mix('#353b42', '#b8bfc5', far * 0.85), inkL = mix('#646c75', '#c9ced3', far * 0.85);
+      const paper = mix('#f8f9fa', '#e9ecee', far), edge = mix('#9aa3ad', '#cfd4d9', far);
+      const dab = (cx, cy, rx, ry, ang, col, a) => { g.fillStyle = rgba(col, a); g.beginPath(); g.ellipse(cx, cy, Math.max(0.4, rx), Math.max(0.3, ry), ang, 0, TAU); g.fill(); };
+      if (h < 14) {
+        const n = 3 + Math.floor(r() * 3);
+        for (let i = 0; i < n; i++) {
+          const u = i / (n - 1), w = h * (0.3 * (1 - u) + 0.1);
+          dab(x + (r() - 0.5) * w * 0.7, y - h * (0.12 + 0.78 * u), w * (0.55 + 0.3 * r()), w * 0.36, (r() - 0.5) * 0.4, mix(inkM, inkD, r()), 0.55 + 0.35 * r());
+        }
+        g.fillStyle = paper; g.beginPath(); g.ellipse(x, y - h * 0.62, h * 0.16, h * 0.05, 0, Math.PI, TAU); g.fill();
         return;
       }
-      const lean = (r() - 0.5) * 0.05;
-      const ax = (u) => x + lean * h * u;
-      g.fillStyle = inkD;
-      g.beginPath(); g.moveTo(x - h * 0.028, y + 0.5); g.lineTo(ax(0.92) - 0.4, y - h * 0.92); g.lineTo(ax(0.92) + 0.4, y - h * 0.92); g.lineTo(x + h * 0.028, y + 0.5); g.closePath(); g.fill();
-      const n = Math.max(4, Math.min(11, Math.round(h / 11)));
-      const du = 0.72 / (n - 1), th0 = h * du * 1.45;
-      const clumps = [];
+      const lean = (r() - 0.5) * 0.08, wob = r() * 6.28;
+      const ax = (u) => x + lean * h * u + Math.sin(u * 5.5 + wob) * h * 0.014;
+      // 干：上细下粗的一笔（大部分被枝团挡住，枝团之间露出几段）
+      g.fillStyle = rgba(inkD, 0.92);
+      g.beginPath();
+      for (let k = 0; k <= 12; k++) { const u = k / 12 * 0.96; g.lineTo(ax(u) - h * lerp(0.022, 0.004, u), y + 0.5 - h * u); }
+      for (let k = 12; k >= 0; k--) { const u = k / 12 * 0.96; g.lineTo(ax(u) + h * lerp(0.022, 0.004, u), y + 0.5 - h * u); }
+      g.closePath(); g.fill();
+      // 树冠的一层淡墨（把一层层枝团连成一棵树的整体）
+      g.fillStyle = rgba(inkL, 0.13);
+      g.beginPath(); g.moveTo(ax(1), y - h);
+      for (let k = 0; k <= 10; k++) { const u = 1 - k / 10 * 0.9; g.lineTo(ax(u) + h * (0.3 * Math.pow(1 - u, 0.9) + 0.02) * (0.9 + 0.2 * Math.sin(k * 2.1 + wob)), y - h * u); }
+      for (let k = 10; k >= 0; k--) { const u = 1 - k / 10 * 0.9; g.lineTo(ax(u) - h * (0.3 * Math.pow(1 - u, 0.9) + 0.02) * (0.9 + 0.2 * Math.sin(k * 1.7 + wob * 2)), y - h * u); }
+      g.closePath(); g.fill();
+      // 枝团：低处的枝几乎垂到雪面，越往上越小越密；左右交错、长短不一
+      const n = Math.max(5, Math.min(14, Math.round(h / 10)));
+      const pads = [];
       for (let i = 0; i < n; i++) {
         const top = i >= n - 2;
-        const u = 0.13 + du * i + (top ? 0 : (r() - 0.5) * du * 0.5);
-        const W = h * (0.4 * Math.pow(1 - u, 0.85) + 0.035);
-        for (const side of [-1, 1]) {
-          if (!top && i > 0 && r() < 0.12) continue;          // 偶尔缺一枝，露出树干
-          const len = W * (top ? 1 : 0.72 + 0.45 * r());
-          const dy = top ? 0 : (r() - 0.5) * du * h * 0.45;
-          clumps.push({ cx: ax(u), cy: y - h * u + dy, side, len, th: th0 * (top ? 0.8 : 0.85 + 0.3 * r()), sn: 0.2 + 0.1 * r(), ph: r() * 6.28, sd: r() });
-        }
+        const u = 0.09 + 0.83 * Math.pow(i / (n - 1), 0.92) + (r() - 0.5) * 0.03;
+        const W = h * (0.42 * Math.pow(1 - u, 0.85) + 0.05) * (0.7 + 0.55 * r());
+        const off = top ? (r() - 0.5) * 0.2 : (i % 2 ? 1 : -1) * (0.15 + 0.3 * r());
+        pads.push({ cx: ax(u) + off * W * 0.5, cy: y - h * u, W, ph: W * (0.22 + 0.08 * r()), sd: Math.floor(r() * 1e6) + 11 });
       }
-      clumps.sort((a, b) => b.cy - a.cy);                      // 下面的先画，上面的枝团压在下面的雪上
-      for (const cl of clumps) {
-        const { cx, cy, side, len, th, sn, ph } = cl;
-        const rr = A.rng(Math.floor(cl.sd * 1e6) + 7);
-        const X = (t) => cx + side * len * t;
-        const topY = (t) => cy - th * 0.45 * (1 - Math.pow(t, 1.6)) + th * 0.42 * t * t - th * 0.05 * Math.sin(t * 9 + ph) * t * (1 - t);
-        const snowB = (t) => topY(t) + th * sn * (1.15 - 0.65 * t) + th * 0.06 * Math.sin(t * 11 + ph * 2);
-        // 枝团的墨：先一层淡墨铺底（下沿高低不齐），再用许多向下、向外的短笔（针叶）压出深墨与毛糙的干笔下沿
-        const lowY = (t) => snowB(t) + th * (0.26 + 0.3 * A.noise1(t * 5 + ph * 3, 91)) * (1 - 0.35 * t);
-        g.fillStyle = rgba(inkL, 0.6);
-        g.beginPath(); g.moveTo(cx - side * th * 0.1, topY(0) + th * 0.2);
-        for (let k = 1; k <= 12; k++) { const t = k / 12; g.lineTo(X(t), snowB(t) - th * 0.12); }
-        for (let k = 12; k >= 0; k--) { const t = k / 12; g.lineTo(X(t) - side * th * 0.06 * t, lowY(t)); }
-        g.closePath(); g.fill();
-        const ns = Math.max(6, Math.round(len * 1.4));
-        g.lineCap = 'round';
-        for (let j = 0; j < ns; j++) {
-          const t = Math.pow(rr(), 0.85), x0 = X(t), y0 = snowB(t) - th * 0.05 + th * 0.15 * rr();
-          const a = Math.PI / 2 - side * (0.25 + 0.55 * rr()) * (0.6 + 0.6 * t);
-          const L = th * (0.22 + 0.42 * rr()) * (1 - 0.3 * t);
-          const dark = clamp(1 - t * 0.9 + (rr() - 0.5) * 0.4);
-          g.strokeStyle = rgba(mix(inkL, inkD, dark), 0.45 + 0.4 * rr());
-          g.lineWidth = Math.max(0.45, th * (0.05 + 0.05 * rr()));
-          g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + Math.cos(a) * L, y0 + Math.sin(a) * L); g.stroke();
-        }
-        // 雪：贴着枝团上沿留白，中间厚、梢头薄
-        g.beginPath(); g.moveTo(cx - side * th * 0.12, topY(0));
-        for (let k = 0; k <= 14; k++) { const t = k / 14; g.lineTo(X(t), topY(t)); }
-        for (let k = 14; k >= 0; k--) { const t = k / 14; g.lineTo(X(t) - side * th * 0.05 * t, snowB(t)); }
-        g.lineTo(cx - side * th * 0.12, snowB(0)); g.closePath();
-        const sg = g.createLinearGradient(0, cy - th * 0.5, 0, cy + th * 0.45);
-        sg.addColorStop(0, snowT); sg.addColorStop(0.55, snowT); sg.addColorStop(1, snowS);
-        g.fillStyle = sg; g.fill();
-        g.strokeStyle = rgba(edge, 0.7); g.lineWidth = Math.max(0.5, th * 0.045);
+      const dr = h * 0.026;
+      for (const p of pads) {
+        const rr = A.rng(p.sd), { cx, cy, W, ph } = p;
+        // 枝团底下一层淡墨（湿笔铺底，下沿不齐）
+        g.fillStyle = rgba(inkL, 0.32);
         g.beginPath();
-        for (let k = 1; k <= 13; k++) { const t = k / 14; k === 1 ? g.moveTo(X(t), topY(t)) : g.lineTo(X(t), topY(t)); }
+        for (let k = 0; k <= 14; k++) { const t = k / 14, xx = cx + (t - 0.5) * W * 1.02, yy = cy + ph * (0.12 + 0.42 * Math.sin(Math.PI * t) * (0.75 + 0.5 * rr())); k ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }
+        g.lineTo(cx + W * 0.42, cy - ph * 0.15); g.lineTo(cx - W * 0.42, cy - ph * 0.15); g.closePath(); g.fill();
+        // 墨点：下半更密更浓，向外微垂
+        const nd = Math.max(10, Math.round(2.1 * (0.785 * W * ph) / (Math.PI * dr * dr * 0.5)));
+        for (let j = 0; j < nd; j++) {
+          const v = 0.25 + 0.75 * Math.pow(rr(), 0.7);                     // 0 团顶 → 1 团底
+          const span = Math.sqrt(Math.max(0.05, 1 - Math.pow((v - 0.55) / 0.62, 2)));
+          const t = (rr() - 0.5) * span;
+          const droop = ph * 0.9 * Math.max(0, Math.abs(t) - 0.3);          // 枝梢被雪压得微垂
+          const px = cx + t * W, py = cy + (v - 0.45) * ph + droop;
+          const sz = dr * (0.55 + 0.75 * rr()) * (1 - 0.35 * Math.abs(t) * 2);
+          dab(px, py, sz, sz * (0.42 + 0.18 * rr()), t * 0.9 + (rr() - 0.5) * 0.5, mix(inkM, inkD, Math.pow(rr(), 0.8) * (0.45 + 0.55 * v)), 0.5 + 0.4 * rr());
+        }
+        // 团顶的雪（留白）：上沿圆鼓、下沿起伏，盖住团顶的墨点
+        const sx0 = cx - W * 0.5, sx1 = cx + W * 0.5;
+        g.fillStyle = paper;
+        g.beginPath();
+        const sTop = (t) => cy - ph * (0.1 + 0.36 * Math.pow(Math.sin(Math.PI * t), 0.6) + 0.08 * Math.sin(t * 13 + p.sd)) + ph * 0.9 * Math.max(0, Math.abs(t - 0.5) - 0.3);
+        for (let k = 0; k <= 16; k++) { const t = k / 16; g.lineTo(lerp(sx0, sx1, t), sTop(t)); }
+        for (let k = 16; k >= 0; k--) { const t = k / 16; g.lineTo(lerp(sx0, sx1, t) + (t - 0.5) * 2, sTop(t) + ph * (0.16 + 0.22 * Math.sin(Math.PI * t) + 0.1 * Math.sin(t * 9 + p.sd))); }
+        g.closePath(); g.fill();
+        g.strokeStyle = rgba(edge, 0.5); g.lineWidth = Math.max(0.45, h * 0.004);
+        g.beginPath();
+        for (let k = 1; k <= 15; k++) { const t = k / 16; k === 1 ? g.moveTo(lerp(sx0, sx1, t), sTop(t)) : g.lineTo(lerp(sx0, sx1, t), sTop(t)); }
         g.stroke();
+        // 雪边上探出的几簇针叶
+        for (let j = 0; j < 4; j++) {
+          const t = (j < 2 ? -1 : 1) * (0.36 + 0.12 * rr());
+          dab(cx + t * W, cy - ph * (0.05 + 0.1 * rr()), dr * 0.6, dr * 0.3, t * 0.8, inkD, 0.55 + 0.3 * rr());
+        }
       }
-      // 梢：一根细尖（墨），不压雪
-      const tx = ax(0.95);
-      g.fillStyle = inkD;
-      g.beginPath(); g.moveTo(tx - h * 0.024, y - h * 0.84); g.quadraticCurveTo(tx - h * 0.006, y - h * 0.93, tx, y - h * 1.02);
-      g.quadraticCurveTo(tx + h * 0.006, y - h * 0.93, tx + h * 0.024, y - h * 0.84); g.closePath(); g.fill();
+      // 梢：几点小墨，一点雪
+      const tx = ax(0.97), ty = y - h * 0.97;
+      for (let j = 0; j < 5; j++) dab(tx + (r() - 0.5) * h * 0.03, ty + j * h * 0.012, dr * (0.5 + 0.3 * r()), dr * 0.32, (r() - 0.5) * 0.6, inkD, 0.7);
+      g.fillStyle = paper; g.beginPath(); g.ellipse(tx, ty - dr * 0.1, dr * 0.7, dr * 0.3, 0, Math.PI, TAU); g.fill();
     }
     // 松林：每簇若干棵，近大远小、远处偏淡（右侧歌词区不放）
     const CLUSTERS = [
@@ -884,7 +955,7 @@
         for (const [x, y, h] of trees) {
           const s = sOf(y), far = clamp(1 - s * 1.6);
           q2.fillStyle = `rgba(70,76,84,${(0.09 * (1 - 0.7 * far)).toFixed(3)})`;
-          q2.beginPath(); q2.moveTo(x, y - h * 0.95); q2.quadraticCurveTo(x + h * 0.42, y - h * 0.1, x + h * 0.3, y); q2.lineTo(x - h * 0.3, y); q2.quadraticCurveTo(x - h * 0.42, y - h * 0.1, x, y - h * 0.95); q2.fill();
+          q2.beginPath(); q2.ellipse(x, y - h * 0.42, h * 0.3, h * 0.5, 0, 0, TAU); q2.fill();
         }
       });
       blurInto(g, 1280, 720, 0.5, (q2) => {
@@ -902,25 +973,30 @@
       gr.addColorStop(0, 'rgba(234,236,239,0.15)'); gr.addColorStop(0.25, 'rgba(234,236,239,0.55)'); gr.addColorStop(1, 'rgba(234,236,239,0)');
       g.fillStyle = gr; g.fillRect(0, YH - 20, 1280, 270 - YH);
     });
-    // 雪片贴图：纯白实芯，边缘很快收掉（不描边、无灰圈）
-    const flakeSpr = () => K.cache('fg8_f5_flake', 32, 32, 1, (g) => {
-      const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
-      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.42, 'rgba(255,255,255,0.95)');
-      gr.addColorStop(0.7, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+    // 雪片贴图：白芯、软边，竖向略拉长（缓落时的一点运动模糊）；画的时候按 3:4 的框贴
+    const flakeSpr = () => K.cache('fg8_f5_flakeV', 32, 44, 1, (g) => {
+      g.save(); g.translate(16, 22); g.scale(1, 1.38);
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, 16);
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.32, 'rgba(255,255,255,0.88)');
+      gr.addColorStop(0.65, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(-16, -16, 32, 32); g.restore();
+    });
+    // 溪面遮罩（软边）：溪上的雪压到约 55%
+    const streamMask = () => K.cache('fg8_f5_smask', 1280, 720, 0.5, (g) => {
+      blurInto(g, 1280, 720, 3, (q) => { streamPath(q); q.fillStyle = '#000'; q.fill(); });
     });
     // 密雪纹理（可上下平铺，竖直缓落）：不算粒子数；两种尺寸的贴图，长宽互不成整数比，避免看出格子
     const SNOW_T = { far: [300, 262, 600, 1.0, 1.6, 5101], mid: [346, 298, 250, 1.6, 2.4, 5102] };
     const snowTile = (key) => {
       const [tw, th, n, r0, r1, seed] = SNOW_T[key];
-      return K.cache('fg8_f5_tile' + key, tw, th, 1, (g) => {
+      return K.cache('fg8_f5_tileV' + key, tw, th, 1, (g) => {
         const r = A.rng(seed), spr = flakeSpr();
         for (let i = 0; i < n; i++) {
           const x = r() * tw, y = r() * th, rr = r0 + (r1 - r0) * r(), a = 0.55 + 0.45 * r();
           for (const ox of [-tw, 0, tw]) for (const oy of [-th, 0, th]) {
             const px = x + ox, py = y + oy;
             if (px < -6 || px > tw + 6 || py < -6 || py > th + 6) continue;
-            g.globalAlpha = a; g.drawImage(spr, px - rr * 1.5, py - rr * 1.5, rr * 3, rr * 3);
+            g.globalAlpha = a; g.drawImage(spr, px - rr * 1.5, py - rr * 2.05, rr * 3, rr * 4.1);
           }
         }
         g.globalAlpha = 1;
@@ -997,6 +1073,12 @@
           g2.addColorStop(0, rgba(fogC, gauze)); g2.addColorStop(1, rgba(fogC, gauze * 0.25));
           g.fillStyle = g2; g.fillRect(-60, yv + 70, 1400, 760 - yv);
         }
+        // 雪全部先画进半分辨率的缓冲（边缘自然柔一点），溪面上用软边遮罩压到约 55%——白点在浓墨上不跳成雪花屏；再整张贴回
+        const d = devBox(g, -60, -40, 1340, 760), hs = 0.5;
+        const w2 = Math.ceil(d.w * hs), h2 = Math.ceil(d.h * hs);
+        const sbuf = buf('f5snow', w2, h2), sq = sbuf.g;
+        sq.setTransform(d.m.a * hs, 0, 0, d.m.d * hs, (d.m.e - d.x) * hs, (d.m.f - d.y) * hs);
+        const g0 = g; g = sq;
         // 密雪纹理：第45句第5字起 1 秒淡入，第9字起再密一层（竖直缓落，无风）
         // （远层与第二层中雪本身不透明度 ≤ 0.6，只有第一层中雪在歌词区一侧压到 0.6）
         snowSheet(g, 'far', 0, 18 * lt, 0.5 * kSnow, 1);
@@ -1015,13 +1097,20 @@
             const y = -20 + fract(hB + vy * sp * lt / 780) * 780;
             const r = size * (0.7 + 0.6 * hA);
             g.globalAlpha = fade * aMax * lerp(1, Math.min(1, 0.6 / aMax), smooth((x - 900) / 110));
-            g.drawImage(spr, x - r * 1.5, y - r * 1.5, r * 3, r * 3);
+            g.drawImage(spr, x - r * 1.5, y - r * 2.05, r * 3, r * 4.1);
           }
           g.globalAlpha = 1;
         };
         layer(150, 701, 1.3, 22, 0.8, 0.08);
         layer(80, 702, 2.0, 40, 0.9, 0.1);
         layer(30, 703, 3.4, 70, 0.92, 0.12);
+        g = g0;
+        sq.globalCompositeOperation = 'destination-out'; sq.globalAlpha = 0.45;
+        sq.drawImage(streamMask(), 0, 0, 1280, 720);
+        sq.globalCompositeOperation = 'source-over'; sq.globalAlpha = 1;
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true;
+        g.drawImage(sbuf.c, 0, 0, w2, h2, d.x, d.y, w2 / hs, h2 / hs);
+        g.restore();
         g.restore();
       },
     });
@@ -1051,8 +1140,8 @@
     }
     const SNOWC = '#f4f6f8';
 
-    // 缩时：镜头时间 → 当日时刻（9:00 → 14:36 时云来，之后放慢到 16:50 左右）
-    const hourAt = (lt) => (lt <= 3.74 ? 9.0 + 1.5 * lt : 14.61 + 0.75 * (lt - 3.74));
+    // 缩时：镜头时间 → 当日时刻（日出后不久 7:36 → 14:54 时云来，之后放慢到 17:00 左右）
+    const hourAt = (lt) => (lt <= 3.74 ? 7.6 + 1.95 * lt : 14.893 + 0.75 * (lt - 3.74));
     // 冬至、北纬 30°：太阳高度与方位（方位从正北顺时针）
     function sunAt(H) {
       const lat = 30 * Math.PI / 180, dec = -23.44 * Math.PI / 180, w = (H - 12) * 15 * Math.PI / 180;
@@ -1080,6 +1169,65 @@
         for (const [x, h, n] of [[520, 34, 3], [610, 58, 4], [690, 30, 3], [800, 46, 4], [905, 64, 4], [1015, 38, 3], [1090, 52, 4], [1210, 44, 4], [1265, 30, 3]]) br(x + (r() - 0.5) * 20, 310, -Math.PI / 2 + (r() - 0.5) * 0.3, h * 0.42, 2.6 * h / 50 + 0.8, n);
       });
     });
+    // 月洞门：开在院墙右段（画面右侧空墙处），圆心离地 0.66 米、半径 0.74 米，底边被地面截平
+    const GATE = { X: 4.62, Yc: 0.66, R: 0.74 };
+    const gateCx = 640 + F * GATE.X / ZW, gateCy = proj(0, GATE.Yc, ZW)[1], gateR = GATE.R * F / ZW, gateYb = proj(0, 0, ZW)[1];
+    function gatePath(g, grow) {
+      const r = gateR + (grow || 0), yb = gateYb + (grow > 0 ? 0.5 : 0);
+      const a0 = Math.asin(clamp((yb - gateCy) / r, -1, 1));     // 圆与地面线的交点
+      g.beginPath(); g.arc(gateCx, gateCy, r, a0, Math.PI - a0, true); g.closePath();
+    }
+    // 门洞里看出去：墙外向阳的雪地（远处偏灰）、一株老梅的下半截（枝头积雪、红萼点点），隔着十来米的空气略淡
+    function paintGateView(g) {
+      const yT = gateCy - gateR - 2;
+      let gr = g.createLinearGradient(0, yT, 0, gateYb);
+      gr.addColorStop(0, '#e1e6ec'); gr.addColorStop(0.5, '#eef1f4'); gr.addColorStop(1, '#f5f7f9');
+      g.fillStyle = gr; g.fillRect(gateCx - gateR - 4, yT, gateR * 2 + 8, gateYb - yT + 2);
+      // 远处一道矮墙与几丛灌木（极淡）
+      g.fillStyle = 'rgba(150,160,174,0.35)'; g.fillRect(gateCx - gateR - 4, yT + 22, gateR * 2 + 8, 3);
+      g.fillStyle = 'rgba(244,246,248,0.9)'; g.fillRect(gateCx - gateR - 4, yT + 21, gateR * 2 + 8, 1.4);
+      // 老梅：树干在门洞右偏，枝向左上伸出门洞
+      blurInto(g, 1280, 720, 0.6, (q) => {
+        const bx = gateCx + 14, by = proj(0, 0, 45)[1] + 2;
+        q.lineCap = 'round'; q.lineJoin = 'round';
+        const limb = (pts, w0, w1) => {
+          for (let i = 1; i < pts.length; i++) {
+            q.strokeStyle = '#3b3436'; q.lineWidth = lerp(w0, w1, i / (pts.length - 1));
+            q.beginPath(); q.moveTo(pts[i - 1][0], pts[i - 1][1]); q.lineTo(pts[i][0], pts[i][1]); q.stroke();
+          }
+          // 枝上沿的雪：只积在偏水平的枝段上（竖直的树干不挂雪）
+          q.strokeStyle = 'rgba(248,249,250,0.95)';
+          for (let i = 1; i < pts.length; i++) {
+            const dx = pts[i][0] - pts[i - 1][0], dy = pts[i][1] - pts[i - 1][1], flat = clamp((Math.abs(dx) / (Math.hypot(dx, dy) || 1) - 0.45) / 0.35);
+            if (flat <= 0) continue;
+            const wb = lerp(w0, w1, i / (pts.length - 1)), w = wb * 0.45 * flat;
+            q.lineWidth = Math.max(0.5, w);
+            q.beginPath(); q.moveTo(pts[i - 1][0], pts[i - 1][1] - wb * 0.5); q.lineTo(pts[i][0], pts[i][1] - wb * 0.5); q.stroke();
+          }
+          return pts;
+        };
+        limb([[bx + 1, by], [bx + 7, by - 12], [bx + 6, by - 24], [bx + 12, by - 36]], 3.2, 1.6);
+        const tr = limb([[bx - 1, by], [bx - 4, by - 16], [bx + 2, by - 30], [bx - 3, by - 42], [bx - 1, by - 50]], 7.5, 4.2);
+        const B = [
+          limb([tr[2], [bx - 14, by - 46], [bx - 30, by - 56], [bx - 44, by - 70], [bx - 52, by - 86]], 2.8, 0.8),
+          limb([tr[3], [bx + 8, by - 64], [bx + 20, by - 78], [bx + 26, by - 96]], 2.6, 0.8),
+          limb([tr[3], [bx - 10, by - 66], [bx - 16, by - 84], [bx - 26, by - 98]], 2.2, 0.7),
+          limb([[bx - 30, by - 56], [bx - 40, by - 54], [bx - 56, by - 58]], 1.2, 0.5),
+          limb([[bx + 20, by - 78], [bx + 34, by - 80], [bx + 44, by - 90]], 1.1, 0.5),
+        ];
+        // 红萼：沿枝散布的小点，深浅两种红
+        const r = A.rng(7741);
+        for (const pts of B) for (let i = 1; i < pts.length; i++) for (let k = 0; k < 4; k++) {
+          const u = r(), x = lerp(pts[i - 1][0], pts[i][0], u) + (r() - 0.5) * 5, y = lerp(pts[i - 1][1], pts[i][1], u) + (r() - 0.5) * 5;
+          q.fillStyle = r() < 0.6 ? '#c2413a' : '#de6a5c';
+          q.beginPath(); q.arc(x, y, 1.1 + 1.0 * r(), 0, TAU); q.fill();
+        }
+        // 树下一点积雪的接触阴影
+        q.fillStyle = 'rgba(150,164,184,0.35)'; q.beginPath(); q.ellipse(bx, by + 1, 12, 1.6, 0, 0, TAU); q.fill();
+      });
+      // 隔着十来米的空气：压一层极淡的雪雾
+      g.fillStyle = 'rgba(232,236,241,0.22)'; g.fillRect(gateCx - gateR - 4, yT, gateR * 2 + 8, gateYb - yT + 2);
+    }
     // 院墙：粉墙朝北（整天背光），黛瓦压顶，瓦上积雪；墙脚石勒脚
     const wall = () => K.cache('fg8_f7_wall', 1280, 220, 1, (g) => {
       g.translate(0, -260);
@@ -1100,6 +1248,15 @@
       g.fillStyle = '#8e97a2'; g.fillRect(0, yPl, 1280, yBase - yPl);
       g.fillStyle = 'rgba(70,78,90,0.25)'; for (let x = 0; x < 1280; x += 46) g.fillRect(x, yPl, 1, yBase - yPl);
       g.fillStyle = 'rgba(70,78,90,0.3)'; g.fillRect(0, yPl, 1280, 1);
+      // 月洞门：门洞里画墙外的景；右内侧露出一线墙厚（背光的灰）；洞口一圈青砖细边
+      g.save(); gatePath(g, 0); g.clip(); paintGateView(g);
+      g.fillStyle = 'rgba(150,160,172,0.9)';
+      g.beginPath(); g.arc(gateCx, gateCy, gateR, -1.25, 1.2); g.arc(gateCx - 4.5, gateCy, gateR - 0.5, 1.2, -1.25, true); g.closePath(); g.fill();
+      g.restore();
+      g.save(); g.strokeStyle = '#8c95a0'; g.lineWidth = 4.2; gatePath(g, 2.1); g.stroke();
+      g.strokeStyle = 'rgba(60,68,80,0.35)'; g.lineWidth = 0.8; gatePath(g, 0.2); g.stroke();
+      g.strokeStyle = 'rgba(214,220,227,0.6)'; g.lineWidth = 0.8; gatePath(g, 4.3); g.stroke();
+      g.restore();
       // 瓦檐：一排瓦当，檐下一道阴影
       g.fillStyle = 'rgba(60,66,76,0.35)'; g.fillRect(0, yTop, 1280, 6);
       g.fillStyle = '#3d424b'; g.fillRect(0, yCap, 1280, yTop - yCap + 1);
@@ -1121,6 +1278,10 @@
     }
     // 晴时暖光的遮罩：只有瓦顶积雪（y 280–330 一条）
     const capWarm = () => K.cache('fg8_f7_capwarm', 1280, 50, 1, (g) => { g.translate(0, -280); g.fillStyle = '#ffe2bc'; capSnowPath(g); g.fill(); });
+    // 门洞里墙外雪地的暖光遮罩
+    const gateWarm = () => K.cache('fg8_f7_gatewarm', gateR * 2 + 8, gateYb - gateCy + gateR + 6, 1, (g) => {
+      g.translate(-(gateCx - gateR - 4), -(gateCy - gateR - 4)); g.fillStyle = '#ffd9ae'; gatePath(g, -0.5); g.fill();
+    });
     // 雪地：微微起伏，墙脚积雪略厚；几丛枯草
     const ground = () => K.cache('fg8_f7_ground', 1280, 260, 1, (g) => {
       g.translate(0, -462);
@@ -1149,24 +1310,6 @@
         for (let i = 0; i < n; i++) { const x = x0 + (r() - 0.5) * 20, l = 6 + r() * 12 * (y0 > 600 ? 1.8 : 1); g.beginPath(); g.moveTo(x, y0); g.quadraticCurveTo(x + (r() - 0.5) * 6, y0 - l * 0.6, x + (r() - 0.5) * 10, y0 - l); g.stroke(); }
       }
     });
-    // 旧脚印：清早他从院门（画左）踏雪来到石凳；落雪后渐被填平
-    const prints = () => K.cache('fg8_f7_prints', 1280, 260, 1, (g) => {
-      g.translate(0, -462);
-      const pts = [];
-      for (let i = 0; i < 16; i++) {
-        const u = i / 15, X = lerp(-7.5, -0.75, u), Z = lerp(13.6, 16.0, Math.pow(u, 0.8)) + 0.4 * Math.sin(u * 3);
-        const side = i % 2 ? 1 : -1;
-        pts.push(proj(X, 0, Z + side * 0.09));
-      }
-      for (const [x, y] of pts) {
-        const k = (y - YH) / (GY0 - YH);
-        g.fillStyle = 'rgba(126,142,166,0.55)';
-        g.beginPath(); g.ellipse(x, y, 8 * k, 2.4 * k * k, 0, 0, TAU); g.fill();
-        g.fillStyle = 'rgba(255,255,255,0.7)';
-        g.beginPath(); g.ellipse(x + 1.5 * k, y + 1.2 * k * k, 7 * k, 1.2 * k * k, 0, 0, Math.PI); g.fill();
-      }
-    });
-
     // 远树、院墙、雪地合成一张静态贴图（y 200–720）
     const backdrop = () => K.cache('fg8_f7_back', 1280, 520, 1, (g) => {
       g.translate(0, -200);
@@ -1422,7 +1565,17 @@
       q.fillStyle = '#000';
       // 院墙的影子：墙脚一道
       const zt = ZW - 2.05 * sun.sz;
-      if (zt > 3) { const yt = YH + F * HC / zt; q.setTransform(k, 0, 0, k, 0, 0); q.fillRect(0, 466, 1280, yt - 466); }
+      if (zt > 3) {
+        const yt = YH + F * HC / zt; q.setTransform(k, 0, 0, k, 0, 0); q.fillRect(0, 466, 1280, yt - 466);
+        // 阳光穿过月洞门，在墙影里落下一块斜斜的亮斑（门洞轮廓按太阳方向投到地上）
+        q.globalCompositeOperation = 'destination-out'; q.beginPath();
+        for (let i = 0; i < 36; i++) {
+          const a2 = TAU * i / 36, Yh = Math.max(0, GATE.Yc + GATE.R * Math.sin(a2)), X = GATE.X + GATE.R * Math.cos(a2);
+          const p2 = proj(X + Yh * sun.sx, 0, ZW - Yh * sun.sz);
+          i ? q.lineTo(p2[0], p2[1]) : q.moveTo(p2[0], p2[1]);
+        }
+        q.closePath(); q.fill(); q.globalCompositeOperation = 'source-over';
+      }
       castMask(q, treeMask(), TB, ZT, TREE.y, sun, k);
       castMask(q, manMask(), MB, Z0, GY0, sun, k);
       // 石鼓凳：底圆与顶圆投影的凸包
@@ -1448,21 +1601,22 @@
       q.setTransform(k, 0, 0, k, 0, 0);
       q.globalCompositeOperation = 'destination-out'; q.fillRect(0, 0, 1280, 465);
       // 换成影子的颜色
-      q.globalCompositeOperation = 'source-in'; q.fillStyle = '#7d91b2'; q.fillRect(0, 0, 1280, 720);
+      q.globalCompositeOperation = 'source-in'; q.fillStyle = '#6a88c2'; q.fillRect(0, 0, 1280, 720);
       // 云层盖过的地方没有直射光：影子随云影前沿从左向右消失
       if (fm) { q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'destination-out'; q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, 320, 180); }
       q.globalCompositeOperation = 'source-over';
       return b;
     }
-    // 云影的位置（缩时：每片约 3 秒横穿画面）
+    // 云影（缩时）：三大片柔和的云影以每秒 330–430 像素从左向右掠过雪地，近大远扁；第三片开镜时已在画面右侧
+    const CLOUDS = [[-380, 598, 400, 1.0], [-1250, 680, 430, 1.15], [430, 520, 330, 0.85]];
+    // 每片云影由三团错开的柔斑组成（轮廓不规则，中间深、边上浅）
+    const CLOUD_SUB = [[0, 0, 1.0], [0.48, -0.3, 0.72], [-0.52, 0.22, 0.64]];
     function cloudsAt(lt, sunK) {
       const out = [];
-      for (let i = 0; i < 3; i++) {
-        const t0 = -1.2 + i * 1.45, v = 520 + 80 * A.h2(i, 81);
-        const x = -420 + (lt - t0) * v, y = 560 + 110 * (A.h2(i, 82) - 0.4);
-        const k = (y - YH) / (GY0 - YH);
-        out.push({ x, y, rx: (380 + 160 * A.h2(i, 83)) * k, ry: (60 + 20 * A.h2(i, 84)) * k * k, a: 0.5 * sunK });
-      }
+      CLOUDS.forEach(([x0, y, v, sz]) => {
+        const k = (y - YH) / (GY0 - YH), rx = 470 * sz * k, ry = 78 * sz * k * k;
+        for (const [ox, oy, s2] of CLOUD_SUB) out.push({ x: x0 + v * lt + ox * rx, y: y + oy * ry, rx: rx * s2, ry: ry * s2, a: 0.45 * sunK });
+      });
       return out;
     }
     const coverAt = (clouds, x, y) => { let c = 0; for (const cl of clouds) { const dx = (x - cl.x) / cl.rx, dy = (y - cl.y) / cl.ry, d = Math.sqrt(dx * dx + dy * dy); c = Math.max(c, cl.a * clamp((1 - d) / 0.65)); } return clamp(c); };
@@ -1560,6 +1714,35 @@
         q.globalCompositeOperation = 'destination-out'; q.drawImage(fb.c, -dx, -dy);
         g.save(); g.globalAlpha = clamp(a); blitDev(g, rb, d); g.restore();
       }
+      // 凳面上立着的葫芦（剪影的一部分，在他身后）：上肚顶上与下肚的两肩也积一点雪（盖住朝上的面，下缘一线冷灰）
+      if (snow > 0.01) {
+        const u = h / 100 * 0.95, gx = x + 11.8 * h / 100, gy = y - 9.78 * u, th = 2.6 * clamp(snow / 0.8);
+        const O = [[0.42, 0], [0.5, 0.6], [1.3, 1.1], [1.82, 2.25]];
+        const P = (px, py) => [gx + px * u, gy + py * u];
+        g.save(); g.globalAlpha = clamp(snow * 4);
+        const cap = (upper, lower) => {
+          g.beginPath(); upper.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+          for (let i = lower.length - 1; i >= 0; i--) g.lineTo(lower[i][0], lower[i][1]);
+          g.closePath();
+          g.fillStyle = '#fbfcfd'; g.fill();
+          g.strokeStyle = 'rgba(132,148,174,0.75)'; g.lineWidth = 0.8;
+          g.beginPath(); lower.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
+        };
+        // 上肚顶：上沿沿轮廓抬高（越朝上越厚），下沿是肚上的一道弧
+        const up = [];
+        for (let i = O.length - 1; i >= 0; i--) { const q = P(-O[i][0], O[i][1]); up.push([q[0], q[1] - th * (1 - O[i][0] / 2.2)]); }
+        for (let i = 0; i < O.length; i++) { const q = P(O[i][0], O[i][1]); up.push([q[0], q[1] - th * (1 - O[i][0] / 2.2)]); }
+        const lo = [];
+        for (let k = 0; k <= 8; k++) { const xx = lerp(-1.84, 1.84, k / 8); lo.push(P(xx, 2.3 - 0.75 * (1 - xx * xx / 3.4) + th / u * 0.15)); }
+        cap(up, lo);
+        // 下肚的两肩
+        for (const sd of [-1, 1]) {
+          const S0 = [[1.0, 4.35], [1.85, 5.0], [2.6, 6.15]];
+          cap(S0.map(([px, py], i) => { const q = P(sd * px, py); return [q[0], q[1] - th * (i === 2 ? 0.25 : 0.6)]; }),
+            [P(sd * 1.0, 4.35 + 0.45), P(sd * 1.8, 5.35), P(sd * 2.6, 6.15)]);
+        }
+        g.restore();
+      }
     }
 
     // 石鼓凳：鼓腹微凸，上下两道箍、一圈鼓钉；朝镜头的一面背光，向阳一侧边缘亮；顶面受光
@@ -1593,14 +1776,28 @@
       // 顶面
       g.fillStyle = mix(mix('#9ea4ab', '#c9c4b8', warm), '#8e949b', 1 - sunK);
       g.beginPath(); g.ellipse(cx0, yTop, xr(STOOL.top), ryTop, 0, 0, TAU); g.fill();
-      // 凳面积雪（与人身上的雪同步增厚）
+      // 凳面积雪（与人身上的雪同步增厚，0→5 像素）：一层圆边的雪饼盖住凳面，凳沿处微微探出；
+      // 顶面受天光最亮，朝镜头的侧面偏冷灰，雪檐下的凳身一线阴影——在背后的雪地上也分得出来
       if (snowK > 0) {
-        const th = 6 * snowK;
-        g.globalAlpha = clamp(snowK * 3);
-        g.fillStyle = '#dfe5ec';
-        g.beginPath(); g.ellipse(cx0, yTop, xr(STOOL.top) * 0.97, ryTop * 0.95 + 0.6, 0, 0, Math.PI); g.lineTo(cx0 - xr(STOOL.top) * 0.97, yTop - th); g.ellipse(cx0, yTop - th, xr(STOOL.top) * 0.95, ryTop, 0, Math.PI, 0, true); g.closePath(); g.fill();
-        g.fillStyle = SNOWC;
-        g.beginPath(); g.ellipse(cx0, yTop - th, xr(STOOL.top) * 0.95, ryTop + 0.5, 0, 0, TAU); g.fill();
+        const th = 5 * snowK, rx = xr(STOOL.top), lip = 1.0 * snowK, rt = rx * 0.97;
+        g.globalAlpha = clamp(snowK * 4);
+        g.strokeStyle = 'rgba(70,82,100,0.35)'; g.lineWidth = 1.2;
+        g.beginPath(); g.ellipse(cx0, yTop + 1.6, rx + lip * 0.6, ryTop + 1.2, 0, 0.2, Math.PI - 0.2); g.stroke();
+        // 侧面：凳口前半椭圆（探出 lip）与抬高 th 的顶面前半椭圆之间
+        g.beginPath();
+        g.ellipse(cx0, yTop + 0.4, rx + lip, ryTop + 0.5 + lip * 0.3, 0, 0, Math.PI);
+        g.lineTo(cx0 - rt, yTop - th);
+        g.ellipse(cx0, yTop - th, rt, ryTop, 0, Math.PI, 0, true);
+        g.closePath();
+        const sg = g.createLinearGradient(0, yTop - th, 0, yTop + ryTop + 1);
+        sg.addColorStop(0, '#d3dce7'); sg.addColorStop(1, '#a8b7ca');
+        g.fillStyle = sg; g.fill();
+        // 顶面；后沿与两肩一线极淡的墨（雪帽衬在背后的雪地上也看得出轮廓）
+        g.fillStyle = '#fbfcfd';
+        g.beginPath(); g.ellipse(cx0, yTop - th, rt, ryTop + 0.3, 0, 0, TAU); g.fill();
+        g.strokeStyle = 'rgba(112,126,150,0.55)'; g.lineWidth = 0.9;
+        g.beginPath(); g.ellipse(cx0, yTop - th, rt, ryTop + 0.3, 0, Math.PI - 0.05, TAU + 0.05);
+        g.lineTo(cx0 + rx + lip, yTop + 0.4); g.stroke();
         g.globalAlpha = 1;
       }
     }
@@ -1632,20 +1829,25 @@
           return gr2;
         };
 
-        // ---- 天（歌词区只有渐变）----
-        const skyTop = mix('#a9bccf', '#b4c4d6', clamp(1 - Math.abs(H - 12) / 3));
-        const skyLow = mix('#e8eef3', '#f2d9b2', warm);
+        // ---- 天（歌词区只有渐变）：缩时一天的色彩——清晨低空橙红、正午白蓝、午后琥珀 ----
+        const dawnK = smooth(clamp((10.2 - H) / 2.2)), pmK = smooth(clamp((H - 12.6) / 2.2));
+        const sky4 = (a, b, cc) => [0, 1, 2, 3].map((i) => mix(mix(b[i], a[i], dawnK), cc[i], pmK));
+        const SK = sky4(['#93a8c9', '#d6c1b6', '#f3c98a', '#e48a58'],      // 清晨
+          ['#9cb7d4', '#c6d7e7', '#e1eaf3', '#edf2f7'],                    // 正午
+          ['#a3b5cf', '#d3d2cf', '#efd3a6', '#f0c78e']);                   // 午后
         let gr = g.createLinearGradient(0, 0, 0, 320);
-        gr.addColorStop(0, skyTop); gr.addColorStop(0.55, mix(skyTop, skyLow, 0.45)); gr.addColorStop(1, skyLow);
+        gr.addColorStop(0, SK[0]); gr.addColorStop(0.5, SK[1]); gr.addColorStop(0.8, SK[2]); gr.addColorStop(1, SK[3]);
         g.fillStyle = gr; g.fillRect(0, 0, 1280, 340);
-        // 太阳一侧的天更亮更暖（太阳不入画）
-        const sxp = 640 - 1100 * sinAz, glowK = lit(clamp(sxp, 0, 1280), 290);
+        // 太阳一侧的天更亮更暖（太阳不入画）：清晨在左边低处，正午在画面正上方之外，午后移到右上
+        const sxp = 640 - 1000 * sinAz, syp = 330 - 1100 * Math.sin(Math.max(sun.el, 0));
+        const glowK = lit(clamp(sxp, 0, 1280), clamp(syp, 0, 300));
         if (glowK > 0) {
-          g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.5 * glowK;
-          g.translate(sxp, 300); g.scale(1, 0.45);
-          const rg = g.createRadialGradient(0, 0, 0, 0, 0, 900);
-          rg.addColorStop(0, rgba(mix('#fff2d8', '#ffcf8a', warm), 0.7)); rg.addColorStop(1, 'rgba(255,240,215,0)');
-          g.fillStyle = rg; g.fillRect(-sxp, -300 / 0.45, 1280, 340 / 0.45); g.restore();
+          g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.62 * glowK;
+          g.translate(sxp, syp); g.scale(1, 0.6);
+          const rg = g.createRadialGradient(0, 0, 0, 0, 0, 1000);
+          const gc = mix('#fff4e2', '#ffb27a', warm);
+          rg.addColorStop(0, rgba(gc, 0.85)); rg.addColorStop(0.35, rgba(gc, 0.4)); rg.addColorStop(1, rgba(gc, 0));
+          g.fillStyle = rg; g.fillRect(-sxp, -syp / 0.6, 1280, 340 / 0.6); g.restore();
         }
         // 层云从左漫过来，盖满整片天；云团自身也在缓缓向右移（缩时）
         if (deck > 0) {
@@ -1657,11 +1859,32 @@
         }
         // ---- 远树、墙、地 ----
         g.drawImage(backdrop(), 0, 200, 1280, 520);
-        // 晴时的暖光（只在受光的雪面与瓦顶雪上；云影扫过的地方没有）
-        const wk = 0.55 * warm;
+        // 影子：墙、树、人、凳与云影合成一层（饱和的冷蓝），再乘上去（不会叠出双重暗）；云层盖过的地方已经去掉
+        let sb = null;
+        if (sunK > 0 && sun.el > 0) {
+          sb = shadeLayer(lt, sun, fm, clouds);
+          g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.82;
+          g.imageSmoothingEnabled = true;
+          g.drawImage(sb.c, 0, 115, SH.w, SH.h - 115, 0, 460, 1280, 260);
+          g.restore();
+        }
+        // 晴时的暖光：只在受光的雪面上（影子里只有冷的天光），清晨橙、午后琥珀；云影、云层盖过的地方没有
+        const wk = 0.62 * warm, warmC = mix('#ffe2bc', '#ffc590', dawnK);
         if (wk > 0 && sunK > 0) {
           g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = wk;
-          g.fillStyle = deck > 0 ? frontGrad('#ffe2bc', 600) : '#ffe2bc'; g.fillRect(0, 462, 1280, 260);
+          if (sb) {
+            const wb = buf('f7warm', SH.w, SH.h), q = wb.g;
+            q.fillStyle = warmC; q.fillRect(0, 0, SH.w, SH.h);
+            q.globalCompositeOperation = 'destination-out'; q.drawImage(sb.c, 0, 0);
+            if (fm) q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, 320, 180);
+            q.globalCompositeOperation = 'source-over';
+            g.imageSmoothingEnabled = true;
+            g.drawImage(wb.c, 0, 115, SH.w, SH.h - 115, 0, 460, 1280, 260);
+          }
+          // 门洞里墙外的雪地也向阳（云层前沿到了就没有）
+          g.globalAlpha = wk * lit(gateCx, gateCy);
+          g.drawImage(gateWarm(), gateCx - gateR - 4, gateCy - gateR - 4, gateR * 2 + 8, gateYb - gateCy + gateR + 6);
+          g.globalAlpha = wk;
           if (deck <= 0) g.drawImage(capWarm(), 0, 280, 1280, 50);
           else {
             const d = devBox(g, 0, 280, 1280, 330), cb = buf('f7capw', d.w, d.h), q = cb.g;
@@ -1670,18 +1893,6 @@
             q.globalCompositeOperation = 'destination-in'; q.fillStyle = frontGrad('#000000', 305); q.fillRect(0, 270, 1280, 70);
             blitDev(g, cb, d);
           }
-          g.restore();
-        }
-        // 脚印：落雪后渐被填平
-        const pf = 1 - smooth(ramp(lt, tCloud + 0.6, c.dur));
-        if (pf > 0) { g.globalAlpha = pf; g.drawImage(prints(), 0, 462, 1280, 260); g.globalAlpha = 1; }
-        // 影子：墙、树、人、凳与云影合成一层，再乘上去（不会叠出双重暗）；云层盖过的地方已经去掉
-        let sb = null;
-        if (sunK > 0 && sun.el > 0) {
-          sb = shadeLayer(lt, sun, fm, clouds);
-          g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.78;
-          g.imageSmoothingEnabled = true;
-          g.drawImage(sb.c, 0, 115, SH.w, SH.h - 115, 0, 460, 1280, 260);
           g.restore();
         }
         // 树下、凳下、脚下的接触阴影（漫射光也有）
@@ -1696,7 +1907,7 @@
         if (kR > 0) { g.globalAlpha = kR; g.drawImage(treeLayer('litR'), TB.x, TB.y, TB.w, TB.h); }
         g.globalAlpha = 1;
         if (snowK > 0) { g.globalAlpha = snowK; g.drawImage(treeLayer('snow1'), TB.x, TB.y, TB.w, TB.h); g.globalAlpha = 1; }
-        drawMound(g, sb, 0.78);
+        drawMound(g, sb, 0.82);
         if (wk * tK > 0) {
           g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = wk * tK;
           g.drawImage(moundWarm(), MD.x, MD.y, MD.w, MD.h); g.restore();

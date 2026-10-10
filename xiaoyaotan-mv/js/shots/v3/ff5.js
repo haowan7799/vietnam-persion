@@ -60,8 +60,13 @@
     const LX = -0.55, LY = -0.83;              // 主光方向（指向左上的远处微光）
     // 檐口：起伏的岩口，几处下垂的石牙（最大一笔正上方一处，水从那里汇下）
     const TEETH = [[300, 16, 26], [612, 12, 22], [884, 15, 18], [1012, 10, 16], [1160, 18, 30]];
+    // 崖壁右端在 XC 处转折，转折面朝右后方退去（背光，口沿与壁脚向远处收拢）
+    const XC = 1172;
     const lipY = (x) => {
       let y = 156 + 30 * (1 - x / W) + 20 * (A.noise1(x * 0.005, 3) - 0.5) + 9 * (A.noise1(x * 0.021, 5) - 0.5) + 3 * (A.noise1(x * 0.09, 7) - 0.5);
+      y += 12 * (A.noise1(x * 0.0024, 8) - 0.5) + 0.26 * Math.max(0, x - XC);
+      // 两处大的悬垂岩口（题字左侧与右侧），口沿不再是一条直线
+      for (const [cx, w, a] of [[250, 170, 28], [1062, 104, 18]]) { const u = 1 - Math.abs(x - cx) / w; if (u > 0) y += a * u * u * (3 - 2 * u); }
       for (const [tx, a, w] of TEETH) { const u = 1 - Math.abs(x - tx) / w; if (u > 0) y += a * u * u * (3 - 2 * u); }
       return y;
     };
@@ -71,9 +76,13 @@
       const flat = 1 - 0.88 * sstep(690, 760, x) * (1 - sstep(1190, 1250, x));
       let y = FOOT + flat * (26 * (A.noise1(x * 0.007, 9) - 0.5) + 9 * (A.noise1(x * 0.03, 4) - 0.5)) + 2 * (A.noise1(x * 0.08, 6) - 0.5);
       for (const [tx, w, h] of TALUS) { const u = (x - tx) / w; if (Math.abs(u) < 1) y -= h * Math.pow(Math.cos(u * Math.PI / 2), 1.6) * (0.85 + 0.3 * A.noise1(x * 0.05, tx)); }
-      return y;
+      return y - 0.2 * Math.max(0, x - XC);
     };
     const butX = (y) => 118 + 14 * Math.sin(y * 0.011 + 0.5) + 10 * (A.noise1(y * 0.03, 12) - 0.5) + 5 * (A.noise1(y * 0.11, 13) - 0.5);
+    // 左侧岩柱与崖壁之间的一道缝（y≈304–492），从缝里望见远处夜色里的一点暖灯
+    const cleftW = (y) => 27 * Math.pow(Math.max(0, 1 - ((y - 398) / 94) * ((y - 398) / 94)), 0.75) * (0.85 + 0.3 * A.noise1(y * 0.05, 14));
+    const LAMP = { y: 418 };
+    LAMP.x = butX(LAMP.y) + 0.5 * cleftW(LAMP.y);
     // 积水轮廓
     const POOL = { cx: 972, cy: 628, rx: 204, ry: 58 };
     const poolR = (a) => 1 + 0.07 * Math.sin(a * 3 + 0.6) + 0.05 * Math.sin(a * 5 + 2.1) + 0.03 * Math.sin(a * 9 + 1);
@@ -122,247 +131,90 @@
       o[0] = r; o[1] = gg; o[2] = b;
     }
 
-    // ---------- 抽象草书：部件拼成的假字（不成任何真字），草写省笔，笔画间细牵丝相连 ----------
-    const SH = {
-      H: (x, y, L) => [[x, y, 0.66], [x + 0.2 * L, y - 0.03 * L, 0.56], [x + 0.78 * L, y - 0.1 * L, 0.54], [x + L, y - 0.11 * L, 0.68]],
-      V: (x, y, L) => [[x, y, 0.86], [x + 0.02 * L, y + 0.5 * L, 0.76], [x, y + L, 0.7]],
-      X: (x, y, L) => [[x, y, 0.86], [x + 0.02 * L, y + 0.5 * L, 0.72], [x - 0.01 * L, y + L, 0.04]],
-      P: (x, y, L) => [[x, y, 0.82], [x - 0.18 * L, y + 0.42 * L, 0.56], [x - 0.62 * L, y + 0.84 * L, 0.04]],
-      N: (x, y, L) => [[x, y, 0.26], [x + 0.34 * L, y + 0.3 * L, 0.52], [x + 0.72 * L, y + 0.6 * L, 0.95], [x + 0.98 * L, y + 0.64 * L, 0.05]],
-      D: (x, y, L) => [[x, y, 0.4], [x + 0.22 * L, y + 0.26 * L, 0.85], [x + 0.3 * L, y + 0.44 * L, 0.55]],
-      Z: (x, y, L) => [[x, y, 0.6], [x + 0.6 * L, y - 0.08 * L, 0.48], [x + 0.74 * L, y - 0.06 * L, 0.8], [x + 0.64 * L, y + 0.5 * L, 0.7], [x + 0.56 * L, y + 0.88 * L, 0.6]],
-      G: (x, y, L) => [[x, y, 0.85], [x + 0.02 * L, y + 0.5 * L, 0.74], [x, y + 0.86 * L, 0.76], [x - 0.2 * L, y + 0.76 * L, 0.05]],
-      T: (x, y, L) => [[x, y, 0.8], [x + 0.36 * L, y - 0.24 * L, 0.05]],
-      W: (x, y, L) => [[x, y, 0.3], [x + 0.25 * L, y + 0.12 * L, 0.62], [x + 0.55 * L, y + 0.02 * L, 0.46], [x + 0.85 * L, y + 0.16 * L, 0.76], [x + L, y + 0.1 * L, 0.06]],
+    // ---------- 摩崖题字：用户指定的两行繁体字（XYT.TC_TEXT，书法楷体 XYT.FONT_TC），湿墨写在石面上 ----------
+    const TCT = XYT.TC_TEXT || '撫琴為人無人知我樂';
+    const TC_LINES = [TCT.slice(0, 4), TCT.slice(4)];
+    const INS_CX = 690;
+    const INS = [{ cy: 276, size: 90, pitch: 100 }, { cy: 398, size: 86, pitch: 97 }];
+    // 字体是否就绪作为题字相关缓存键的一部分：字体加载完成后这些图层重建一次（每帧开头取一次）
+    const CUR = { fk: 'p' };
+    const fontKey = () => {
+      try { return !document.fonts || document.fonts.check('64px "Yuji Syuku"', TCT) ? 'f' : 'p'; } catch (e) { return 'f'; }
     };
-    SH.C = (x, y, L) => [[x, y, 0.6], [x + 0.62 * L, y - 0.06 * L, 0.48], [x + 0.76 * L, y - 0.04 * L, 0.8], [x + 0.7 * L, y + 0.2 * L, 0.06]];
-    // 假字部件（单位格坐标）：[笔形, x, y, 长度]；左右、上下随机拼合，草写连笔后不成真字
-    const CMP = {
-      L: [
-        [['P', -0.18, -0.48, 0.42], ['V', -0.3, -0.18, 0.66]],
-        [['D', -0.42, -0.4, 0.2], ['D', -0.44, -0.1, 0.2], ['T', -0.47, 0.32, 0.3]],
-        [['H', -0.48, -0.18, 0.4], ['G', -0.3, -0.46, 0.92], ['T', -0.48, 0.2, 0.36]],
-        [['H', -0.48, -0.22, 0.4], ['V', -0.3, -0.48, 0.96], ['P', -0.31, -0.16, 0.3], ['D', -0.27, -0.04, 0.16]],
-        [['D', -0.38, -0.44, 0.18], ['Z', -0.48, -0.18, 0.3]],
-        [['Z', -0.44, -0.46, 0.25], ['Z', -0.46, -0.2, 0.25], ['T', -0.48, 0.2, 0.34]],
-        [['P', -0.24, -0.48, 0.3], ['P', -0.22, -0.24, 0.36], ['V', -0.32, -0.04, 0.5]],
-        [['Z', -0.42, -0.44, 0.24], ['Z', -0.42, -0.2, 0.24], ['V', -0.42, -0.44, 0.94]],
-      ],
-      R: [
-        [['V', 0.0, -0.16, 0.34], ['Z', 0.0, -0.16, 0.42], ['H', 0.02, 0.16, 0.38]],
-        [['P', 0.04, -0.42, 0.86], ['Z', 0.06, -0.42, 0.42], ['H', 0.08, -0.14, 0.3], ['H', 0.08, 0.08, 0.3]],
-        [['H', -0.06, -0.12, 0.56], ['G', 0.26, -0.44, 0.92], ['D', 0.06, 0.04, 0.16]],
-        [['H', -0.06, -0.1, 0.54], ['N', 0.0, -0.44, 0.6], ['P', 0.32, 0.0, 0.26], ['D', 0.3, -0.42, 0.14]],
-        [['V', 0.0, -0.4, 0.5], ['Z', 0.0, -0.4, 0.42], ['H', 0.04, -0.12, 0.3], ['P', 0.12, 0.1, 0.34], ['W', 0.2, 0.12, 0.34]],
-        [['P', 0.06, -0.48, 0.3], ['Z', 0.04, -0.3, 0.38], ['P', 0.24, -0.16, 0.5], ['N', 0.22, 0.0, 0.32]],
-        [['Z', -0.04, -0.3, 0.5], ['V', 0.16, -0.46, 0.6], ['V', 0.0, -0.36, 0.5], ['W', 0.0, 0.2, 0.5]],
-      ],
-      T: [
-        [['H', -0.4, -0.36, 0.8], ['V', -0.18, -0.48, 0.22], ['V', 0.16, -0.48, 0.22]],
-        [['P', 0.0, -0.48, 0.5], ['N', 0.0, -0.4, 0.46]],
-        [['H', -0.32, -0.46, 0.64], ['V', -0.34, -0.36, 0.24], ['C', -0.34, -0.36, 0.7], ['V', 0.0, -0.46, 0.34], ['D', -0.2, -0.26, 0.1], ['D', 0.16, -0.26, 0.1]],
-        [['V', -0.16, -0.46, 0.34], ['Z', -0.16, -0.46, 0.32], ['H', -0.14, -0.3, 0.26], ['H', -0.14, -0.14, 0.28]],
-      ],
-      B: [
-        [['D', -0.36, 0.14, 0.16], ['W', -0.3, 0.26, 0.56], ['D', -0.02, 0.06, 0.16], ['D', 0.24, 0.1, 0.18]],
-        [['H', -0.3, -0.02, 0.6], ['D', -0.36, 0.3, 0.14], ['D', -0.12, 0.3, 0.14], ['D', 0.1, 0.3, 0.14], ['D', 0.3, 0.28, 0.16]],
-        [['H', -0.36, -0.04, 0.7], ['V', -0.18, 0.08, 0.32], ['Z', -0.18, 0.08, 0.38], ['H', -0.16, 0.36, 0.34]],
-        [['H', -0.36, 0.1, 0.72], ['V', 0.0, -0.06, 0.54], ['P', -0.02, 0.12, 0.38], ['N', 0.02, 0.12, 0.38]],
-        [['D', -0.05, -0.04, 0.16], ['Z', -0.24, 0.08, 0.3], ['W', -0.42, 0.3, 0.9]],
-      ],
-      S: [
-        [['V', -0.26, -0.2, 0.4], ['Z', -0.26, -0.22, 0.52], ['H', -0.24, 0.12, 0.5], ['X', 0.0, -0.5, 1.0]],
-        [['H', -0.4, -0.34, 0.8], ['P', 0.02, -0.34, 0.5], ['V', 0.0, -0.12, 0.62], ['D', 0.12, -0.04, 0.2]],
-        [['D', -0.06, -0.48, 0.16], ['Z', -0.3, -0.3, 0.5], ['W', -0.46, 0.16, 0.96]],
-        [['H', -0.3, -0.36, 0.6], ['H', -0.4, -0.1, 0.8], ['P', 0.0, -0.36, 0.86], ['N', 0.02, -0.04, 0.5]],
-      ],
-    };
-    function glyph(rnd) {
-      const pick = (a) => a[Math.floor(rnd() * a.length)];
-      return rnd() < 0.7 ? pick(CMP.L).concat(pick(CMP.R)) : pick(CMP.T).concat(pick(CMP.B));
-    }
-
-    // 向心 Catmull-Rom（不过冲、不自打结），再按弧长 0.7px 重采样
-    function spline(P) {
-      const raw = [];
-      const get = (i) => P[Math.max(0, Math.min(P.length - 1, i))];
-      const dd = (a, b) => Math.pow(Math.max(1e-4, Math.hypot(b[0] - a[0], b[1] - a[1])), 0.5);
-      for (let i = 0; i < P.length - 1; i++) {
-        const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1), p3 = get(i + 2);
-        const t0 = 0, t1 = dd(p0, p1), t2 = t1 + dd(p1, p2), t3 = t2 + dd(p2, p3);
-        const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 0.4));
-        const L = (a, b, ta, tb, t) => { const u = (t - ta) / (tb - ta || 1e-6); return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]; };
-        for (let k = 0; k < n; k++) {
-          const t = lerp(t1, t2, k / n);
-          const A1 = L(p0, p1, t0, t1, t), A2 = L(p1, p2, t1, t2, t), A3 = L(p2, p3, t2, t3, t);
-          const B1 = L(A1, A2, t0, t2, t), B2 = L(A2, A3, t1, t3, t), C = L(B1, B2, t1, t2, t);
-          raw.push([C[0], C[1], lerp(p1[2], p2[2], smooth(k / n))]);
-        }
-      }
-      const e = P[P.length - 1]; raw.push([e[0], e[1], e[2]]);
-      const out = [{ x: raw[0][0], y: raw[0][1], p: raw[0][2], sl: 0 }];
-      let acc = 0, sl = 0;
-      for (let i = 1; i < raw.length; i++) {
-        const d = Math.hypot(raw[i][0] - raw[i - 1][0], raw[i][1] - raw[i - 1][1]);
-        acc += d; sl += d;
-        if (acc >= 0.7 || i === raw.length - 1) { out.push({ x: raw[i][0], y: raw[i][1], p: raw[i][2], sl }); acc = 0; }
-      }
-      return out;
-    }
-
-      // 一行：假字（部件拼合，草写省笔），笔画之间以细牵丝相连，提笔处断开
-    // 每个字用自己的随机数（列号、字号、重抽次数），便于单独重抽看着像真字的那个
-    function column(seed, x0, y0, y1, sizes, s0, ink0, out, opt = {}) {
-      const rc = A.rng(seed);
-      const tot = sizes.reduce((a, b) => a + b, 0), kk = (y1 - y0) / tot;
-      let y = y0, pen = null;
-      const lift = () => { if (pen && pen.pts.length > 1) out.push(pen); pen = null; };
-      sizes.forEach((sz0, ci) => {
-        const rnd = A.rng(seed * 31 + ci * 977 + ((opt.reroll && opt.reroll[ci]) || 0) * 7919);
-        const sz = sz0 * kk, cy = y + sz / 2; y += sz;
-        const gl = glyph(rnd);
-        const sx = Math.min(sz, s0 * 1.02) * (1.0 + rnd() * 0.16), sy = sz * (0.96 + rnd() * 0.08), sk = (rnd() - 0.5) * 0.4, rot = (rnd() - 0.5) * 0.2;
-        const cx = x0 + (rnd() - 0.5) * 26, cr = Math.cos(rot), sr = Math.sin(rot);
-        if (ci > 0 && rc() < 0.3) lift();
-        gl.forEach(([nm, x, yy, L], k) => {
-          if (k > 0 && k < gl.length - 1 && rnd() < 0.34) return;
-          const jx = (rnd() - 0.5) * 0.12, jy = (rnd() - 0.5) * 0.1, jl = 0.9 + rnd() * 0.3;
-          const P = SH[nm](x + jx, yy + jy, L * jl).map(([u, v, pp]) => {
-            const xx = (u + v * sk) * sx, yv = v * sy;
-            return [cx + xx * cr - yv * sr, cy + xx * sr + yv * cr, clamp(pp * (0.85 + rnd() * 0.3), 0.03, 1)];
-          });
-          // 牵丝太长就提笔（不让一根细线横穿整个字）
-          const far = pen && Math.hypot(P[0][0] - pen.pts[pen.pts.length - 1][0], P[0][1] - pen.pts[pen.pts.length - 1][1]) > 0.5 * sz;
-          if (k > 0) { const lf = rnd() < 0.06; if (lf || far) lift(); } else if (far) lift();
-          if (!pen) pen = { pts: [], s: s0, ink: ink0 * (0.95 + rc() * 0.12), L: opt.L || (720 + rc() * 240), seed: Math.floor(rc() * 1e5) };
-          else {
-            const a = pen.pts[pen.pts.length - 1], b = P[0], dx = b[0] - a[0], dy = b[1] - a[1];
-            pen.pts.push([a[0] + dx * 0.2 + (rnd() - 0.5) * 6, a[1] + dy * 0.12 - 4, 0.07]);
-            pen.pts.push([a[0] + dx * 0.8 + (rnd() - 0.5) * 6, a[1] + dy * 0.84 - 3, 0.07]);
-          }
-          for (const q of P) pen.pts.push(q);
+    // 每个字：位置略有参差、微倾；第一行蘸墨后渐干，第二行重新蘸墨，末字墨将尽（飞白最多）
+    const GLY = [];
+    TC_LINES.forEach((s, li) => {
+      const L = INS[li], n = s.length, x0 = INS_CX - (L.pitch * (n - 1)) / 2;
+      const dry = li ? [0.06, 0.16, 0.28, 0.4, 0.55] : [0.0, 0.1, 0.22, 0.34];
+      for (let i = 0; i < n; i++) {
+        GLY.push({
+          ch: s[i], li, i, dry: dry[i] || 0.3,
+          x: x0 + i * L.pitch + (h2(i, 41 + li) - 0.5) * 6, y: L.cy + (h2(i, 51 + li) - 0.5) * 7,
+          size: L.size * (0.96 + 0.08 * h2(i, 61 + li)), rot: (h2(i, 71 + li) - 0.5) * 0.06,
         });
-      });
-      lift();
+      }
+    });
+    function drawGlyphs(g, col) {
+      g.fillStyle = col; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+      for (const q of GLY) {
+        g.save(); g.translate(q.x, q.y); g.rotate(q.rot);
+        g.font = `${q.size.toFixed(1)}px ${XYT.FONT_TC}`;
+        g.fillText(q.ch, 0, q.size * 0.37);
+        g.restore();
+      }
+      g.textAlign = 'start';
     }
-    // 笔画采样：法线、笔宽（笔压、方向：竖重横轻、上提更轻）、起笔藏锋与收笔出锋、沿笔的墨量
-    function prepStroke(st) {
-      const S = spline(st.pts), n = S.length;
-      const total = S[n - 1].sl, s = st.s, seed = st.seed;
-      for (let i = 0; i < n; i++) {
-        const a = S[Math.max(0, i - 3)], b = S[Math.min(n - 1, i + 3)];
-        let tx = b.x - a.x, ty = b.y - a.y; const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
-        S[i].nx = -ty; S[i].ny = tx;
-        const pr = clamp(S[i].p * (0.85 + 0.12 * Math.abs(ty) + 0.08 * ty), 0.02, 1.1);
-        S[i].w0 = s * (0.012 + 0.21 * Math.pow(pr, 1.25));
-      }
-      for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let k = Math.max(0, i - 12); k <= Math.min(n - 1, i + 12); k++) { a += S[k].w0; c++; } S[i].w = a / c; }
-      const eL = Math.min(total * 0.12, 16), xL = Math.min(total * 0.14, 28);
-      const sharp = S[n - 1].p < 0.12;
-      const box = [1e9, 1e9, -1e9, -1e9];
-      for (let i = 0; i < n; i++) {
-        const q = S[i], u0 = q.sl / eL, u1 = (total - q.sl) / xL;
-        if (u0 < 1) q.w *= 0.72 + 0.28 * smooth(u0) + 0.05 * Math.sin(Math.PI * u0);
-        if (u1 < 1) q.w *= sharp ? 0.08 + 0.92 * Math.pow(smooth(u1), 0.75) : 0.82 + 0.18 * smooth(u1);
-        q.w *= 1 + 0.07 * (A.noise1(q.sl * 0.08, seed) - 0.5);
-        q.ink = st.ink * Math.exp(-q.sl / st.L);
-        q.dry = clamp((0.62 - q.ink) / 0.5, 0, 1);
-        box[0] = Math.min(box[0], q.x - q.w); box[1] = Math.min(box[1], q.y - q.w); box[2] = Math.max(box[2], q.x + q.w); box[3] = Math.max(box[3], q.y + q.w);
-      }
-      st.S = S; st.box = box;
+    const dryAt = (X, Y) => {
+      let best = 0, bd = 1e9;
+      for (const q of GLY) { const d = Math.abs(X - q.x) + Math.abs(Y - q.y) * 1.5; if (d < bd) { bd = d; best = q.dry; } }
+      return best;
+    };
+    // 1 倍分辨率的字形遮罩（用来找细流经过笔画的位置、笔画下缘的墨滴起点）
+    let MASK = null;
+    function maskData(fk) {
+      if (MASK && MASK.fk === fk) return MASK;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const g = cv.getContext('2d');
+      drawGlyphs(g, '#000');
+      const d = g.getImageData(0, 0, W, H).data, a = new Uint8Array(W * H);
+      for (let i = 0; i < W * H; i++) a[i] = d[i * 4 + 3];
+      return (MASK = { fk, a });
     }
-    // 毛笔：墨足处整笔铺满；墨将尽处改成一束细毫分别走笔，边上的毫先干、一段段断开，尾端参差（飞白），收笔不留圆头
-    function renderStroke(g, st, col) {
-      const S = st.S, n = S.length, seed = st.seed, [x0, y0, x1, y1] = st.box;
-      if (n < 3) return;
-      const sc = g.getTransform().a, pad = 4;
-      const cv = document.createElement('canvas');
-      cv.width = Math.ceil((x1 - x0 + 2 * pad) * sc); cv.height = Math.ceil((y1 - y0 + 2 * pad) * sc);
-      const t = cv.getContext('2d');
-      t.setTransform(sc, 0, 0, sc, -(x0 - pad) * sc, -(y0 - pad) * sc);
-      t.strokeStyle = col; t.lineCap = 'round'; t.lineJoin = 'round';
-      const DRY0 = 0.04;
-      for (let i = 0; i < n - 1; i++) {
-        const a = S[i], b = S[i + 1];
-        // 细笔（牵丝、尖尾）墨枯时整条断续
-        if (a.w < 6 && (a.dry > 0.35 || (a.dry > 0.12 && a.dry * 1.4 > 0.3 + 0.5 * (A.noise1(a.sl * 0.035, seed + 77) - 0.5)))) continue;
-        if (a.ink < 0.06) continue;
-        if (a.w >= 6 && a.dry > DRY0) continue;
-        t.lineWidth = (a.w + b.w) / 2; t.beginPath(); t.moveTo(a.x, a.y); t.lineTo(b.x, b.y); t.stroke();
-      }
-      // 枯笔毛束：毫与毫在墨足时互相叠满（看起来仍是整笔），越枯越细、越稀
-      const total = S[n - 1].sl, dryEnd = S[n - 1].dry, tail = Math.min(46, total * 0.3);
-      const M = 15, rs = A.rng(seed + 5);
-      for (let k = 0; k < M; k++) {
-        const o0 = ((k + 0.5) / M - 0.5) * 0.94 + (rs() - 0.5) * 0.03, e = Math.min(1, Math.abs(o0) * 2.1);
-        const sens = 0.6 + 0.5 * e + 0.2 * (rs() - 0.5);
-        const cut = total - (dryEnd > 0.08 ? tail * (0.04 + 0.96 * Math.pow(rs(), 0.7)) * Math.min(1, dryEnd * 2.2) : 0);
-        for (let i = 0; i < n - 1; i++) {
-          const a = S[i], b = S[i + 1];
-          if (a.w < 6 || a.dry <= DRY0 || a.sl > cut) continue;
-          const v = a.dry * sens * 0.6 + 0.42 * (A.noise1(a.sl * 0.018 + k * 3.7, seed + k) - 0.5) + 0.14 * (A.noise1(a.sl * 0.07 + k * 1.3, seed + 40 + k) - 0.5);
-          if (v > 0.4) continue;
-          const oa = o0 + 0.03 * (A.noise1(a.sl * 0.03 + k, seed + 60) - 0.5), ob = o0 + 0.03 * (A.noise1(b.sl * 0.03 + k, seed + 60) - 0.5);
-          t.lineWidth = Math.max(0.6, (a.w / M) * lerp(1.75, 1.0, smooth(a.dry)));
-          t.beginPath(); t.moveTo(a.x + a.nx * oa * a.w, a.y + a.ny * oa * a.w); t.lineTo(b.x + b.nx * ob * b.w, b.y + b.ny * ob * b.w); t.stroke();
-        }
-      }
-      g.drawImage(cv, x0 - pad, y0 - pad, cv.width / sc, cv.height / sc);
-    }
+    const IR = { x: 400, y: 206, w: 580, h: 262 };          // 题字所在的范围（含洇边）
     let LAYOUT = null;
-    // 草书的随机种子；REROLL[行][字] 用来单独重抽看着像真字的那个字
-    const CAL_SEED = 61, REROLL = { 0: { 0: 3, 1: 2 }, 1: { 1: 12 }, 2: { 2: 13 }, 3: { 0: 10, 1: 9 } };
     // 细流的路径：噪声游走约 ±3px（经过笔画时另加小折，见 layout）
     const xsOf = (x0) => (y) => x0 + 6 * (A.noise1(y * 0.016 + x0 * 0.37, 17) - 0.5) + 1.6 * (A.noise1(y * 0.06 + x0 * 0.11, 19) - 0.5);
     function layout() {
-      if (LAYOUT) return LAYOUT;
-      const strokes = [], R = A.rng(CAL_SEED);
-      // 四行，自右向左；字有大小，草写连绵；最左一行墨将尽（枯笔飞白）
-      const cols = [
-        { x: 1046, s: 120, n: 3, ink: 1.1 },
-        { x: 734, s: 124, n: 2, ink: 1.02 },
-        { x: 578, s: 116, n: 3, ink: 0.92 },
-        { x: 424, s: 112, n: 2, ink: 0.62, L: 300 },
-      ];
-      cols.forEach((c, i) => {
-        const sz = []; for (let k = 0; k < c.n; k++) sz.push(0.7 + R() * 0.7);
-        column(CAL_SEED * 13 + i, c.x, 212, 526, sz, c.s, c.ink, strokes, { L: c.L, reroll: REROLL[i] });
-      });
-      // 第二行：上方一个小字，下面是全篇最大的一竖（悬针）
-      column(CAL_SEED * 13 + 7, 890, 194, 242, [1], 56, 1.05, strokes, { reroll: REROLL[7] });
-      strokes.push({ pts: [[BIGX - 12, 252, 0.6], [BIGX - 3, 260, 1.0], [BIGX + 1, 282, 0.95], [BIGX + 3, 340, 0.82], [BIGX + 4, 405, 0.62], [BIGX + 2, 455, 0.36], [BIGX, 488, 0.15], [BIGX - 1, 514, 0.02]], s: 180, ink: 1.45, L: 300, big: true, seed: 991 });
-      strokes.forEach((st) => prepStroke(st));
-      // 一条细流经过哪些笔画（墨足处）
+      const fk = CUR.fk;
+      if (LAYOUT && LAYOUT.fk === fk) return LAYOUT;
+      const a = maskData(fk).a;
+      const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : a[y * W + x]);
+      // 一条细流经过哪些笔画
       const crossings = (xs) => {
-        const hit = new Uint8Array(720);
-        for (const st of strokes) {
-          if (st.big) continue;
-          for (const q of st.S) {
-            if (q.ink < 0.3) continue;
-            const yy = Math.round(q.y);
-            if (yy < 2 || yy >= 718) continue;
-            if (Math.abs(q.x - xs(q.y)) < q.w * 0.45) for (let d = -2; d <= 2; d++) hit[yy + d] = 1;
-          }
+        const hit = new Uint8Array(H);
+        for (let y = IR.y; y < IR.y + IR.h; y++) {
+          const x = Math.round(xs(y));
+          if (at(x, y) > 120 || at(x - 1, y) > 120 || at(x + 1, y) > 120) for (let d = -2; d <= 2; d++) hit[y + d] = 1;
         }
         const out = []; let a0 = -1;
-        for (let y = 0; y < 720; y++) {
+        for (let y = 0; y < H; y++) {
           if (hit[y] && a0 < 0) a0 = y;
           if (!hit[y] && a0 >= 0) { if (y - a0 > 3) out.push([a0, y]); a0 = -1; }
         }
         return out;
       };
-      // 檐水细流：每行挑两处笔画最密的竖线（第1句第1字起，到第4字时每行都已流过笔画），另有两道只是湿痕
-      const picks = [[], []];
-      for (const cx of [1046, 734, 578]) {
-        const cand = [];
-        for (let x = cx - 44; x <= cx + 44; x += 2) cand.push([x, crossings(xsOf(x)).reduce((acc, [ya, yb]) => acc + yb - ya, 0)]);
-        cand.sort((u, v) => v[1] - u[1]);
-        const x1 = cand[0][0], x2 = (cand.find(([x]) => Math.abs(x - x1) >= 16) || cand[1])[0];
-        picks[0].push(x1); picks[1].push(x2);
+      // 檐水细流：挑六处经过笔画最多的竖线（彼此相隔 ≥48px，避开大股水的竖带），另有两道只是湿痕
+      const cand = [];
+      for (let x = 446; x <= 940; x += 2) {
+        if (Math.abs(x - BIGX) < 54) continue;
+        cand.push([x, crossings(xsOf(x)).reduce((acc, [ya, yb]) => acc + yb - ya, 0)]);
       }
+      cand.sort((u, v) => v[1] - u[1] || u[0] - v[0]);
+      const picks = [];
+      for (const [x, s] of cand) { if (picks.length >= 6 || s < 10) break; if (picks.every((p) => Math.abs(p - x) >= 48)) picks.push(x); }
       const T0 = [0.26, 0.4, 0.55, 0.7, 0.86, 1.02];
-      const riv = picks[0].concat(picks[1]).map((x, k) => ({ x, t0: T0[k], v: 86 + 16 * h2(k, 5) }));
-      riv.push({ x: 1150, t0: 1.5, v: 98 }, { x: 318, t0: 2.1, v: 90 });
+      const riv = picks.map((x, k) => ({ x, t0: T0[k], v: 86 + 16 * h2(k, 5) }));
+      riv.push({ x: 1140, t0: 1.5, v: 98 }, { x: 318, t0: 2.1, v: 90 });
       for (const r of riv) {
         r.y0 = lipY(r.x) + 3;
         // 水流出笔画下缘时被墨面带偏一点（±1–2.5px 的小折）
@@ -370,40 +222,86 @@
         r.xs = (y) => { let x = xs0(y); for (const [yb, k] of kinks) x += k * smooth((y - yb + 2) / 9); return x; };
         r.cross = crossings(r.xs);
       }
-      // 迎风（右半）笔画下缘的雨淋短流痕
-      const drips = [], dr = A.rng(919);
-      for (const st of strokes) {
-        if (st.big) continue;
-        for (let i = 6; i < st.S.length; i += 9) {
-          const q = st.S[i];
-          if (q.x < 640 || Math.abs(q.x - BIGX) < 36) continue;
-          if (q.ink < 0.5 || q.w < 5 || Math.abs(q.ny) < 0.55) continue;
-          if (dr() > 0.14) continue;
-          const sd = q.ny > 0 ? 1 : -1, wx = clamp((q.x - 640) / 560, 0, 1);
-          drips.push({
-            x: q.x + q.nx * sd * q.w * 0.4, y: q.y + q.ny * sd * q.w * 0.4,
-            w: clamp(q.w * 0.22, 1.4, 3.4), L: 12 + dr() * 34 * (0.5 + wx),
-            t0: lerp(2.4, 0.9, wx) + dr() * 2.2, tau: 0.9 + dr() * 1.4,
-          });
+      // 笔画下缘（下面就是石面）：湿墨受重力往下挂出细墨滴
+      const bottoms = [];
+      for (let x = IR.x; x < IR.x + IR.w; x++) {
+        for (let y = IR.y + 5; y < IR.y + IR.h - 5; y++) {
+          if (at(x, y) > 150 && at(x, y + 1) < 150 && at(x, y + 3) < 30 && at(x, y - 4) > 150) bottoms.push([x, y, h2(x, y * 7 + 3)]);
         }
       }
-      LAYOUT = { strokes, riv, drips };
-      return LAYOUT;
+      bottoms.sort((u, v) => u[2] - v[2]);
+      const sdrips = [], drips = [];
+      for (const [x, y, hh] of bottoms) {
+        if (sdrips.length >= 30) break;
+        if (sdrips.some((d) => Math.abs(d.x - x) < 11 && Math.abs(d.y - y) < 10)) continue;
+        const k = h2(x, y + 11);
+        sdrips.push({ x, y, w: 1.1 + 1.3 * k, L: 3 + 9 * h2(x + 5, y) });
+      }
+      for (const [x, y] of bottoms) {
+        if (drips.length >= 22) break;
+        if (Math.abs(x - BIGX) < 40) continue;
+        const wx = clamp((x - 600) / 340, 0, 1);
+        if (h2(x + 3, y + 5) > 0.02 + 0.07 * wx) continue;
+        if (drips.some((d) => Math.abs(d.x - x) < 14 && Math.abs(d.y - y) < 12) || sdrips.some((d) => Math.abs(d.x - x) < 5 && Math.abs(d.y - y) < 6)) continue;
+        const r1 = h2(x, y + 21), r2 = h2(x + 9, y + 2), r3 = h2(x + 1, y + 30);
+        drips.push({ x, y: y - 1, w: 1.3 + 1.3 * r1, L: 10 + 28 * r1 * (0.5 + wx), t0: lerp(2.4, 0.9, wx) + 2.2 * r2, tau: 0.9 + 1.4 * r3 });
+      }
+      return (LAYOUT = { fk, riv, drips, sdrips });
     }
+    // 湿墨：字形遮罩 → 石纹与石孔不吃墨、边缘飞白（越干越多）、墨在边沿积得略浓、外缘洇开一圈淡墨、
+    // 迎光（左上）一侧的边沿有一线湿亮；再挂上静止的短墨滴
     function inkLayer() {
-      return K.cache('ff5_e5_ink', W, H, 1, (g) => {
-        g.fillStyle = '#0f1013';
-        for (const st of layout().strokes) renderStroke(g, st, '#0f1013');
-        // 石面细孔：墨没吃进去的地方
-        const r = A.rng(4242);
-        g.globalCompositeOperation = 'destination-out';
-        g.fillStyle = 'rgba(0,0,0,0.35)';
-        for (let i = 0; i < 5000; i++) g.fillRect(300 + r() * 900, 190 + r() * 340, 0.6 + r() * 0.7, 0.6 + r() * 0.7);
-        g.globalCompositeOperation = 'source-over';
+      return K.cache('ff5_e5_ink' + CUR.fk, W, H, 1, (g) => {
+        const sc = g.getTransform().a, pw = Math.round(IR.w * sc), ph = Math.round(IR.h * sc);
+        const M = document.createElement('canvas'); M.width = pw; M.height = ph;
+        const mg = M.getContext('2d');
+        mg.setTransform(sc, 0, 0, sc, -IR.x * sc, -IR.y * sc);
+        drawGlyphs(mg, '#000');
+        const Bc = document.createElement('canvas'); Bc.width = pw; Bc.height = ph;
+        const bg = Bc.getContext('2d');
+        bg.filter = `blur(${(2.4 * sc).toFixed(2)}px)`; bg.drawImage(M, 0, 0); bg.filter = 'none';
+        const md = mg.getImageData(0, 0, pw, ph).data, bd = bg.getImageData(0, 0, pw, ph).data;
+        const samp = (d, X, Y) => {
+          const px = Math.floor((X - IR.x) * sc), py = Math.floor((Y - IR.y) * sc);
+          return px < 0 || py < 0 || px >= pw || py >= ph ? 0 : d[(py * pw + px) * 4 + 3] / 255;
+        };
+        const nG = makeNoise(4401), nM = makeNoise(4402), nS = makeNoise(4403);
+        pixels(g, IR.x, IR.y, IR.w, IR.h, (X, Y, o) => {
+          const m = samp(md, X, Y), b = samp(bd, X, Y);
+          if (m < 0.004 && b < 0.004) { o[3] = 0; return; }
+          const dry = dryAt(X, Y);
+          const gr = 0.6 * nG(X * 0.45, Y * 0.45) + 0.4 * nG(X * 1.1 + 31, Y * 1.1 + 17), mm = nM(X * 0.07, Y * 0.07);
+          const pore = sstep(0.74, 0.88, gr);
+          // 飞白顺着笔势：由洇开遮罩的梯度估出笔画走向，丝纹沿笔走、横向细密
+          let gx = samp(bd, X + 1.5, Y) - samp(bd, X - 1.5, Y), gy = samp(bd, X, Y + 1.5) - samp(bd, X, Y - 1.5);
+          const gl = Math.hypot(gx, gy) || 1; gx /= gl; gy /= gl;
+          const su = -X * gy + Y * gx, sv = X * gx + Y * gy;
+          const s = nS(su * 0.045 + 50, sv * 0.42 + 50);
+          const hole = sstep(0.78 - 0.22 * dry, 0.9 - 0.22 * dry, s) * (1 - sstep(0.78, 0.96, b));
+          const a = m * (0.9 + 0.1 * mm) * (1 - 0.35 * pore) * (1 - 0.85 * hole);
+          const halo = 0.22 * b * (0.45 + 0.9 * mm) * (1 - m);
+          const sheen = clamp(m - samp(md, X + LX * 1.8, Y + LY * 1.8), 0, 1) * (1 - pore) * (1 - hole);
+          const pool = clamp((m - b) * 2, 0, 1);
+          const v = 14 - 5 * pool;
+          o[0] = v + 34 * sheen; o[1] = v + 1 + 38 * sheen; o[2] = v + 4 + 46 * sheen;
+          o[3] = Math.round(255 * clamp(a + halo * (1 - a), 0, 1));
+        });
+        // 静止的短墨滴：从笔画下缘垂下，细而渐淡，末端一颗小墨珠
+        for (const d of layout().sdrips) {
+          const gr = g.createLinearGradient(0, d.y - 2, 0, d.y + d.L);
+          gr.addColorStop(0, 'rgba(13,14,17,0.92)'); gr.addColorStop(0.7, 'rgba(13,14,17,0.55)'); gr.addColorStop(1, 'rgba(13,14,17,0.3)');
+          g.fillStyle = gr;
+          g.beginPath(); g.moveTo(d.x - d.w / 2, d.y - 2);
+          g.quadraticCurveTo(d.x - d.w * 0.22, d.y + d.L * 0.5, d.x - d.w * 0.16, d.y + d.L);
+          g.lineTo(d.x + d.w * 0.16, d.y + d.L);
+          g.quadraticCurveTo(d.x + d.w * 0.22, d.y + d.L * 0.5, d.x + d.w / 2, d.y - 2);
+          g.fill();
+          g.fillStyle = 'rgba(13,14,17,0.5)';
+          g.beginPath(); g.ellipse(d.x, d.y + d.L, d.w * 0.42, d.w * 0.56, 0, 0, TAU); g.fill();
+        }
       });
     }
-    // 最大一笔所在竖带（软边）
-    // 上缘在笔头之上（笔头顶约 y 237），上方小字最低处约 y 227，竖带顶部 9px 渐入
+    // 大股水冲过的竖带（软边）：第二行末字的中竖与第一行末字捺尾都在其中
     const BAND = { x: BIGX - 46, y: 228, w: 92, h: 312 };
     function bandMaskTex() {
       return K.cache('ff5_e5_bandmask', BAND.w, BAND.h, 1, (g) => {
@@ -419,11 +317,9 @@
     }
     function bandMask(g) { g.drawImage(bandMaskTex(), BAND.x, BAND.y, BAND.w, BAND.h); }
     function bigLayer() {
-      return K.cache('ff5_e5_big', BAND.w, BAND.h, 1, (g) => {
+      return K.cache('ff5_e5_big' + CUR.fk, BAND.w, BAND.h, 1, (g) => {
         g.translate(-BAND.x, -BAND.y);
-        g.filter = 'blur(2.5px)'; g.globalAlpha = 0.22;
-        g.drawImage(inkLayer(), 0, 0, W, H);
-        g.filter = 'none'; g.globalAlpha = 0.9;
+        g.globalAlpha = 0.95;
         g.drawImage(inkLayer(), 0, 0, W, H);
         g.globalAlpha = 1;
         g.globalCompositeOperation = 'destination-in';
@@ -454,45 +350,60 @@
             rockCol(l, o, 0);
             return;
           }
-          const isBut = X < bx[yi] && Y < fy + 30;
+          const isBut = X < bx[yi] && Y < fy + 30, cw = cleftW(Y);
+          if (!isBut && cw > 0.5 && X < bx[yi] + cw && Y < fy - 4) {
+            // 缝里：远处的夜色与薄雾，越往下雾越亮；缝的两沿略暗
+            const v = clamp((Y - 304) / 188, 0, 1), e = (X - bx[yi]) / cw, mist = 0.5 + 0.5 * nC(X * 0.05, Y * 0.02);
+            const ed = 1 - 0.35 * sstep(0.7, 1, e) - 0.25 * sstep(0.25, 0, e);
+            o[0] = (17 + 10 * v * mist) * ed; o[1] = (21 + 11 * v * mist) * ed; o[2] = (31 + 12 * v * mist) * ed;
+            return;
+          }
           if (Y < fy || isBut) {
+            // 转折面上的纹理按透视横向压缩
+            const Xs = X > XC ? XC + (X - XC) * 2.3 : X, side = sstep(XC - 1.5, XC + 2.5, X);
             // 节理：扭曲后的维诺格，只有部分边界显出裂缝
-            const wx = X + 34 * (nC(X * 0.007, Y * 0.007) - 0.5), wy = Y + 34 * (nC(X * 0.007 + 50, Y * 0.007) - 0.5);
+            const wx = Xs + 34 * (nC(Xs * 0.007, Y * 0.007) - 0.5), wy = Y + 34 * (nC(Xs * 0.007 + 50, Y * 0.007) - 0.5);
             wallCells(wx, wy * 0.62, vc);
             const dx = (X - 760) / 470, dy = (Y - 366) / 175;
             const flat = clamp(1.3 - Math.sqrt(dx * dx + dy * dy), 0, 1);
             const rough = 1 - 0.75 * flat;
-            const cv = rough * sstep(0.5, 0.7, nD(X * 0.012 + 9, Y * 0.012));
+            const cv = rough * sstep(0.5, 0.7, nD(Xs * 0.012 + 9, Y * 0.012));
             // 一片远处来的冷光落在书写面上，四周渐暗
             const lx = (X - 640) / 560, ly = (Y - 350) / 260;
             let l = 0.11 + Math.exp(-(lx * lx + ly * ly)) * 0.42;
             l -= sstep(lp + 90, lp, Y) * 0.13;
+            // 岩檐下深一层的悬垂阴影（下缘参差）
+            l -= sstep(lp + 24 + 18 * nC(X * 0.02, 5.5), lp, Y) * 0.17;
             l -= sstep(1080, 1290, X) * 0.06;
+            // 右端转折面背光更暗，转折棱上一线受光
+            l -= side * (0.08 + 0.05 * sstep(XC, W, X));
+            l += 0.05 * Math.exp(-((X - XC - 1) * (X - XC - 1)) / 5) * sstep(lp, lp + 20, Y);
             // 石面小块面：各自微倾，交界处柔和过渡
             const fw = sstep(-4, 4, vc.d);
             l += (lerp((vc.tone + vc.tone2) / 2, vc.tone, fw) - 0.5) * 0.11 * (0.4 + 0.6 * rough);
             if (vc.d < 5) { const k = 1 - vc.d / 5; l += 0.05 * k * k * (vc.nx * LX + vc.ny * LY) * cv; }
             if (vc.d < 0.9) l -= 0.1 * cv * (1 - vc.d / 0.9);
             // 大起伏与细纹理的受光
-            const sb = hBig(X - 3, Y - 4.5) - hBig(X + 3, Y + 4.5);
+            const sb = hBig(Xs - 3, Y - 4.5) - hBig(Xs + 3, Y + 4.5);
             l += sb * 1.0 * (0.6 + 0.4 * rough);
-            const sh = bump(X - 1.2, Y - 1.8) - bump(X + 1.2, Y + 1.8);
+            const sh = bump(Xs - 1.2, Y - 1.8) - bump(Xs + 1.2, Y + 1.8);
             l += sh * (0.14 + 0.26 * rough);
-            l += (0.6 * nD(X * 0.13, Y * 0.13) + 0.4 * nD(X * 0.35, Y * 0.35) - 0.5) * 0.035;
+            l += (0.6 * nD(Xs * 0.13, Y * 0.13) + 0.4 * nD(Xs * 0.35, Y * 0.35) - 0.5) * 0.035;
             // 檐下水痕：长短不一的竖向暗舌
-            const tl = 30 + 230 * Math.pow(nA(X * 0.021, 3.3), 2.2);
-            const st = (1 - clamp((Y - lp) / tl, 0, 1)) * (0.5 + 0.5 * nD(X * 0.35, Y * 0.004));
+            const tl = 30 + 230 * Math.pow(nA(Xs * 0.021, 3.3), 2.2);
+            const st = (1 - clamp((Y - lp) / tl, 0, 1)) * (0.5 + 0.5 * nD(Xs * 0.35, Y * 0.004));
             l -= st * 0.07;
             // 湿面冷光：朝光的大起伏上一层柔亮
             l += sstep(0.01, 0.05, sb) * 0.05;
             l -= sstep(fy - 26, fy, Y) * 0.1;
-            let lich = rough * sstep(0.56, 0.8, nA(X * 0.008 + 20, Y * 0.01)) * 0.6;
+            let lich = (rough + 0.4 * side) * sstep(0.54, 0.8, nA(Xs * 0.008 + 20, Y * 0.01)) * 0.62;
             if (isBut) {
               // 左侧前凸的岩柱：更近、更暗，右缘背光
               l = l * 0.7 - 0.02 - sstep(bx[yi] - 14, bx[yi], X) * 0.08;
               lich *= 1.4;
             } else if (X < bx[yi] + 70) {
               l -= 0.1 * (1 - (X - bx[yi]) / 70) * sstep(lp, lp + 30, Y);
+              if (cw > 0.5) l -= 0.08 * (1 - clamp((X - bx[yi] - cw) / 10, 0, 1));
             }
             rockCol(l, o, clamp(lich, 0, 1));
             return;
@@ -513,6 +424,18 @@
         g.beginPath(); fis.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
         g.strokeStyle = 'rgba(140,150,166,0.16)'; g.lineWidth = 1;
         g.beginPath(); fis.forEach(([x, y], i) => (i ? g.lineTo(x + 1.6, y) : g.moveTo(x + 1.6, y))); g.stroke();
+        // 另两道裂隙（在题字左右两侧，避开题字）：暗线，迎光一沿一线冷光，缝边几片地衣
+        for (const [cx0, y0, y1, sd] of [[1104, lipY(1104) + 14, 478, 809], [376, 296, 470, 810]]) {
+          const rc = A.rng(sd), pts = [];
+          for (let y = y0, x = cx0; y < y1; y += 8 + rc() * 14) { pts.push([x, y]); x += (rc() - 0.45) * 8; }
+          g.strokeStyle = 'rgba(9,10,13,0.62)'; g.lineWidth = 1.6;
+          g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+          g.strokeStyle = 'rgba(140,150,166,0.14)'; g.lineWidth = 1;
+          g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x + 1.5, y) : g.moveTo(x + 1.5, y))); g.stroke();
+          for (let i = 0; i < 7; i++) { const [x, y] = pts[Math.floor(rc() * pts.length)]; A.glow(g, x + (rc() - 0.5) * 14, y, 6 + rc() * 10, '#5f6b55', 0.16); }
+        }
+        // 檐下与右端转折面上的地衣
+        { const rl = A.rng(8181); for (let i = 0; i < 26; i++) { const x = rl() < 0.4 ? XC + rl() * 100 : 140 + rl() * 1020, y = lipY(x) + 8 + rl() * (rl() < 0.6 ? 40 : 300); if (x > 430 && x < 960 && y > 225 && y < 445) continue; A.glow(g, x, y, 5 + rl() * 12, rl() < 0.5 ? '#56634f' : '#6a7360', 0.14); } }
         // 岩柱右缘一线暗边
         g.strokeStyle = 'rgba(6,7,9,0.55)'; g.lineWidth = 2;
         g.beginPath();
@@ -563,9 +486,9 @@
       });
     }
     function baseLayer() {
-      return K.cache('ff5_e5_base', W, H, 1, (g) => {
+      return K.cache('ff5_e5_base' + CUR.fk, W, H, 1, (g) => {
         g.drawImage(wallLayer(), 0, 0, W, H);
-        // 墨迹（最大一笔的竖带除外）
+        // 题字（大股水冲过的竖带除外；洇边已在墨层里），略透出石纹
         const tmp = document.createElement('canvas');
         const sc = g.getTransform().a;
         tmp.width = Math.round(W * sc); tmp.height = Math.round(H * sc);
@@ -573,10 +496,7 @@
         tg.drawImage(inkLayer(), 0, 0, W, H);
         tg.globalCompositeOperation = 'destination-out';
         bandMask(tg);
-        // 墨在湿石上微微洇开，再叠上墨迹本身（略透出石纹）
-        g.filter = 'blur(2.5px)'; g.globalAlpha = 0.22;
-        g.drawImage(tmp, 0, 0, W, H);
-        g.filter = 'none'; g.globalAlpha = 0.9;
+        g.globalAlpha = 0.95;
         g.drawImage(tmp, 0, 0, W, H);
         g.globalAlpha = 1;
       });
@@ -853,6 +773,12 @@
           }
           g.stroke();
         }
+        // 题字所在的几行里瀑痕很淡（字仍要看得清），第二行字下方才是浓的淡墨流
+        g.globalCompositeOperation = 'destination-in';
+        const gw = g.createLinearGradient(0, TR.y, 0, TR.y + TR.h);
+        gw.addColorStop(0, 'rgba(0,0,0,0.34)'); gw.addColorStop((436 - TR.y) / TR.h, 'rgba(0,0,0,0.34)');
+        gw.addColorStop((462 - TR.y) / TR.h, 'rgba(0,0,0,1)'); gw.addColorStop(1, 'rgba(0,0,0,1)');
+        g.fillStyle = gw; g.fillRect(TR.x, TR.y, TR.w, TR.h);
         g.globalCompositeOperation = 'destination-out';
         const gt = g.createLinearGradient(0, TR.y, 0, TR.y + 20);
         gt.addColorStop(0, 'rgba(0,0,0,1)'); gt.addColorStop(1, 'rgba(0,0,0,0)');
@@ -865,11 +791,14 @@
     }
     // 水流的流纹贴图（冷灰着色）
     const gushTex = () => tinted('ff5_e5_gushtex', streakTex(1), '#b2bdcb');
-    // 冲刷后留在石上的淡淡墨渍（模糊的残影）
+    // 水冲过之后的字：墨被冲软、略晕开，并被水往下拖出几道淡影；字形仍清楚（约八成浓度）
     function ghostLayer() {
-      return K.cache('ff5_e5_ghost', BAND.w, BAND.h, 1, (g) => {
+      return K.cache('ff5_e5_ghost' + CUR.fk, BAND.w, BAND.h, 1, (g) => {
+        const sc = g.getTransform().a;
         g.translate(-BAND.x, -BAND.y);
-        g.filter = 'blur(3px)'; g.globalAlpha = 0.22;
+        g.filter = `blur(${(1.3 * sc).toFixed(2)}px)`;
+        for (const [dy, a] of [[11, 0.1], [6, 0.16], [2.5, 0.26]]) { g.globalAlpha = a; g.drawImage(inkLayer(), 0, dy, W, H); }
+        g.globalAlpha = 0.8;
         g.drawImage(inkLayer(), 0, 0, W, H);
         g.filter = 'none'; g.globalAlpha = 1;
         g.globalCompositeOperation = 'destination-in'; bandMask(g); g.globalCompositeOperation = 'source-over';
@@ -898,7 +827,7 @@
 
     // 细流冲刷带：所有交叉段上的石面（无墨），中间实、两边羽化；每帧按冲刷进度取用
     function washLayer() {
-      return K.cache('ff5_e5_wash', W, H, 1, (g) => {
+      return K.cache('ff5_e5_wash' + CUR.fk, W, H, 1, (g) => {
         const wall = wallLayer();
         for (const r of layout().riv) {
           for (const [ya, yb] of r.cross) {
@@ -925,7 +854,7 @@
           for (const [ya, yb] of r.cross) {
             const ta = r.t0 + (ya - r.y0) / r.v;
             if (t <= ta) continue;
-            const yy = Math.min(front, yb + 2), k = 0.45 * smooth((t - ta) / 0.8), x0 = r.x - 9, h = yy - ya + 2;
+            const yy = Math.min(front, yb + 2), k = 0.36 * smooth((t - ta) / 0.8), x0 = r.x - 9, h = yy - ya + 2;
             if (h <= 0) continue;
             g.globalAlpha = k;
             g.drawImage(wash, x0 * ws, (ya - 2) * ws, 18 * ws, h * ws, x0, ya - 2, 18, h);
@@ -938,7 +867,7 @@
           const tb = r.t0 + (yb - r.y0) / r.v;
           if (t <= tb || front - yb < 2) continue;
           const age = t - tb, Lk = 18 + 34 * Math.min(age, 2.5);
-          drags.push([yb, Lk, Math.min(Math.min(front, fy) - yb, Lk * 2.2), 0.62 * (0.55 + 0.45 * Math.exp(-age / 2)) * smooth(age / 0.25)]);
+          drags.push([yb, Lk, Math.min(Math.min(front, fy) - yb, Lk * 2.2), 0.46 * (0.55 + 0.45 * Math.exp(-age / 2)) * smooth(age / 0.25)]);
         }
         const dragA = (y) => {
           let keep = 1;
@@ -962,12 +891,12 @@
         // 湿痕：6–8px 的软边淡带（外 8px、内 4px 两层叠出软边），本身很淡；深色只来自笔画下方拖出的墨
         const go = g.createLinearGradient(0, r.y0, 0, front + 1), gi = g.createLinearGradient(0, r.y0, 0, front + 1);
         for (let k = 0; k <= N; k++) {
-          const y = lerp(r.y0, front, k / N), wet = 0.1 + 0.08 * A.noise1(y * 0.03, r.x | 0), d = dragA(y);
+          const y = lerp(r.y0, front, k / N), wet = 0.07 + 0.05 * A.noise1(y * 0.03, r.x | 0), d = dragA(y);
           go.addColorStop(k / N, `rgba(13,14,17,${0.5 * wet + 0.42 * d})`);
           gi.addColorStop(k / N, `rgba(13,14,17,${0.55 * wet + 0.6 * d})`);
         }
-        g.strokeStyle = go; g.lineWidth = 8; path(); g.stroke();
-        g.strokeStyle = gi; g.lineWidth = 4; path(); g.stroke();
+        g.strokeStyle = go; g.lineWidth = 6.5; path(); g.stroke();
+        g.strokeStyle = gi; g.lineWidth = 3.2; path(); g.stroke();
         if (front < fy) {
           g.fillStyle = 'rgba(10,12,15,0.22)'; g.beginPath(); g.ellipse(r.xs(front), front - 1, wt * 0.62, wt * 0.95, 0, 0, TAU); g.fill();
           g.fillStyle = 'rgba(200,210,224,0.26)'; g.fillRect(r.xs(front) - 0.6, front - 2.2, 1.1, 1.1);
@@ -1060,7 +989,9 @@
           const fb = Math.min(f, FOOT + 2);
           const half = (y) => (8 + 12 * clamp((y - gs.yTop) / 220, 0, 1)) * sg;
           const sx = (y) => trC(y) + 1;
-          waterBand(g, gs, t, gs.yTop, fb, sx, half, 8, 4, refl ? 0.5 : 1, 0.08, 0.2, 0.24, refl);
+          // 涌过之后水势收细成一层薄水，字透过水仍清楚
+          const thin = 0.55 + 0.45 * Math.exp(-Math.max(0, t - gs.tHit) / 1.2);
+          waterBand(g, gs, t, gs.yTop, fb, sx, half, 8, 4, (refl ? 0.5 : 1) * thin, 0.08, 0.2, 0.24, refl);
           // 顺流而下的几点碎光
           const span = 300;
           for (let k = 0; k < 10; k++) {
@@ -1120,7 +1051,113 @@
       }
     }
 
+    // 缝里远处的一点暖灯：只在缝内有光晕，轻微摇曳
+    function drawLamp(g, t) {
+      g.save();
+      g.beginPath();
+      for (let y = 304; y <= 492; y += 4) g.lineTo(butX(y) - 1, y);
+      for (let y = 492; y >= 304; y -= 4) g.lineTo(butX(y) + cleftW(y), y);
+      g.closePath(); g.clip();
+      const fl = 1 + 0.05 * Math.sin(TAU * 1.7 * t) + 0.03 * Math.sin(TAU * 4.1 * t + 1);
+      A.glow(g, LAMP.x, LAMP.y, 22, '#d99a52', 0.3 * fl);
+      A.glow(g, LAMP.x, LAMP.y, 7, '#ffc77e', 0.75 * fl);
+      g.fillStyle = 'rgba(255,226,170,0.95)'; g.beginPath(); g.arc(LAMP.x, LAMP.y, 1.5, 0, TAU); g.fill();
+      g.restore();
+    }
+    // 右上壁面的湿亮：一层水膜映着远处微光，亮斑沿壁缓缓滑下（只在题字右侧的空壁上）
+    function sheenTex() {
+      return K.cache('ff5_e5_sheen', 90, 200, 1, (g) => {
+        g.translate(45, 100); g.scale(1, 2.2);
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, 44);
+        gr.addColorStop(0, 'rgba(176,192,214,0.9)'); gr.addColorStop(0.45, 'rgba(176,192,214,0.32)'); gr.addColorStop(1, 'rgba(176,192,214,0)');
+        g.fillStyle = gr; g.fillRect(-45, -45, 90, 90);
+      });
+    }
+    function drawSheen(g, t) {
+      g.save();
+      g.beginPath(); g.moveTo(958, lipY(958));
+      for (let x = 958; x <= XC; x += 8) g.lineTo(x, lipY(x) + 4);
+      g.lineTo(XC, 480); g.lineTo(958, 480); g.closePath(); g.clip();
+      g.globalCompositeOperation = 'screen';
+      const tex = sheenTex();
+      for (let k = 0; k < 2; k++) {
+        const P = 5.6, ph = ((((t + k * P / 2) % P) + P) % P) / P;
+        const y = 196 + ph * 270, x = 1066 - 50 * ph + 26 * k;
+        g.globalAlpha = 0.34 * Math.sin(Math.PI * ph);
+        g.drawImage(tex, x - 60, y - 120, 120, 240);
+      }
+      g.restore();
+    }
+    // 左下角近处的竹叶（失焦、湿暗、迎光一沿冷亮），随风向右轻摆，叶尖挂水珠、按时滴落
+    const FGA = { x: -6, y: 724 };
+    const FGL = [[-1.05, 196, 27], [-0.78, 178, 26], [-0.52, 164, 24], [-1.3, 156, 22], [-0.28, 142, 20], [-1.52, 126, 18]];
+    const fgTip = (k) => { const [a, L] = FGL[k], sx = 60 + 22 * k, sy = -70 - 26 * k; const d = a + 0.55; return [sx * 0.6 + Math.cos(d) * L, sy * 0.6 + Math.sin(d) * L + 0.12 * L]; };
+    function fgLeafTex() {
+      return K.cache('ff5_e5_fgleaf', 340, 260, 1, (g) => {
+        const sc = g.getTransform().a;
+        const tmp = document.createElement('canvas'); tmp.width = Math.round(340 * sc); tmp.height = Math.round(260 * sc);
+        const t2 = tmp.getContext('2d'); t2.scale(sc, sc); t2.translate(30, 250);
+        t2.strokeStyle = '#0b0f0d'; t2.lineWidth = 4; t2.lineCap = 'round';
+        t2.beginPath(); t2.moveTo(0, 10); t2.quadraticCurveTo(70, -60, 150, -180); t2.stroke();
+        FGL.forEach(([a, L, wd], k) => {
+          const sx = 60 + 22 * k, sy = -70 - 26 * k, bx0 = sx * 0.6, by0 = sy * 0.6, d = a + 0.55;
+          const ex = bx0 + Math.cos(d) * L, ey = by0 + Math.sin(d) * L + 0.12 * L;
+          const nx = -Math.sin(d), ny = Math.cos(d), mx = (bx0 + ex) / 2 + nx * 6, my = (by0 + ey) / 2 + ny * 6 + 0.05 * L;
+          const leaf = () => { t2.beginPath(); t2.moveTo(bx0, by0); t2.quadraticCurveTo(mx + nx * wd, my + ny * wd, ex, ey); t2.quadraticCurveTo(mx - nx * wd * 0.7, my - ny * wd * 0.7, bx0, by0); t2.closePath(); };
+          leaf(); t2.fillStyle = k % 2 ? '#0c110f' : '#0e1412'; t2.fill();
+          t2.strokeStyle = 'rgba(158,176,198,0.42)'; t2.lineWidth = 1.5;
+          t2.beginPath(); t2.moveTo(bx0, by0); t2.quadraticCurveTo(mx - nx * wd * 0.7, my - ny * wd * 0.7, ex, ey); t2.stroke();
+        });
+        g.filter = `blur(${(1.6 * sc).toFixed(2)}px)`;
+        g.drawImage(tmp, 0, 0, 340, 260);
+        g.filter = 'none';
+      });
+    }
+    function drawFgLeaves(g, t) {
+      const rot = 0.012 * Math.sin(TAU * 0.33 * t) + 0.006 * Math.sin(TAU * 0.71 * t + 1);
+      g.save(); g.translate(FGA.x, FGA.y); g.rotate(rot);
+      g.drawImage(fgLeafTex(), -30, -250, 340, 260);
+      const c = Math.cos(rot), s2 = Math.sin(rot);
+      g.restore();
+      for (const k of [0, 2]) {
+        const [lx, ly] = fgTip(k), x = FGA.x + c * lx - s2 * ly, y = FGA.y + s2 * lx + c * ly;
+        const P = 2.4 + 0.5 * k, ph = ((((t + 0.9 * k) % P) + P) % P), grow = P - 0.45;
+        if (ph < grow) {
+          const r = 1.2 + 1.6 * smooth(ph / grow);
+          g.fillStyle = 'rgba(190,202,218,0.5)'; g.beginPath(); g.ellipse(x, y + r, r, r * 1.2, 0, 0, TAU); g.fill();
+        } else {
+          const u = ph - grow, yy = y + 3 + 0.5 * 900 * u * u;
+          if (yy < H + 10) { g.strokeStyle = 'rgba(196,208,222,0.45)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x, yy - Math.min(14, 900 * u * 0.03)); g.lineTo(x, yy); g.stroke(); }
+        }
+      }
+    }
+    // 拍点水滴的水冠：一圈细水珠向上抛起再落回（第一句第5字后才有）
+    function drawCrowns(g, c, t0, tQ) {
+      const b = c.b;
+      for (let i = b.i - 1; i <= b.i; i++) {
+        const tb = c.grid.time(i), age = c.t - tb;
+        if (age < 0 || age > 0.42 || tb - t0 < tQ - 0.05) continue;
+        for (let m = 0; m < 2; m++) {
+          const a = h2(i, 7 + m) * TAU, d = 0.25 + 0.6 * h2(i, 9 + m);
+          const x = POOL.cx + Math.cos(a) * POOL.rx * d, y = POOL.cy + Math.sin(a) * POOL.ry * d;
+          const fade = 1 - age / 0.42;
+          g.fillStyle = `rgba(206,216,230,${0.55 * fade})`;
+          for (let q = 0; q < 10; q++) {
+            const an = (q / 10) * TAU + h2(i, 13 + m) * 2, vh = 34 + 16 * h2(i * 10 + q, 17 + m), v0 = 70 + 30 * h2(i * 10 + q, 19 + m);
+            const px = x + Math.cos(an) * vh * age, py = y + Math.sin(an) * vh * 0.3 * age - (v0 * age - 450 * age * age);
+            if (py > y + Math.sin(an) * vh * 0.3 * age + 0.5) continue;
+            g.fillRect(px - 0.7, py - 0.7, 1.4, 1.4);
+          }
+          if (age < 0.28) {
+            const hj = 90 * age - 320 * age * age;
+            if (hj > 0) { g.strokeStyle = `rgba(206,216,230,${0.5 * fade})`; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - hj); g.stroke(); }
+          }
+        }
+      }
+    }
+
     function draw(g, c) {
+      CUR.fk = fontKey();
       const t = c.lt, Lr = layout(), gs = gush(c), t0 = c.t - c.lt;
       const base = baseLayer(), front = frontLayer(), big = bigLayer();
       // 雨势：第一句第5字加大
@@ -1145,6 +1182,8 @@
         S.g.drawImage(S2.c, 0, 0, BAND.w, BAND.h);
       } else S.g.drawImage(big, 0, 0, BAND.w, BAND.h);
       g.drawImage(S.c, BAND.x, BAND.y, BAND.w, BAND.h);
+      drawLamp(g, t);
+      drawSheen(g, t);
       drawWallDynamics(g, t, Lr, gs, false);
       // 檐口积水渐满：出水前口沿上一颗渐大的水珠，出水后 0.3 s 内隐去
       if (t > gs.ts - 0.9) {
@@ -1217,18 +1256,20 @@
         }
       }
       g.restore();
+      drawCrowns(g, c, t0, tQ);
       drawSplashes(g, t, (ts) => 0.3 + 0.45 * sstep(tQ - 0.2, tQ + 0.6, ts));
       g.drawImage(front, 0, FRONT_Y, W, H - FRONT_Y);
       drawSpray(g, t, BIGX + 3, FOOT + 8, gs.tFoot, 16, 61);
       drawVines(g, t);
       drawRain(g, t, amtAt);
+      drawFgLeaves(g, t);
       g.restore();
       // 潮湿空气：下部略亮的雨雾
       const hz = g.createLinearGradient(0, 300, 0, H);
       hz.addColorStop(0, 'rgba(126,138,154,0)'); hz.addColorStop(1, 'rgba(126,138,154,0.08)');
       g.fillStyle = hz; g.fillRect(0, 300, W, H - 300);
     }
-    return { draw, warm: [inkLayer, wallLayer, washLayer, baseLayer, bigLayer, ghostLayer, frontLayer, trailTex, () => inkCloudTex(0), () => inkCloudTex(1), () => inkCloudTex(2), () => streakTex(0), () => streakTex(1), gushTex, bandProfile, bandMaskTex] };
+    return { draw, warm: [inkLayer, wallLayer, washLayer, baseLayer, bigLayer, ghostLayer, frontLayer, trailTex, sheenTex, fgLeafTex, () => inkCloudTex(0), () => inkCloudTex(1), () => inkCloudTex(2), () => streakTex(0), () => streakTex(1), gushTex, bandProfile, bandMaskTex] };
   })();
 
   XYT.registerShot('e5_inkrain', {
@@ -1240,11 +1281,19 @@
   // =====================================================================
   // e6_peony 残红：暮春雨后的庭院，低垂的红牡丹，天光转灰，花瓣一齐松脱
   // 比例：花径约 15 cm ≈ 140 px，即约 10 px/cm；重力 ≈ 9800 px/s²
+  // 镜头低（约 0.3 m），地平线 y≈266；花台斜放约 10°，往右远去，水平棱线汇向地平线上 x≈8900 的灭点
   // =====================================================================
   const E6 = (function () {
-    const CAP = 336, BASE = 545, PX = 420, GP = 9800;
-    // 积水在花台脚下（镜头低，约 0.3 m 高，地平线 y≈266，花台立面距镜头约 1.45 m）
+    const CAP = 336, BASE = 545, PX = 420, GP = 9800, HZ = 266, XV = 8900;
+    // 左端参考高度 y0 的水平线在 x 处的透视位置；花台顶线、底线、立面上的横缝都用它
+    const persp = (y0, x) => y0 + ((HZ - y0) * (x - PX)) / (XV - PX);
+    const capY = (x) => persp(CAP, x), baseY = (x) => persp(BASE, x);
+    const faceY = (x, yr) => capY(x) + ((yr - CAP) / (BASE - CAP)) * (baseY(x) - capY(x));
+    // 地面上的反求：屏幕 (x, y) 落在哪条左端参考行上
+    const unpersp = (x, y) => { const f = (x - PX) / (XV - PX); return (y - HZ * f) / (1 - f); };
+    // 积水在花台脚下（花台立面距镜头约 1.45 m）；倒影以积水处的花台底线为轴
     const PUD = { cx: 786, cy: 575, rx: 192, ry: 21 };
+    const AX = baseY(PUD.cx);
     const pudR = (a) => 1 + 0.06 * Math.sin(a * 3 + 1.1) + 0.05 * Math.sin(a * 5 + 0.3) + 0.03 * Math.sin(a * 8 + 2);
     function pudPath(g) {
       g.beginPath();
@@ -1297,6 +1346,9 @@
         for (let i = 0; i < 40; i++) A.glow(t, 1040 + r() * 260, 100 + r() * 300, 26 + r() * 30, r() < 0.5 ? '#5f7667' : '#7a8f7e', 0.45);
         // 远处湿石地面
         t.fillStyle = A.vgrad(t, 478, 640, [[0, '#a9afac'], [0.5, '#868c89'], [1, '#4c5250']]); t.fillRect(-30, 478, W + 60, 280);
+        // 湿地面映着灰白天光与粉墙：近墙处柔亮，几道竖向的模糊反光
+        t.fillStyle = A.vgrad(t, 478, 600, [[0, 'rgba(226,230,228,0.5)'], [1, 'rgba(226,230,228,0)']]); t.fillRect(-30, 478, W + 60, 122);
+        for (let i = 0; i < 16; i++) { const x = r() * 520; t.fillStyle = `rgba(234,238,236,${0.07 + r() * 0.09})`; t.fillRect(x, 482, 10 + r() * 30, 50 + r() * 80); }
         t.fillStyle = 'rgba(60,66,64,0.4)'; t.fillRect(0, 476, W, 4);
         g.filter = 'blur(7px)';
         g.drawImage(tmp, -20, -20, W + 40, H + 40);
@@ -1377,91 +1429,213 @@
       });
     }
 
-    // ---------- 花台与石面（清晰） ----------
+    // ---------- 花台间的薄雾：在粉墙与花台之间，缓缓向左飘（歌词区内不画） ----------
+    function mistTex() {
+      return K.cache('ff5_e6_mist', W, 220, 1, (g) => {
+        const r = A.rng(6707);
+        for (let i = 0; i < 40; i++) {
+          const x = r() * W, y = 80 + r() * 70, rx = 90 + r() * 150, a = 0.16 + r() * 0.18;
+          for (const ox of [-W, 0, W]) { g.save(); g.translate(x + ox, y); g.scale(1, 0.3); A.glow(g, 0, 0, rx, '#f3f5f4', a); g.restore(); }
+        }
+      });
+    }
+    function drawMist(g, t) {
+      const S = scratchCanvas('e6mist', W, 220), tex = mistTex();
+      const off = (((t * 9) % W) + W) % W;
+      S.g.drawImage(tex, -off, 0, W, 220); S.g.drawImage(tex, W - off, 0, W, 220);
+      S.g.globalCompositeOperation = 'destination-in';
+      const gr = S.g.createLinearGradient(330, 0, 480, 0);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
+      S.g.fillStyle = gr; S.g.fillRect(0, 0, W, 220);
+      S.g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 0.85; g.drawImage(S.c, 0, 240, W, 220); g.globalAlpha = 1;
+    }
+
+    // ---------- 花台与石面（清晰）：花台斜放，水平棱线都汇向地平线上同一灭点 ----------
     function stoneLayer() {
-      return K.cache('ff5_e6_stone', W, H, 1, (g) => {
-        const nz = makeNoise(616), nz2 = makeNoise(626);
-        // 近处湿石面：大块石板（各块深浅略异），左侧远端与背景地面柔和衔接
-        const slab = (X, Y) => {
-          const row = Y < 600 ? 0 : Y < 672 ? 1 : 2, off = [0, 150, 70][row], wdt = [260, 300, 340][row];
-          return row * 31 + Math.floor((X + off) / wdt);
+      return K.cache('ff5_e6_stone2', W, H, 1, (g) => {
+        const nz = makeNoise(616), nz2 = makeNoise(626), dsc = g.getTransform().a;
+        // 近处湿石面：大块石板（各块深浅略异，接缝与花台平行），左侧远端与背景地面柔和衔接；湿面映着灰白天光
+        // 石板分块与画出来的接缝一致（竖缝略向两侧张开）
+        const slab = (X, Yr) => {
+          const row = Yr < 600 ? 0 : Yr < 672 ? 1 : 2, off = [30, 230, 70][row], wdt = [260, 300, 340][row];
+          const v = clamp((Yr - [545, 600, 672][row]) / [55, 72, 48][row], 0, 1), x0 = (X + 640 * 0.04 * v) / (1 + 0.04 * v);
+          return row * 31 + Math.floor((x0 + off) / wdt);
         };
         pixels(g, 0, 500, W, 220, (X, Y, o) => {
-          const d = clamp((Y - 545) / 175, 0, 1);
-          let l = 0.19 + 0.05 * (h2(slab(X, Y), 5) - 0.5) + 0.05 * (nz(X * 0.02, Y * 0.05) - 0.5) + 0.035 * (nz2(X * 0.12, Y * 0.3) - 0.5);
-          l += 0.09 * sstep(0.55, 0.8, nz(X * 0.006 + 9, Y * 0.02)) * (0.4 + 0.6 * d);
+          const Yr = unpersp(X, Y), d = clamp((Yr - 545) / 175, 0, 1);
+          let l = 0.19 + 0.05 * (h2(slab(X, Yr), 5) - 0.5) + 0.05 * (nz(X * 0.02, Yr * 0.05) - 0.5) + 0.035 * (nz2(X * 0.12, Yr * 0.3) - 0.5);
+          l += 0.09 * sstep(0.55, 0.8, nz(X * 0.006 + 9, Yr * 0.02)) * (0.4 + 0.6 * d);
           l -= 0.05 * d;
+          l += (0.08 * (1 - d) + 0.03) * sstep(0.35, 0.75, nz2(X * 0.008 + 3, Yr * 0.03 + 5));
           const v = 30 + 150 * l;
           o[0] = v * 0.96; o[1] = v; o[2] = v * 0.98;
-          const fadeL = sstep(520, 640, Y), fadeR = Y < BASE ? 0 : 1;
+          const fadeL = sstep(520, 640, Y), fadeR = clamp((Y - baseY(X) + 2) * dsc + 0.5, 0, 1);
           o[3] = Math.round(255 * (X >= PX ? fadeR : fadeL));
         });
-        // 石板缝：柔和的暗线，左侧远端渐隐
-        const seam = (x0, y0, x1, y1, w) => {
-          const gr = g.createLinearGradient(0, Math.min(y0, y1) - 20, 0, Math.max(y0, y1));
-          gr.addColorStop(0, 'rgba(14,16,16,0)'); gr.addColorStop(1, 'rgba(14,16,16,0.4)');
-          g.strokeStyle = gr; g.lineWidth = w; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-        };
-        seam(0, 600, W, 601, 1.4); seam(0, 672, W, 674, 1.8);
-        for (const [x, y0, y1] of [[110, 600, 672], [370, 600, 672], [670, 600, 672], [970, 600, 672], [1270, 600, 672], [230, 545, 600], [490, 545, 600], [750, 545, 600], [1010, 545, 600], [270, 672, 720], [610, 672, 720], [950, 672, 720]]) seam(x, y0, x + (x - 640) * 0.04, y1, 1.3);
-        // 花台石块：花岗岩纹理
-        pixels(g, PX, CAP, W - PX, BASE - CAP, (X, Y, o) => {
-          let l = 0.42 + 0.08 * (nz(X * 0.03, Y * 0.03) - 0.5) + 0.07 * (nz2(X * 0.25, Y * 0.25) - 0.5);
-          if (nz2(X * 0.6, Y * 0.6) > 0.82) l += 0.06;
-          if (Y < CAP + 12) l = 0.66 + 0.05 * (nz(X * 0.05, Y * 0.2) - 0.5);          // 压顶石顶面受天光
-          else if (Y < CAP + 32) l = 0.5 + 0.05 * (nz(X * 0.04, Y * 0.1) - 0.5);     // 压顶石立面
-          else l -= 0.2 * sstep(CAP + 50, CAP + 32, Y);                              // 檐下阴影
-          l -= 0.16 * sstep(BASE - 90, BASE, Y);                                     // 下部返潮
+        // 石板缝：横缝沿透视，竖缝略向两侧张开
+        g.strokeStyle = 'rgba(14,16,16,0.36)';
+        for (const [yr, w] of [[600, 1.4], [672, 1.8]]) { g.lineWidth = w; g.beginPath(); g.moveTo(0, persp(yr, 0)); g.lineTo(W, persp(yr, W)); g.stroke(); }
+        g.lineWidth = 1.3; g.beginPath();
+        for (const [x, y0, y1] of [[70, 600, 672], [370, 600, 672], [670, 600, 672], [970, 600, 672], [1270, 600, 672], [230, 545, 600], [490, 545, 600], [750, 545, 600], [1010, 545, 600], [270, 672, 720], [610, 672, 720], [950, 672, 720]]) {
+          const x1 = x + (x - 640) * 0.04;
+          g.moveTo(x, Math.max(persp(y0, x), x >= PX ? baseY(x) : 0)); g.lineTo(x1, persp(y1, x1));
+        }
+        g.stroke();
+        // 花台石块：花岗岩纹理（按左端的参考行着色，透视里自然压缩）
+        const PY0 = Math.floor(capY(W)) - 1;
+        pixels(g, PX, PY0, W - PX, BASE - PY0, (X, Y, o) => {
+          const c0 = capY(X), b0 = baseY(X);
+          const cov = clamp((Y - c0) * dsc + 0.5, 0, 1) * clamp((b0 - Y) * dsc + 0.5, 0, 1);
+          if (cov <= 0) { o[3] = 0; return; }
+          const Yr = CAP + ((Y - c0) / (b0 - c0)) * (BASE - CAP);
+          let l = 0.42 + 0.08 * (nz(X * 0.03, Yr * 0.03) - 0.5) + 0.07 * (nz2(X * 0.25, Yr * 0.25) - 0.5);
+          if (nz2(X * 0.6, Yr * 0.6) > 0.82) l += 0.06;
+          if (Yr < CAP + 12) l = 0.66 + 0.05 * (nz(X * 0.05, Yr * 0.2) - 0.5) - 0.06 * sstep(PX, W, X);   // 压顶石顶面受天光（远端略暗）
+          else if (Yr < CAP + 32) l = 0.5 + 0.05 * (nz(X * 0.04, Yr * 0.1) - 0.5);                      // 压顶石立面
+          else l -= 0.2 * sstep(CAP + 50, CAP + 32, Yr);                                                  // 檐下阴影
+          l -= 0.16 * sstep(BASE - 90, BASE, Yr);                                                          // 下部返潮
+          l -= 0.05 * sstep(PX + 100, W, X);                                                               // 往远处略暗
           const v = 26 + 170 * clamp(l, 0, 1);
-          o[0] = v * 0.97; o[1] = v; o[2] = v * 0.98;
+          o[0] = v * 0.97; o[1] = v; o[2] = v * 0.98; o[3] = Math.round(255 * cov);
         });
         g.strokeStyle = 'rgba(20,24,22,0.6)'; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(PX, CAP + 12); g.lineTo(W, CAP + 12); g.moveTo(PX, CAP + 32); g.lineTo(W, CAP + 32); g.moveTo(PX, 456); g.lineTo(W, 456); g.stroke();
-        for (const x of [600, 830, 1060]) { g.beginPath(); g.moveTo(x, CAP + 32); g.lineTo(x, 456); g.stroke(); }
-        for (const x of [500, 720, 955, 1190]) { g.beginPath(); g.moveTo(x, 456); g.lineTo(x, BASE); g.stroke(); }
-        for (const x of [700, 1000]) { g.beginPath(); g.moveTo(x, CAP); g.lineTo(x, CAP + 32); g.stroke(); }
+        g.beginPath();
+        for (const yr of [CAP + 12, CAP + 32, 456]) { g.moveTo(PX, faceY(PX, yr)); g.lineTo(W, faceY(W, yr)); }
+        for (const x of [600, 830, 1060]) { g.moveTo(x, faceY(x, CAP + 32)); g.lineTo(x, faceY(x, 456)); }
+        for (const x of [500, 720, 955, 1190]) { g.moveTo(x, faceY(x, 456)); g.lineTo(x, baseY(x)); }
+        for (const x of [700, 1000]) { g.moveTo(x, capY(x)); g.lineTo(x, faceY(x, CAP + 32)); }
+        g.stroke();
+        const facePath = () => { g.beginPath(); g.moveTo(PX, faceY(PX, CAP + 32)); g.lineTo(W, faceY(W, CAP + 32)); g.lineTo(W, baseY(W)); g.lineTo(PX, BASE); g.closePath(); };
         // 雨后的水渍与斑驳：自压顶石下沿垂下的深色水痕、几片返潮的暗斑
         {
           const r2 = A.rng(6363);
-          g.save(); g.beginPath(); g.rect(PX, CAP + 32, W - PX, BASE - CAP - 32); g.clip();
-          g.filter = 'blur(2px)';
+          g.save(); facePath(); g.clip();
+          g.filter = `blur(${(2 * dsc).toFixed(2)}px)`;
           for (let i = 0; i < 46; i++) {
-            const x = PX + r2() * (W - PX), l = 20 + r2() * 110, w = 4 + r2() * 16;
-            const gr = g.createLinearGradient(0, CAP + 32, 0, CAP + 32 + l);
+            const x = PX + r2() * (W - PX), l = 20 + r2() * 110, w = 4 + r2() * 16, y0 = faceY(x, CAP + 32);
+            const gr = g.createLinearGradient(0, y0, 0, y0 + l);
             gr.addColorStop(0, `rgba(30,36,34,${0.18 + r2() * 0.2})`); gr.addColorStop(1, 'rgba(30,36,34,0)');
-            g.fillStyle = gr; g.fillRect(x, CAP + 32, w, l);
+            g.fillStyle = gr; g.fillRect(x, y0, w, l);
           }
-          for (let i = 0; i < 18; i++) A.glow(g, PX + r2() * (W - PX), 400 + r2() * 140, 30 + r2() * 50, '#2c3431', 0.25);
+          for (let i = 0; i < 18; i++) { const x = PX + r2() * (W - PX); A.glow(g, x, faceY(x, 400 + r2() * 140), 30 + r2() * 50, '#2c3431', 0.25); }
           g.filter = 'none';
           g.restore();
         }
         // 左端在镜头左侧，侧面朝外看不到，只在棱上留一线天光
         g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(PX - 1, CAP, 2, BASE - CAP);
-        // 青苔与缝里的小草
+        // 青苔：压顶石顶面与棱上一溜、石缝与墙脚几团；缝里的小草
         const r = A.rng(6262);
-        for (let i = 0; i < 40; i++) { const x = PX + r() * (W - PX), y = r() < 0.5 ? 456 + (r() - 0.5) * 8 : BASE - r() * 30; A.glow(g, x, y, 8 + r() * 18, '#56704f', 0.35); }
+        for (let i = 0; i < 40; i++) { const x = PX + r() * (W - PX), y = r() < 0.5 ? faceY(x, 456) + (r() - 0.5) * 8 : faceY(x, BASE - r() * 30); A.glow(g, x, y, 8 + r() * 18, '#56704f', 0.35); }
+        const rm = A.rng(6464);
+        for (let i = 0; i < 70; i++) {
+          const x = PX + 10 + rm() * (W - PX - 10);
+          if (x > 700 && x < 900) continue;
+          const y = capY(x) + 1 + rm() * 10;
+          A.glow(g, x, y, 4 + rm() * 9, rm() < 0.5 ? '#4f6a46' : '#62794f', 0.4);
+        }
+        g.fillStyle = 'rgba(70,96,62,0.55)';
+        for (let i = 0; i < 26; i++) {
+          const x0 = PX + 10 + rm() * (W - PX - 20), w = 10 + rm() * 34;
+          if (x0 > 690 && x0 < 900) continue;
+          g.beginPath(); g.moveTo(x0, faceY(x0, CAP + 12));
+          for (let k = 0; k <= 6; k++) { const x = x0 + (w * k) / 6; g.lineTo(x, faceY(x, CAP + 12) + 1.5 + 3 * Math.sin(k * 1.7 + i) * (k > 0 && k < 6 ? 1 : 0)); }
+          g.lineTo(x0 + w, faceY(x0 + w, CAP + 12)); g.closePath(); g.fill();
+        }
         g.strokeStyle = '#4f6b45'; g.lineWidth = 1.2;
         for (let i = 0; i < 70; i++) {
-          const x = PX + r() * (W - PX), h = 6 + r() * 14, lean = -2 - r() * 4;
-          g.beginPath(); g.moveTo(x, BASE + 1); g.quadraticCurveTo(x + lean * 0.4, BASE - h * 0.6, x + lean, BASE - h); g.stroke();
+          const x = PX + r() * (W - PX), h = 6 + r() * 14, lean = -2 - r() * 4, yb = baseY(x) + 1;
+          g.beginPath(); g.moveTo(x, yb); g.quadraticCurveTo(x + lean * 0.4, yb - h * 0.6, x + lean, yb - h); g.stroke();
         }
-        // 接地暗线
-        g.fillStyle = A.vgrad(g, BASE - 4, BASE + 10, [[0, 'rgba(10,12,12,0.6)'], [1, 'rgba(10,12,12,0)']]); g.fillRect(PX, BASE - 4, W - PX, 14);
+        // 接地暗线（沿花台底线）
+        for (let x = PX; x < W; x += 16) {
+          const yb = baseY(x + 8);
+          g.fillStyle = A.vgrad(g, yb - 4, yb + 10, [[0, 'rgba(10,12,12,0.6)'], [1, 'rgba(10,12,12,0)']]); g.fillRect(x, yb - 4, 16.5, 14);
+        }
       });
     }
-
-    // 湿石面上花台的模糊倒影（很淡，越远越淡）
-    function wetLayer() {
-      return K.cache('ff5_e6_wet', W, 120, 1, (g) => {
-        const st = stoneLayer(), sc = st.width / W;
-        g.save(); g.translate(0, 120); g.scale(1, -1);
-        g.filter = 'blur(3px)'; g.globalAlpha = 0.16;
-        g.drawImage(st, PX * sc, (BASE - 120) * sc, (W - PX) * sc, 120 * sc, PX, 0, W - PX, 120);
-        g.restore();
-        g.globalCompositeOperation = 'destination-in';
-        g.fillStyle = A.vgrad(g, 0, 120, [[0, 'rgba(0,0,0,1)'], [1, 'rgba(0,0,0,0)']]); g.fillRect(0, 0, W, 120);
-        g.globalCompositeOperation = 'source-over';
+    // 探出压顶石前沿垂下的几片牡丹叶（画在花台之上，远离花头）
+    function spillLayer() {
+      return K.cache('ff5_e6_spill', W, H, 1, (g) => {
+        const r = A.rng(6868);
+        for (const [x, n] of [[1012, 3], [1138, 2], [1236, 3], [604, 2]]) {
+          const y = capY(x) + 2;
+          for (let k = 0; k < n; k++) {
+            const dir = Math.PI / 2 + (r() - 0.5) * 1.1 + (k - (n - 1) / 2) * 0.5, len = 34 + r() * 22;
+            leaflet(g, x + (r() - 0.5) * 14, y, dir, len, mix('#3e5c52', '#7f948b', 0.25 + r() * 0.2), '#283c35', r() < 0.5 ? 3 : 1, 0.5, Math.floor(r() * 1e5), 0.12);
+          }
+        }
       });
+    }
+    // 湿石面上花台的模糊倒影：逐列以花台底线为轴翻转，很淡，离底线越远越淡
+    function wetLayer() {
+      return K.cache('ff5_e6_wet2', W, H, 1, (g) => {
+        const st = stoneLayer(), sc = g.getTransform().a, ss = st.width / W;
+        const mk = () => { const c = document.createElement('canvas'); c.width = Math.round(W * sc); c.height = Math.round(H * sc); const t = c.getContext('2d'); t.scale(sc, sc); return [c, t]; };
+        const [tmp, t2] = mk(), [msk, tm] = mk();
+        for (let x = PX; x < W; x += 8) {
+          const a = baseY(x + 4);
+          t2.save(); t2.translate(0, 2 * a); t2.scale(1, -1);
+          t2.drawImage(st, x * ss, (a - 130) * ss, 8 * ss, 130 * ss, x, a - 130, 8.4, 130);
+          t2.restore();
+          const gr = tm.createLinearGradient(0, a, 0, a + 120);
+          gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          tm.fillStyle = gr; tm.fillRect(x, a, 8.4, 122);
+        }
+        t2.setTransform(1, 0, 0, 1, 0, 0);
+        t2.globalCompositeOperation = 'destination-in'; t2.drawImage(msk, 0, 0);
+        g.filter = `blur(${(3 * sc).toFixed(2)}px)`; g.globalAlpha = 0.24;
+        g.drawImage(tmp, 0, 0, W, H);
+        g.filter = 'none'; g.globalAlpha = 1;
+      });
+    }
+    // ---------- 近景：头顶回廊的檐口（失焦）、右下角失焦的牡丹叶 ----------
+    function eaveLayer() {
+      return K.cache('ff5_e6_eave', W, 80, 1, (g) => {
+        const sc = g.getTransform().a;
+        const tmp = document.createElement('canvas'); tmp.width = Math.round(W * sc); tmp.height = Math.round(80 * sc);
+        const t2 = tmp.getContext('2d'); t2.scale(sc, sc);
+        t2.fillStyle = '#2a2f30'; t2.fillRect(-30, -30, W + 60, 50);
+        for (let x = -30; x < W + 60; x += 50) { t2.beginPath(); t2.arc(x, 20, 26, 0, Math.PI); t2.fill(); }
+        t2.fillStyle = 'rgba(200,206,204,0.12)';
+        for (let x = -30; x < W + 60; x += 50) { t2.beginPath(); t2.ellipse(x, 40, 14, 2.5, 0, 0, Math.PI); t2.fill(); }
+        g.filter = `blur(${(8 * sc).toFixed(2)}px)`; g.drawImage(tmp, 0, 0, W, 80); g.filter = 'none';
+      });
+    }
+    const FGO = { x: 1300, y: 760 };
+    function fgLeafTex() {
+      return K.cache('ff5_e6_fgleaf', 340, 260, 1, (g) => {
+        const sc = g.getTransform().a;
+        const tmp = document.createElement('canvas'); tmp.width = Math.round(340 * sc); tmp.height = Math.round(260 * sc);
+        const t2 = tmp.getContext('2d'); t2.scale(sc, sc); t2.translate(320, 250);
+        const r = A.rng(6969);
+        for (const [dx, dy, dir, len] of [[0, 0, -2.6, 250], [-10, -6, -2.2, 225], [-4, 6, -2.95, 205], [-30, -10, -1.9, 170]]) {
+          leaflet(t2, dx, dy, dir, len, mix('#0f1612', '#1a2520', r()), '#080c0a', 3, 0, Math.floor(r() * 1e5), 0.06);
+        }
+        g.filter = `blur(${(5 * sc).toFixed(2)}px)`; g.drawImage(tmp, 0, 0, 340, 260); g.filter = 'none';
+      });
+    }
+    function drawForeground(g, t) {
+      const rot = 0.008 * Math.sin(TAU * 0.3 * t) + 0.004 * Math.sin(TAU * 0.67 * t + 1.3);
+      g.save(); g.translate(FGO.x, FGO.y); g.rotate(rot); g.drawImage(fgLeafTex(), -320, -250, 340, 260); g.restore();
+      g.drawImage(eaveLayer(), 0, 0, W, 80);
+    }
+    // 檐口滴水（近、失焦）：水珠渐满后落下；时刻避开花瓣松脱那一段
+    function drawEaveDrips(g, t) {
+      for (const [x, P, ph] of [[566, 3.4, 0.35], [1206, 4.3, 2.65]]) {
+        const u0 = (((t + ph) % P) + P) % P, grow = P - 0.45;
+        if (u0 < grow) {
+          const k = smooth(u0 / grow);
+          A.glow(g, x, 33 + 3 * k, 4 + 4 * k, '#e9eeee', 0.32 * k);
+        } else {
+          const u = u0 - grow, y = 38 + 0.5 * 6000 * u * u, v = 6000 * u;
+          if (y < H + 20) {
+            g.strokeStyle = 'rgba(236,240,240,0.16)'; g.lineWidth = 7; g.lineCap = 'round';
+            g.beginPath(); g.moveTo(x, y - Math.min(60, v * 0.022)); g.lineTo(x, y); g.stroke();
+            A.glow(g, x, y, 8, '#f2f5f5', 0.3);
+          }
+        }
+      }
     }
     // ---------- 花瓣贴图：没骨晕染，基部深、外缘浅而薄，边上积一道水线 ----------
     function petalSprite(k, dark) {
@@ -1477,12 +1651,12 @@
           for (let i = 1; i <= n; i++) { const p0 = pts[i - 1], p1 = pts[i]; g.quadraticCurveTo((p0[0] + p1[0]) / 2, Math.min(p0[1], p1[1]) - 4, p1[0], p1[1]); }
           g.bezierCurveTo(64, 26, 50 + 8 * sc, 58, 32, 70); g.closePath();
         };
-        const c0 = dark ? '#560b15' : '#73101b', c1 = dark ? '#8a1622' : '#a91d2a', c2 = dark ? '#b3303c' : '#de4b56';
+        const c0 = dark ? '#5a0d17' : '#7a121e', c1 = dark ? '#8f1824' : '#b3202d', c2 = dark ? '#c2414b' : '#e8565f';
         g.filter = 'blur(1.6px)';
         path();
         const gr = g.createRadialGradient(32, 72, 3, 32, 60, 70);
         gr.addColorStop(0, c0); gr.addColorStop(0.5, c1); gr.addColorStop(1, c2);
-        g.fillStyle = gr; g.globalAlpha = 0.9; g.fill();
+        g.fillStyle = gr; g.globalAlpha = 0.86; g.fill();
         g.filter = 'blur(4px)'; g.globalAlpha = 0.5;
         g.fillStyle = c0; g.beginPath(); g.ellipse(32, 62, 12, 18, 0, 0, TAU); g.fill();
         g.globalAlpha = 1; g.filter = 'blur(0.7px)';
@@ -1502,7 +1676,7 @@
       const u = t - tRel, reb = u > 0 ? (1 - Math.exp(-u / 0.45) * Math.cos(TAU * 1.3 * u)) : 0;
       const sway = 0.026 * Math.sin(TAU * 0.45 * t + 0.6) + 0.013 * Math.sin(TAU * 0.93 * t + 2.1);
       // 方向角：0 指向右，π/2 指向下；花颈原本朝左下，风向左
-      const ang = 1.98 + 0.03 - dro * 0.24 + reb * 0.17 + sway;
+      const ang = 1.98 + 0.03 - dro * 0.26 + reb * 0.18 + sway;
       const nx = N0.x - 1.5 * Math.sin(TAU * 0.45 * t + 0.6) + reb * 2, ny = N0.y + dro * 7 - reb * 6;
       const ca = Math.cos(ang), sa = Math.sin(ang);
       return { nx, ny, ang, px: nx + ca * NECK, py: ny + sa * NECK, cx: nx + ca * (NECK + CEN), cy: ny + sa * (NECK + CEN) };
@@ -1513,18 +1687,19 @@
     function petals() {
       if (PET) return PET;
       const r = A.rng(6464), out = [];
-      const add = (n, a0, a1, by, L, Wd, dark, ord, jb) => {
+      // grp：松脱的先后（0 前面的外瓣与杯口小瓣，1 后面与上方的外瓣，2 内瓣，3 反卷的护瓣）
+      const add = (n, a0, a1, by, L, Wd, dark, ord, jb, grp) => {
         for (let i = 0; i < n; i++) {
           const a = lerp(a0, a1, n === 1 ? 0.5 : i / (n - 1)) + (r() - 0.5) * 0.18;
-          out.push({ bx: (r() - 0.5) * jb, by: by + (r() - 0.5) * 6, a, L: L * (0.9 + r() * 0.2), Wd: Wd * (0.88 + r() * 0.24), spr: Math.floor(r() * 6), dark, ord: ord + r() * 0.5 });
+          out.push({ bx: (r() - 0.5) * jb, by: by + (r() - 0.5) * 6, a, L: L * (0.9 + r() * 0.2), Wd: Wd * (0.88 + r() * 0.24), spr: Math.floor(r() * 6), dark, ord: ord + r() * 0.5, grp });
         }
       };
-      add(3, -2.3, 2.3, -28, 36, 40, true, 0, 10);       // 反卷的护瓣
-      add(9, -1.2, 1.2, -24, 78, 56, false, 1, 16);      // 后面的外瓣（看到内侧）
-      add(4, -0.9, 0.9, -26, 70, 60, true, 1.6, 10);     // 上方拱起的外瓣背面
-      add(10, -0.85, 0.85, -12, 46, 40, true, 2, 34);    // 皱缩的内瓣
-      add(6, -0.95, 0.95, -18, 64, 52, false, 4, 30);    // 前面的外瓣
-      add(4, -0.5, 0.5, 6, 30, 34, true, 4.6, 26);       // 杯口卷起的小瓣
+      add(3, -2.3, 2.3, -28, 36, 40, true, 0, 10, 3);       // 反卷的护瓣
+      add(9, -1.3, 1.3, -24, 78, 61, false, 1, 16, 1);      // 后面的外瓣（看到内侧），宽而松，牡丹的阔杯形
+      add(4, -0.9, 0.9, -26, 70, 60, true, 1.6, 10, 1);     // 上方拱起的外瓣背面
+      add(10, -0.85, 0.85, -12, 46, 40, true, 2, 34, 2);    // 皱缩的内瓣
+      add(6, -0.95, 0.95, -18, 64, 52, false, 4, 30, 0);    // 前面的外瓣
+      add(4, -0.5, 0.5, 6, 30, 34, true, 4.6, 26, 0);       // 杯口卷起的小瓣
       out.sort((a, b) => a.ord - b.ord);
       return (PET = out);
     }
@@ -1533,59 +1708,82 @@
       const [bx, by] = local2w(P, q.bx, q.by);
       return { bx, by, th: P.ang - q.a, L: q.L };
     }
-    // 落瓣：每瓣的松脱时刻、下落参数、落点（全部由常数推出）
-    // 落点先在花下的湿石面与积水里均匀铺开（最多约两层），再反推每瓣所受的风（一律向左）和松脱时的初速；
-    // 松脱在第1句第9字后 0.04–0.34 s 内，终速按需加大，保证第11字前后（tLand）全部落定
+    // 落瓣：每瓣的松脱时刻、下落轨迹、落点（全部由常数推出）
+    // 花头先沉沉低垂（第1句第9字起 0.8 s），低垂到一半起花瓣一瓣接一瓣松脱：前面的外瓣先落、内瓣在后、反卷的护瓣最后；
+    // 每瓣带空气阻力：竖直速度在约 0.2 s 内趋近终速（约 150–220 px/s），一边左右摆荡（0.8–1.4 Hz，±9–15 px）
+    // 一边被风带向左（20–110 px/s），翻转、缓慢倾侧，1.0–1.5 s 后落定
     let FALL = null;
-    function fallPlan(tR, tLand) {
-      if (FALL && FALL.tR === tR && FALL.tLand === tLand) return FALL;
-      const ps = petals(), r = A.rng(6565), list = [];
+    function fallPlan(tR) {
+      if (FALL && FALL.tR === tR) return FALL;
+      const ps = petals(), r = A.rng(6565), n = ps.length;
+      // 落点：花下偏左（风向左）最密，向外渐疏，彼此少叠（近似泊松分布），一部分落进积水
       const tg = [];
-      // 花下偏左（风向左）最密，向外渐疏，外缘不规则
-      for (let guard = 0, md = 28; tg.length < ps.length; guard++) {
-        if (guard % 800 === 799) md *= 0.92;
-        const x = 480 + r() * 500, y = 563 + r() * 36;
-        const dx = (x - 715) / 125, dy = (y - 566) / 20;
-        const dens = Math.exp(-dx * dx - dy * dy) * (0.75 + 0.5 * A.noise1(x * 0.02, 41));
+      for (let guard = 0, md = 24; tg.length < n; guard++) {
+        if (guard % 600 === 599) md *= 0.92;
+        const x = 515 + r() * 410, y = 558 + r() * 58;
+        const dx = (x - 705) / 165, dy = (y - 577) / 27;
+        const dens = Math.exp(-dx * dx - dy * dy) * (0.7 + 0.6 * A.noise1(x * 0.02, 41));
         if (r() > dens) continue;
-        if (tg.every(([a, b]) => Math.hypot(a - x, (b - y) * 3.4) > md)) tg.push([x, y]);
+        if (tg.every(([a, b]) => Math.hypot(a - x, (b - y) * 2.6) > md)) tg.push([x, y]);
       }
-      const pre = ps.map((q, i) => {
-        const tr = tR + 0.04 + Math.pow(r(), 0.8) * 0.26;
-        const P = headPose(tr, tR, 99);
-        const a = petalAttached(P, q);
-        const half = (a.L * 32) / 72;
-        return { q, i, tr, a, c0x: a.bx + Math.cos(a.th) * half, c0y: a.by + Math.sin(a.th) * half, key: r() };
+      const order = ps.map((q, i) => ({ q, i, k: q.grp + r() * 0.9 })).sort((u, v) => u.k - v.k);
+      const pre = order.map((o, rank) => {
+        const tr = tR + 0.3 + 0.68 * Math.pow(rank / (n - 1), 0.9) + (r() - 0.5) * 0.05;
+        const P = headPose(tr, tR, 99), a = petalAttached(P, o.q), half = (a.L * 34) / 72;
+        return { q: o.q, i: o.i, tr, a, c0x: a.bx + Math.cos(a.th) * half, c0y: a.by + Math.sin(a.th) * half, key: r() };
       });
       // 左边的瓣落到左边：按起点 x 与落点 x 排序后配对（加一点扰动）
-      const order = pre.slice().sort((u, v) => (u.c0x + u.key * 40) - (v.c0x + v.key * 40));
+      const byX = pre.slice().sort((u, v) => (u.c0x + u.key * 40) - (v.c0x + v.key * 40));
       const tgs = tg.slice().sort((u, v) => u[0] - v[0]);
-      order.forEach((o, k) => { o.xt = tgs[k][0]; o.yl = tgs[k][1]; });
-      for (const o of pre) {
-        const { q, i, tr, a, c0x, c0y, yl } = o;
-        // 下落时长 0.6–0.9 s（分镜），但不晚于 tLand 落定；由时长反求终速（湿重的花瓣约 0.3–0.6 m/s）
-        const Td = Math.min(0.6 + 0.3 * r(), tLand - tr);
-        const mkFy = (v) => { const kk = v / GP; return (u) => c0y + v * (u - kk * (1 - Math.exp(-u / kk))); };
-        const tOf = (fyv) => { let lo = 0, hi = 3; for (let it = 0; it < 40; it++) { const m = (lo + hi) / 2; if (fyv(m) < yl) lo = m; else hi = m; } return hi; };
-        let vlo = 150, vhi = 2000;
-        for (let it = 0; it < 24; it++) { const vm = (vlo + vhi) / 2; if (tOf(mkFy(vm)) > Td) vlo = vm; else vhi = vm; }
-        const fy = mkFy(vhi), tl = tOf(fy), kx = 0.3;
-        const fl = { A: 8 + r() * 14, w: 5 + r() * 5, ph: r() * TAU };
-        const Wk = (u) => u - kx * (1 - Math.exp(-u / kx)), Vk = (u) => 0.22 * (1 - Math.exp(-u / 0.22));
-        const flu = (u) => fl.A * Math.sin(fl.w * u + fl.ph) * (1 - Math.exp(-u / 0.12));
-        // 风速 ≤ 0（向左），不够的部分由松脱时的弹出初速补足
-        const need = o.xt - c0x - flu(tl);
-        let wind = clamp(need / Wk(tl), -900, -40);
-        const vx0 = clamp((need - wind * Wk(tl)) / Vk(tl), -340, 240);
-        const fx = (u) => c0x + wind * Wk(u) + vx0 * Vk(u) + flu(u);
-        const xl = fx(tl);
-        const rot = (r() < 0.5 ? -1 : 1) * (2.5 + r() * 4), fw = 6 + r() * 6, fph = r() * TAU;
-        // 落地时的朝向：最后 0.25 s 转到最近的水平方向，再各偏 ±1.1 rad（平躺在地上的朝向各不相同，压扁后多半近乎水平）
-        const thE = a.th + rot * tl, thL = Math.round(thE / Math.PI) * Math.PI + (h2(i, 613) - 0.5) * 2.2;
-        list.push({ q, tr, c0x, c0y, th0: a.th, L: a.L, fy, fx, tl, xl, yl, wet: inPud(xl, yl, 6), rot, fw, fph, thL, i });
-      }
-      FALL = { tR, tLand, list, tRel: Math.max(...list.map((f) => f.tr)) };
+      byX.forEach((o, k) => { o.xt = tgs[k][0]; o.yl = tgs[k][1]; });
+      const list = pre.map((o) => {
+        const { q, i, tr, a, c0x, c0y, yl, xt } = o, drop = yl - c0y;
+        const Td = Math.min(clamp(drop / (135 + 90 * r()) + 0.2, 0.9, 1.55), tR + 2.3 - tr);
+        const tau = 0.2, Vt = drop / (Td - tau * (1 - Math.exp(-Td / tau)));
+        const fy = (u) => c0y + Vt * (u - tau * (1 - Math.exp(-u / tau)));
+        const Am = 10 + 8 * r(), fq = 0.8 + 0.6 * r(), ph = r() * TAU;
+        const sway = (u) => Am * (1 - Math.exp(-u / 0.3)) * Math.sin(TAU * fq * u + ph);
+        const tw = 0.3, Wk = (u) => u - tw * (1 - Math.exp(-u / tw));
+        const vd = clamp((c0x + sway(Td) - xt) / Wk(Td), 20, 110);
+        const fx = (u) => c0x - vd * Wk(u) + sway(u);
+        const om = (r() < 0.5 ? -1 : 1) * (1.0 + 1.0 * r()), wob = 0.25 * r(), wph = r() * TAU;
+        const fth = (u) => a.th + om * u + wob * Math.sin(TAU * 0.7 * u + wph) * (1 - Math.exp(-u / 0.3));
+        const ff = 0.35 + 0.35 * r();
+        const xl = fx(Td), th1 = fth(Td), thH = Math.round(th1 / Math.PI) * Math.PI + (h2(i, 613) - 0.5) * 1.0, thL = th1 + clamp(thH - th1, -0.6, 0.6);
+        return { q, i, tr, L: a.L, sL: clamp(a.L * (0.42 + 0.12 * r()), 17, 34), sW: clamp(q.Wd * (0.46 + 0.12 * r()), 14, 30), fy, fx, fth, om, ff, tl: Td, xl, yl, wet: inPud(xl, yl, 6), thL, spr: i % 4, fph: r() * TAU };
+      });
+      FALL = { tR, list, tRel: Math.max(...list.map((f) => f.tr)) };
       return FALL;
+    }
+    // 散落的花瓣贴图：圆润的泪滴形（基部窄、外缘圆，没有尖角），半透明，湿边略深，基部深红向外渐浅
+    function loosePetalSprite(k, dark) {
+      return K.cache('ff5_e6_loose' + k + (dark ? 'd' : ''), 48, 60, 2, (g) => {
+        const sc = g.getTransform().a, r = A.rng(900 + k * 17);
+        const w = [0.95, 0.8, 1.0, 0.86][k % 4], top = 3 + r() * 2, wy = 24 + r() * 6;
+        const path = () => {
+          g.beginPath(); g.moveTo(24, 57);
+          g.bezierCurveTo(24 - 16 * w, 50, 24 - 24 * w, wy + 6, 24 - 19 * w, 13);
+          g.bezierCurveTo(24 - 15 * w, top + 1, 24 - 6 * w, top, 24, top);
+          g.bezierCurveTo(24 + 6 * w, top, 24 + 15 * w, top + 1, 24 + 19 * w, 13);
+          g.bezierCurveTo(24 + 24 * w, wy + 6, 24 + 16 * w, 50, 24, 57);
+          g.closePath();
+        };
+        const c0 = dark ? '#5c0f18' : '#8e1823', c1 = dark ? '#7e1720' : '#b3202d', c2 = dark ? '#a8404a' : '#e8565f';
+        g.filter = `blur(${(1.1 * sc).toFixed(2)}px)`;
+        const gr = g.createRadialGradient(24, 58, 2, 24, 50, 58);
+        gr.addColorStop(0, c0); gr.addColorStop(0.4, c1); gr.addColorStop(1, c2);
+        path(); g.fillStyle = gr; g.globalAlpha = 0.86; g.fill();
+        g.globalAlpha = 0.5; g.lineWidth = 1.4; g.strokeStyle = dark ? 'rgba(70,8,16,0.6)' : 'rgba(140,18,32,0.55)'; path(); g.stroke();
+        g.filter = `blur(${(3 * sc).toFixed(2)}px)`; g.globalAlpha = 0.18;
+        g.fillStyle = '#ffd2d2'; g.beginPath(); g.ellipse(24 - 3 * w, 20, 7 * w, 9, -0.2, 0, TAU); g.fill();
+        g.filter = 'none'; g.globalAlpha = 1;
+      });
+    }
+    function drawLoose(g, spr, x, y, th, sx, sq, Wd, L, al) {
+      g.save(); g.translate(x, y); if (sq !== 1) g.scale(1, sq);
+      g.rotate(th + Math.PI / 2); g.scale((sx * Wd) / 48, L / 60);
+      g.globalAlpha = al; g.drawImage(spr, -24, -30, 48, 60); g.globalAlpha = 1;
+      g.restore();
     }
     // sq：屏幕空间的纵向压扁（平躺在地上、水上时的透视），sx：沿花瓣自身横向的翻转
     function drawPetal(g, spr, x, y, th, sx, sy, Wd, L, pivot, sq) {
@@ -1617,7 +1815,7 @@
       const t = c.lt, t0 = c.t - c.lt;
       const ct = (k, d) => (c.charT(k) != null ? c.charT(k) - t0 : d);
       const tRen = ct(2, 0.96), tSan = ct(3, 1.48), tFa = ct(4, 2.18), tR = ct(8, 3.92);
-      const FP = fallPlan(tR, ct(10, 4.8) + 0.05);
+      const FP = fallPlan(tR);
       const P = headPose(t, tR, FP.tRel);
       g.drawImage(bgLayer(), 0, 0, W, H);
       // 叶丛：整片以压顶石处为根轻摆（风向左：越高的叶子越往左偏）
@@ -1631,19 +1829,21 @@
       const ca = Math.cos(P.ang), sa = Math.sin(P.ang);
       g.lineCap = 'round';
       g.strokeStyle = '#4b654c'; g.lineWidth = 5;
-      g.beginPath(); g.moveTo(952, CAP + 30);
+      g.beginPath(); g.moveTo(952, capY(952) + 30);
       g.bezierCurveTo(944, 262, c2x, c2y, P.nx, P.ny);
       g.bezierCurveTo(P.nx + ux * NECK * 0.4, P.ny + uy * NECK * 0.4, P.px - ca * NECK * 0.35, P.py - sa * NECK * 0.35, P.px, P.py);
       g.stroke();
       g.strokeStyle = 'rgba(190,210,180,0.35)'; g.lineWidth = 1.2; g.stroke();
+      drawMist(g, t);
       g.drawImage(stoneLayer(), 0, 0, W, H);
-      g.drawImage(wetLayer(), 0, BASE, W, 120);
+      g.drawImage(spillLayer(), 0, 0, W, H);
+      g.drawImage(wetLayer(), 0, 0, W, H);
       // 积水：映出花台下部（以花台底线翻转），水面暗而亮滑；边缘柔和加深，只在远沿留断续的一线水光
       const st = stoneLayer(), ss = st.width / W;
       const px0 = PUD.cx - PUD.rx * 1.12, pw = PUD.rx * 2.24;
       g.save(); pudPath(g); g.clip();
       for (let y = PUD.cy - PUD.ry * 1.15; y < PUD.cy + PUD.ry * 1.15; y += 1.5) {
-        const ys = 2 * BASE - y - 1.5, dx = 0.7 * Math.sin(y * 0.5 + t * 2.1) + 0.4 * Math.sin(y * 0.17 - t * 1.3);
+        const ys = 2 * AX - y - 1.5, dx = 0.7 * Math.sin(y * 0.5 + t * 2.1) + 0.4 * Math.sin(y * 0.17 - t * 1.3);
         g.drawImage(st, px0 * ss, ys * ss, pw * ss, 1.5 * ss, px0 + dx, y, pw, 1.7);
       }
       g.fillStyle = 'rgba(22,28,30,0.42)'; g.fillRect(px0 - 10, PUD.cy - PUD.ry * 1.3, pw + 20, PUD.ry * 2.6);
@@ -1665,6 +1865,8 @@
 
       // 花托、萼片与蓇葖（绿色，随画面一起褪色）：花瓣在时被遮住，落尽后露出
       drawCalyx(g, P);
+      // 近景（失焦）：檐口、右下角的叶子
+      drawForeground(g, t);
 
       // ---------- 天光转灰：除牡丹外整体去饱和（第一句第5字起 1.5 s） ----------
       const kd = smooth((t - tFa) / 1.5);
@@ -1675,59 +1877,70 @@
       }
 
       // ---------- 花与花瓣 ----------
-      const ps = petals(), SQ = 0.3;
+      const ps = petals(), SQ = 0.36;
       const tipOf = (idx) => { const q = ps[idx], a = petalAttached(P, q); return [a.bx + Math.cos(a.th) * a.L * 0.95, a.by + Math.sin(a.th) * a.L * 0.95]; };
       const front = ps.map((q, i) => ({ q, i })).filter((o) => !o.q.dark && o.q.ord < 2);
       const lowY = (o) => { const a = petalAttached(P, o.q); return a.by + Math.sin(a.th) * o.q.L; };
       const idxA = front.reduce((bb, o) => (lowY(o) > lowY(bb) ? o : bb), front[0]).i;
       const idxB = front[(front.findIndex((o) => o.i === idxA) + 2) % front.length].i;
       const drops = [{ tl: tRen, idx: idxA, yw: 562, g0: -0.8 }, { tl: tSan, idx: idxB, yw: 567, g0: 0.3 }];
-      // 每瓣此刻的状态：下落的最后 0.25 s 逐渐放平（纵向压扁到 SQ、转向水平），始终以最低点为准，最低点不低于落点 yl+2；
-      // 落定后 0.3 s 内慢慢摊开
-      const ext = (L, Wd, th, sx, sq) => sq * (Math.abs(Math.sin(th)) * L * 35 / 72 + Math.abs(Math.cos(th)) * Wd * sx * 31 / 64);
+      // 每瓣此刻的状态：刚松脱的 0.35 s 内由花头上的瓣形渐变成卷起的散瓣；下落的最后 0.25 s 逐渐放平（纵向压扁、
+      // 转向近水平），最低点不低于落点；落定后 0.3 s 内慢慢摊开，漂在水上的随水轻漾、慢慢漂向左
+      const ext = (L, Wd, th, sx, sq) => sq * (Math.abs(Math.sin(th)) * L * 0.45 + Math.abs(Math.cos(th)) * Wd * sx * 0.48);
+      const flipF = (f, u) => 1 - 0.42 * Math.abs(Math.sin(TAU * f.ff * u));
       const st8 = [];
       for (const f of FP.list) {
         if (t < f.tr) continue;
-        const u = t - f.tr, spr = petalSprite(f.q.spr, f.q.dark);
+        const u = t - f.tr;
         if (u < f.tl) {
-          const flip = 0.3 + 0.7 * Math.abs(Math.cos(f.fw * u * 0.5)), kb = smooth(1 - (f.tl - u) / 0.25);
-          const th = lerp(f.th0 + f.rot * u, f.thL, kb), sq = lerp(1, SQ, kb), e = ext(f.L, f.q.Wd, th, flip, sq);
-          st8.push({ f, spr, fall: true, kb, x: f.fx(u), y: Math.min(f.fy(u), f.yl + 2 - e), th, sx: flip, sq });
+          const ka0 = smooth(u / 0.45), kb = smooth(1 - (f.tl - u) / 0.25);
+          const sL = lerp(f.L, f.sL, ka0), sW = lerp(f.q.Wd, f.sW, ka0), sx = lerp(1, flipF(f, u), ka0);
+          const th = lerp(f.fth(u), f.thL, kb), sq = lerp(1, SQ, kb), e = ext(sL, sW, th, sx, sq);
+          st8.push({ f, fall: true, ka0, x: f.fx(u), y: Math.min(f.fy(u), f.yl + 2 - e), th, sx, sq, sL, sW });
         } else {
           const w = u - f.tl, k = smooth(w / 0.3);
-          const flipL = 0.3 + 0.7 * Math.abs(Math.cos(f.fw * f.tl * 0.5)), sx = lerp(flipL, 0.95, k);
-          const th = f.thL + 0.12 * Math.sign(f.rot) * (1 - Math.exp(-w / 0.5)), e = ext(f.L, f.q.Wd, th, sx, SQ);
-          const drift = f.wet ? -9 * (1 - Math.exp(-w / 1.4)) : 0, bob = f.wet ? 0.4 * Math.sin(TAU * 0.8 * w + f.fph) * Math.min(1, w / 0.3) : 0;
-          st8.push({ f, spr, fall: false, k, x: f.xl + drift, y: Math.min(f.yl, f.yl + 2 - e) + bob, th, sx, sq: SQ });
+          const sx = lerp(flipF(f, f.tl), 0.95, k);
+          const th = f.thL + 0.1 * Math.sign(f.om) * (1 - Math.exp(-w / 0.5)), e = ext(f.sL, f.sW, th, sx, SQ);
+          const drift = f.wet ? -8 * (1 - Math.exp(-w / 1.4)) : 0, bob = f.wet ? 0.4 * Math.sin(TAU * 0.8 * w + f.fph) * Math.min(1, w / 0.3) : 0;
+          st8.push({ f, fall: false, k, x: f.xl + drift, y: Math.min(f.yl, f.yl + 2 - e) + bob, th, sx, sq: SQ, sL: f.sL, sW: f.sW, e });
         }
       }
-      // 1) 落水花瓣的倒影（以各自落点的水面为轴）
+      // 1) 积水里的倒影：下落将到水面的瓣以落点水面为轴翻转；漂着的瓣在自身正下方映出更暗的、随水纹微抖的倒影
       g.save(); pudPath(g); g.clip();
       for (const o of st8) {
         if (!o.f.wet) continue;
-        // 倒影以落点处的水面（瓣的最低点 yl+2）为轴翻转
+        const sprD = loosePetalSprite(o.f.spr, true);
         if (o.fall) {
-          if (o.f.yl - o.y > 40) continue;
-          g.globalAlpha = 0.4; g.save(); g.translate(0, 2 * (o.f.yl + 2)); g.scale(1, -1);
-          drawPetal(g, o.spr, o.x, o.y, o.th, o.sx, 1, o.f.q.Wd, o.f.L, 'c', o.sq); g.restore();
+          if (o.f.yl - o.y > 60) continue;
+          g.save(); g.translate(0, 2 * (o.f.yl + 2)); g.scale(1, -1);
+          drawLoose(g, sprD, o.x, o.y, o.th, o.sx, o.sq, o.sW, o.sL, 0.45 * o.ka0);
+          g.restore();
         } else {
-          g.globalAlpha = 0.3;
-          // 漂在水面的瓣：倒影几乎被自身遮住，只在近缘露出一线（翻卷的瓣缘）
-          drawPetal(g, o.spr, o.x, o.y + 2.5, o.th, o.sx, 1, o.f.q.Wd, o.f.L, 'c', -o.sq);
+          const dx = 1.2 * Math.sin(t * 2.2 + o.x * 0.13);
+          drawLoose(g, sprD, o.x + dx, o.y + 2 * o.e * 0.9 + 1, o.th, o.sx, -o.sq, o.sW, o.sL, 0.42);
         }
       }
-      g.globalAlpha = 1;
       // 2) 涟漪（水珠、落瓣）画在漂浮的花瓣下面
       for (const d of drops) { const [tx] = tipOf(d.idx); if (t > d.tl) ripple(g, tx, d.yw, t - d.tl, false); }
       for (const f of FP.list) { if (!f.wet) continue; const age = t - f.tr - f.tl; if (age > 0) ripple(g, f.xl, f.yl, age, false); }
       g.restore();
-      // 3) 落定的花瓣（远的先画），4) 正在下落的花瓣
-      st8.filter((o) => !o.fall).sort((p1, p2) => p1.f.yl - p2.f.yl).forEach((o) => drawPetal(g, o.spr, o.x, o.y, o.th, o.sx, 1, o.f.q.Wd, o.f.L, 'c', o.sq));
-      st8.filter((o) => o.fall).forEach((o) => drawPetal(g, o.spr, o.x, o.y, o.th, o.sx, 1, o.f.q.Wd, o.f.L, 'c', o.sq));
-      // 5) 还在花头上的花瓣
+      // 3) 落定的花瓣（远的先画；干石面上的有一圈淡淡的接触暗影），4) 正在下落的花瓣
+      st8.filter((o) => !o.fall).sort((p1, p2) => p1.f.yl - p2.f.yl).forEach((o) => {
+        if (!o.f.wet) { g.fillStyle = `rgba(22,18,18,${0.16 * o.k})`; g.beginPath(); g.ellipse(o.x, o.f.yl + 0.5, o.sL * 0.42, 2.4, 0, 0, TAU); g.fill(); }
+        drawLoose(g, loosePetalSprite(o.f.spr, false), o.x, o.y, o.th, o.sx, o.sq, o.sW, o.sL, o.f.wet ? 0.9 : 0.95);
+      });
+      st8.filter((o) => o.fall).forEach((o) => {
+        if (o.ka0 < 1) { g.globalAlpha = 1 - o.ka0; drawPetal(g, petalSprite(o.f.q.spr, o.f.q.dark), o.x, o.y, o.th, o.sx, 1, o.sW, o.sL, 'c', o.sq); g.globalAlpha = 1; }
+        drawLoose(g, loosePetalSprite(o.f.spr, false), o.x, o.y, o.th, o.sx, o.sq, o.sW, o.sL, o.ka0);
+      });
+      // 5) 还在花头上的花瓣：先铺一层晕开的淡红（没骨晕染的水气），再画花瓣
       const fl = FP.list;
       const attached = (i) => t < fl.find((f) => f.i === i).tr;
       const left = ps.filter((qq, j) => attached(j)).length / ps.length, ka = clamp(left * 2.5, 0, 1);
+      if (left > 0) {
+        A.glow(g, P.cx, P.cy + 4, 100, '#d04452', 0.13 * left);
+        A.glow(g, P.cx, P.cy, 64, '#a3202c', 0.12 * left);
+      }
       ps.forEach((q, i) => {
         if (!attached(i)) return;
         const a = petalAttached(P, q);
@@ -1743,6 +1956,15 @@
           g.beginPath(); g.arc(sx0, sy0, 1.1 + 0.7 * h2(m, 6), 0, TAU); g.fill();
         }
       }
+      // 花瓣上两三颗雨珠，映着天光微微闪（随所在的花瓣一起落下）
+      ps.map((q, i) => ({ q, i })).filter((o) => o.q.grp === 0 && !o.q.dark).slice(0, 3).forEach((o, j) => {
+        if (!attached(o.i)) return;
+        const a = petalAttached(P, o.q), d = 0.5 + 0.12 * j, off = (j - 1) * 0.12 * o.q.Wd;
+        const x = a.bx + Math.cos(a.th) * a.L * d - Math.sin(a.th) * off, y = a.by + Math.sin(a.th) * a.L * d + Math.cos(a.th) * off;
+        drawBead(g, x, y, 1.7 + 0.3 * j, 1.05);
+        const tw = Math.pow(Math.max(0, Math.sin(TAU * 0.4 * t + j * 2.1)), 6);
+        A.glow(g, x - 0.5, y - 0.6, 6, '#ffffff', 0.2 + 0.4 * tw);
+      });
       // 6) 瓣尖水珠（第1句第3、4字时落进积水）
       for (const d of drops) {
         const [tx, ty] = tipOf(d.idx);
@@ -1759,6 +1981,7 @@
           drawBead(g, tx, ty + rad, rad, 1);
         }
       }
+      drawEaveDrips(g, t);
     }
     // 花托、萼片（反卷贴着花颈）与花心的几枚蓇葖
     function drawCalyx(g, P) {
@@ -1786,7 +2009,7 @@
         leaf(x0 + Math.cos(d) * 2, y0 + Math.sin(d) * 2, x1, y1, 3, 0.4, 'rgba(200,198,118,0.55)');
       }
     }
-    return { draw, warm: [bgLayer, leafLayer, stoneLayer, wetLayer, () => { for (let k = 0; k < 6; k++) { petalSprite(k, false); petalSprite(k, true); } }] };
+    return { draw, warm: [bgLayer, leafLayer, mistTex, stoneLayer, spillLayer, wetLayer, eaveLayer, fgLeafTex, () => { for (let k = 0; k < 6; k++) { petalSprite(k, false); petalSprite(k, true); } for (let k = 0; k < 4; k++) { loosePetalSprite(k, false); loosePetalSprite(k, true); } }] };
   })();
 
   XYT.registerShot('e6_peony', {

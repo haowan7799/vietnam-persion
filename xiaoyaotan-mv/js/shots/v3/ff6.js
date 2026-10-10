@@ -389,14 +389,32 @@
       SCR.bb = { sx, sy, sw, sh, x: sx / k, y: sy / k, w: sw / k, h: sh / k };
       return SCR;
     }
+    // 裂口从近日的右端向左一路裂开：补丁在裂开的前沿左侧渐隐（前沿柔边 FE px；补丁本身就是这片云，渐隐处与云层无缝）
+    const FE = 220;
+    let SCR2 = null;
+    function frontMask(cv, fx) {
+      if (!SCR2 || SCR2.width !== cv.width || SCR2.height !== cv.height) { SCR2 = document.createElement('canvas'); SCR2.width = cv.width; SCR2.height = cv.height; SCR2.lw = cv.lw; SCR2.lh = cv.lh; }
+      const b = bbox(cv), k = cv.width / cv.lw, q = SCR2.getContext('2d');
+      q.setTransform(1, 0, 0, 1, 0, 0);
+      q.globalCompositeOperation = 'copy'; q.globalAlpha = 1; q.drawImage(cv, b.sx, b.sy, b.sw, b.sh, b.sx, b.sy, b.sw, b.sh);
+      q.globalCompositeOperation = 'destination-in';
+      const gr = q.createLinearGradient((fx - FE) * k, 0, fx * k, 0);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
+      q.fillStyle = gr; q.fillRect(b.sx, b.sy, b.sw, b.sh);
+      q.globalCompositeOperation = 'source-over';
+      SCR2.bb = b;
+      return SCR2;
+    }
     // 每帧：未撕开时在相邻两档间精确淡化（补丁不透明，按开口程度盖在云层上）；撕开后亮版两档淡化后叠上
-    function drawGap(g, gx, gy, d, open, lit) {
+    // front：裂开前沿的画面 x（null 表示整道都已裂开）
+    function drawGap(g, gx, gy, d, open, lit, front) {
       const x0 = gx - MX0, y0 = gy - MY0, L = Math.min(1, lit);
+      const fm = (cv) => (front == null ? cv : frontMask(cv, front - x0));
       if (L < 0.998 && open > 0.002) {
         let k = 0; while (k < DLV.length - 2 && DLV[k + 1] <= d) k++;
         const f = clamp((d - DLV[k]) / (DLV[k + 1] - DLV[k]));
-        if (k === 0) { if (f > 0.002) { g.globalAlpha = open * f; blitBB(g, gapLv(1, false), x0, y0); } }
-        else { g.globalAlpha = open; blitBB(g, mixLv(gapLv(k, false), gapLv(k + 1, false), f), x0, y0); }
+        if (k === 0) { if (f > 0.002) { g.globalAlpha = open * f; blitBB(g, fm(gapLv(1, false)), x0, y0); } }
+        else { g.globalAlpha = open; blitBB(g, fm(mixLv(gapLv(k, false), gapLv(k + 1, false), f)), x0, y0); }
       }
       if (L > 0.002) {
         let k = 0; while (k < DLIT.length - 2 && DLIT[k + 1] <= d) k++;
@@ -545,12 +563,54 @@
       g.strokeStyle = rgba('#8b8782', 0.4); g.lineWidth = 0.8;
       g.beginPath(); for (let x = B0 + 10; x <= W; x += 6) g.lineTo(x, bankY(x) + 1); g.stroke();
     });
-    // 江面 + 远岸 + 中景苇岸合成一张（画面 y = 贴图 y + 370）
-    const lower = () => K.cache('ff6_e8_lower2', W, 350, 1, (g) => {
-      g.drawImage(water(), 0, HY - 2 - 370, W, H - HY + 4);
+    // 远岸 + 中景苇岸合成一张（画面 y = 贴图 y + 370）；江面底色单独画，云缝的倒影夹在两者之间（被苇岸和它的倒影挡住）
+    const lower = () => K.cache('ff6_e8_lower3', W, 350, 1, (g) => {
       g.drawImage(shore(), 0, HY - 46 - 370, W, 90);
       g.drawImage(bank(), 0, 300 - 370, W, 300);
     });
+    // ---- 云缝在江面上的倒影：以地平线为轴翻转、纵向压到 0.62，被细浪拉长成一竖条，模糊 6 px，再被横向的细浪切成一道道 ----
+    // 贴图 x 相对云缝中心（贴图 x = 画面 x − gx + RFX0），y 从地平线往下
+    const RKY = 0.62, RFX0 = HL + 110, RFW = 2 * HL + 220, RFH = 292;
+    const reflTex = (lit) => K.cache('ff6_e8_refl' + (lit ? 'L' : 'U'), RFW, RFH, 0.5, (g) => {
+      const d = lit ? DF : 21, E = gapEdges(d), SK = lit ? SKY1 : SKY0, e0 = HY - GY;
+      const b = blurred(RFW, RFH, 6, (q) => {
+        // 缝的镜像，另叠两层纵向拉长的淡影（波面把亮处的倒影拉成一竖条）
+        for (const [st, al] of [[1, 1], [1.9, 0.34], [3.1, 0.14]]) {
+          for (let i = 0; i < GN - 1; i++) {
+            const k0 = GAPK[i], k1 = GAPK[i + 1];
+            if (E.O[i] < 0.4 && E.O[i + 1] < 0.4) continue;
+            const c = colAt(SK, k0.u), m0 = RKY * (e0 - k0.c), m1 = RKY * (e0 - k1.c);
+            const y0t = m0 - RKY * (E.B[i] - k0.c) * st, y0b = m0 - RKY * (E.T[i] - k0.c) * st;
+            const y1t = m1 - RKY * (E.B[i + 1] - k1.c) * st, y1b = m1 - RKY * (E.T[i + 1] - k1.c) * st;
+            q.fillStyle = `rgba(${Math.round(c[0] * 0.84)},${Math.round(c[1] * 0.8)},${Math.round(c[2] * 0.86)},${al})`;
+            q.beginPath(); q.moveTo(k0.x + RFX0, y0t); q.lineTo(k1.x + RFX0 + 0.6, y1t); q.lineTo(k1.x + RFX0 + 0.6, y1b); q.lineTo(k0.x + RFX0, y0b); q.closePath(); q.fill();
+          }
+        }
+      });
+      putBlur(g, b, 0, 0, RFW, RFH);
+      // 细浪：一道道横向的暗缝，近地平线处细密、越近越宽（只在建缓存时做）
+      g.globalCompositeOperation = 'destination-out';
+      let ph = 0;
+      for (let y = 0; y < RFH; y++) {
+        ph += 1 / (2.4 + 0.04 * y);
+        const s = 0.5 + 0.5 * Math.sin(TAU * ph + 1.3 * A.noise1(y / 9, 41));
+        g.fillStyle = `rgba(0,0,0,${(0.62 * Math.pow(s, 1.6)).toFixed(3)})`;
+        g.fillRect(0, y, RFW, 1);
+      }
+      g.globalCompositeOperation = 'source-over';
+    });
+    // 每帧：一条条横切片各自随细浪左右轻摆（越近摆得越多）
+    function drawRefl(g, tex, x0, a, lt) {
+      if (a < 0.003) return;
+      const k = tex.width / tex.lw, SL = 4;
+      g.globalAlpha = a;
+      for (let y = 0; y < RFH; y += SL) {
+        const v = y / RFH, amp = 0.8 + 4.2 * v;
+        const dx = amp * (0.6 * Math.sin(y * 0.11 + lt * 1.7) + 0.4 * Math.sin(y * 0.27 - lt * 2.3));
+        g.drawImage(tex, 0, Math.round(y * k), tex.width, Math.round(SL * k), x0 + dx, HY + y, RFW, SL);
+      }
+      g.globalAlpha = 1;
+    }
     // 远处的飞絮：成片时只是一层淡淡的白雾
     const haze = () => K.cache('ff6_e8_haze', 700, 150, 0.5, (g) => {
       const r = A.rng(8931);
@@ -839,7 +899,7 @@
         const [x, y] = fluffPos(f, u), m = f.m;
         if (x > W + m || y < -m || y > H + m || x < -m) continue;
         const fadeIn = f.kind ? 1 : smooth(u / 0.4);
-        const zoneK = smooth((x - 260) / 150);                                  // 进入歌词区（x < 330）之前淡尽（连续过渡）
+        const zoneK = smooth((x - 312) / 110);                                  // 进入歌词区（x < 330）之前淡尽（连续过渡）
         const a = f.a * fadeIn * zoneK;
         if (a < 0.01) continue;
         let inRay = 0;
@@ -931,23 +991,34 @@
         g.drawImage(skyDeck(), -180 + dDeck, -12, 1700, 440);
         const gx = GX + dDeck, gy = GY;
         const d = 21 * open1 + 44 * tear;                      // 开口：第1–7字裂开一道窄缝（21 px），第12字撕开到 65 px
+        // 裂开的前沿：从近日的右端起，约 2.2 s 内向左裂到头
+        const qF = easeInOut(ramp(lt, tO0 - 0.1, tO0 + 2.1));
+        const front = qF < 0.999 ? gx + 1.08 * HL - qF * (2.16 * HL + FE + 20) : null;
         if (open1 > 0.001) {
-          drawGap(g, gx, gy, d, clamp(open1 * 1.4), lit);
-          // 缝里的光在空气里晕开一圈（加色，不受补丁边界限制）：未撕开时暗红、很淡，撕开后金红
+          drawGap(g, gx, gy, d, clamp(open1 * 1.4), lit, front);
+          // 缝里的光在空气里晕开一圈（加色，不受补丁边界限制）：未撕开时暗红、很淡、只罩着已裂开的那段，撕开后金红
           K.lighter(g, () => {
             const bw = 2 * HL * (0.75 + 0.2 * tear), bh = 90 + 70 * tear;
-            g.globalAlpha = 0.1 * open1 * (1 - lit); g.drawImage(haloT('#8a2a16'), gx + 0.2 * HL - bw / 2, gy + 6 - bh / 2, bw, bh);
+            const cu = lerp(gx + 0.95 * HL, gx + 0.2 * HL, qF), wu = bw * lerp(0.25, 1, qF);
+            g.globalAlpha = 0.1 * open1 * (1 - lit); g.drawImage(haloT('#8a2a16'), cu - wu / 2, gy + 6 - bh / 2, wu, bh);
             g.globalAlpha = 0.3 * lit * (0.9 + 0.1 * beat); g.drawImage(haloT('#ff9a50'), gx + 0.3 * HL - bw / 2, gy + 8 - bh / 2, bw, bh);
             g.globalAlpha = 1;
           });
         }
         g.drawImage(scud(), -220 + dScud, 286, 1700, 140);
 
-        // 江面
+        // 江面：底色 → 云缝的倒影（未撕开时一道很淡的暗红，撕开后金红，随第12字的包络亮起）→ 远岸与苇岸（挡住倒影）
+        g.drawImage(water(), 0, HY - 2, W, H - HY + 4);
+        if (open1 > 0.001) {
+          g.save(); g.beginPath(); g.rect(0, HY + 1, W, H - HY); g.clip();
+          drawRefl(g, reflTex(false), gx - RFX0, 0.32 * open1 * (1 - tear) * smooth(ramp(qF, 0.15, 0.7)), lt);
+          drawRefl(g, reflTex(true), gx - RFX0, 0.74 * tear * (0.93 + 0.07 * beat), lt);
+          g.restore();
+        }
         g.drawImage(lower(), 0, 370, W, 350);
         // 云缝在江面的倒影：缝里的亮天被雨后的细浪拉成一竖列碎光，三张碎光贴图轮流淡入淡出（加色叠，总亮度不起伏）
         if (open1 > 0.001) {
-          const amt = 0.22 * open1 * (1 - tear) + 0.6 * tear;
+          const amt = 0.2 * open1 * (1 - tear) * smooth(ramp(qF, 0.15, 0.7)) + 0.8 * tear;
           const ph = lt / 0.9, i0 = Math.floor(ph) % 3, f = smooth(ph - Math.floor(ph));
           const ox = gx - RW2 / 2, oy = HY + 2;
           g.save(); g.beginPath(); g.rect(0, HY + 1, W, H - HY); g.clip();
@@ -1381,11 +1452,12 @@
     const axX = (y) => M.x + axOff(M, y - TOFF);         // 静止时轴线 x
     const LP = M.L - 12;                                 // 裂纹以下的长度（到尖）
     const RAD = (y) => icRad(M, clamp((y - TOFF) / M.L));
-    // 横切口：第 0 道就是裂纹；其余把坠落段切成 8 截（上粗下细，梢头一截约 20 px）。切口是锯齿、略斜，按 13 个横向采样点取值
+    // 横切口：第 0 道就是裂纹；其余把坠落段切成 6 截斜断的冰身、梢头上方一截撞碎的冰（CRUSH 段，化成迸起的碎碴），
+    // 和一小截梢头（约 19 px，画面上 ≤ 25 px）。切口是锯齿、斜得较多（像劈开的冰，不像切开的管），按 13 个横向采样点取值
     const NU = 13, UJ = Array.from({ length: NU }, (_, j) => -1 + (2 * j) / (NU - 1));
-    const CUTF = [0, 0.15, 0.29, 0.42, 0.55, 0.68, 0.8, 0.92];
+    const CUTF = [0, 0.17, 0.34, 0.5, 0.64, 0.77, 0.87, 0.93], CRUSH = 6;
     const CUTS = CUTF.map((f, i) => {
-      const y0 = CY + f * LP, sl = i ? (A.hash(i * 7 + 1) < 0.5 ? -1 : 1) * (0.3 + 0.35 * A.hash(i * 11 + 2)) : 0.1, rr = A.rng(2241 + i * 13);
+      const y0 = CY + f * LP, sl = i ? (A.hash(i * 7 + 1) < 0.5 ? -1 : 1) * (0.45 + 0.45 * A.hash(i * 11 + 2)) : 0.1, rr = A.rng(2241 + i * 13);
       const kn = [0, 1, 2, 3, 4, 5].map(() => (rr() - 0.5) * 4);
       return UJ.map((u, j) => {
         const q = ((u + 1) / 2) * 5, i0 = Math.min(4, Math.floor(q)), kv = lerp(kn[i0], kn[i0 + 1], q - i0);
@@ -1448,13 +1520,14 @@
     const fallT = solveHit([axX(TIPY), TIPY]);                           // 尖端落到石面所需时间（约 0.4 s）
     const HITX = fallPt([axX(TIPY), TIPY], fallT)[0];
 
-    // ---- 碎裂：坠落段按切口切成 8 截，较粗的几截再顺长劈成两三块（共约 15 块），梢头只剩一小截 ----
-    // 落地瞬间整段同时碎开：每块带着坠落的速度继续往下，落到石面上弹一两下（恢复系数约 0.3）、旋转、再滑行减速，第11字前全部停住
+    // ---- 碎裂：坠落段按切口切成 6 截，较粗的几截再顺长劈成两三块（约 11 块），梢头只剩一小截；梢头上方那截撞得粉碎（见 SHARDS） ----
+    // 落地瞬间整根同时震裂：每块失去一部分下落速度、向两侧散开并翻滚，落到石面上弹一两下（恢复系数约 0.3）、再滑行减速，第11字前全部停住
     const T_REST = 0.74;
     const FRAGS = (() => {
       const r = A.rng(2261), out = [];
       const sideEdge = (yTop, yBot, u, n) => { const p = []; for (let i = 0; i <= n; i++) { const y = lerp(yTop, yBot, i / n); p.push([axX(y) + u * RAD(y), y]); } return p; };
       for (let k = 0; k < CUTS.length; k++) {
+        if (k === CRUSH) continue;
         const top = CUTS[k], bot = CUTS[k + 1] || null;
         const yMid = bot ? (top[6][1] + bot[6][1]) / 2 : (top[6][1] + TIPY) / 2, wMid = 2 * RAD(yMid);
         const nPc = bot ? (wMid > 26 ? 3 : wMid > 13 ? 2 : 1) : 1;
@@ -1497,9 +1570,9 @@
         const kLow = clamp(1 - (HY0 - c0[1]) / LP), side = Math.abs(c0[0] - HITX) > 3 ? Math.sign(c0[0] - HITX) : r() < 0.5 ? -1 : 1;
         const f = {
           off, c0, len: best, phi, kLow,
-          vx0: v[0] + side * (35 + 110 * r()) * (0.3 + 0.7 * kLow), vy0: v[1] * (0.84 + 0.14 * r()), vz0: (r() - 0.35) * 80 * (0.3 + 0.7 * kLow),
-          w0: (r() < 0.5 ? -1 : 1) * (2.5 + 3 * r() + 5 * kLow * kLow),
-          kick: side * (50 + 150 * r()), kz: (r() - 0.4) * 80, dw: (r() < 0.5 ? -1 : 1) * (5 + 6 * r()), gp: r() * TAU,
+          vx0: v[0] + side * (80 + 170 * r()) * (0.5 + 0.5 * kLow), vy0: v[1] * (0.55 + 0.25 * r()), vz0: (r() - 0.35) * 110 * (0.4 + 0.6 * kLow),
+          w0: (r() < 0.5 ? -1 : 1) * (3 + 3.5 * r() + 3 * kLow),
+          kick: side * (90 + 190 * r()), kz: (r() - 0.4) * 110, dw: (r() < 0.5 ? -1 : 1) * (5 + 6 * r()), gp: r() * TAU,
         };
         const ext = (th) => { let m = -1e9; const c = Math.cos(th), s = Math.sin(th); for (const o of off) m = Math.max(m, o[0] * s + o[1] * c); return m; };
         f.ext = ext;
@@ -1512,10 +1585,17 @@
         // 弹跳太高就停不住：按剩余时间收小恢复系数
         e = Math.min(e, Math.max(0.08, ((T_REST - t1 - 0.08) * GM) / (2 * vy1 * 1.3)));
         const vb = e * vy1, tb = (2 * vb) / GM, vb2 = 0.3 * vb, tb2 = (2 * vb2) / GM;
-        const vx1 = f.vx0 * 0.7 + f.kick, vz1 = f.vz0 * 0.7 + f.kz, w1 = f.w0 * 0.6 + f.dw;
+        const vx1 = f.vx0 * 0.7 + f.kick, vz1 = f.vz0 * 0.7 + f.kz;
         const vx2 = vx1 * 0.7, vz2 = vz1 * 0.7, sp = Math.hypot(vx2, vz2);
         const ts = Math.max(0.06, T_REST - t1 - tb - tb2), mu = sp / ts;
-        const th1 = f.w0 * t1, ths2 = th1 + w1 * tb;
+        const th1 = f.w0 * t1;
+        // 碰地时一端先着地，冰块被撬着翻转：弹起这一下里接着原来的转向翻到长轴放平（不足 3 rad/s 时多翻半圈），
+        // 落回时已经躺平，不会竖着在石面上弹
+        const sg = f.w0 >= 0 ? 1 : -1, c1 = phi + th1;
+        let dl = Math.round(c1 / Math.PI) * Math.PI - c1;
+        if (dl * sg < 0) dl += sg * Math.PI;
+        if (tb > 0.12 && Math.abs(dl / tb) < 3) dl += sg * Math.PI;
+        const w1 = clamp(dl / Math.max(tb, 0.05), -26, 26), ths2 = th1 + w1 * tb;
         // 停下时长轴放平：取离当前朝向最近、使长轴水平的角度
         const aim = ths2 + w1 * 0.3 * (tb2 + ts), cur = phi + aim, flat = aim - (cur - Math.round(cur / Math.PI) * Math.PI);
         Object.assign(f, { t1, e, vb, tb, vb2, tb2, vx1, vz1, w1, vx2, vz2, sp, ts, mu, th1, ths2, flat,
@@ -1536,7 +1616,8 @@
         return { x, y: HY0 + 0.35 * z - f.ext(th) - h, z, th, h };
       }
       t -= f.tb;
-      const D3 = f.tb2 + f.ts, th = f.ths2 + (f.flat - f.ths2) * smooth(t / D3);
+      // 弹起落回后很快倒平（约 0.15 s，像一根短棍倒下），不会立在石面上
+      const D3 = Math.min(0.15, f.tb2 + f.ts), th = f.ths2 + (f.flat - f.ths2) * smooth(t / D3);
       let x, z, h = 0;
       if (t < f.tb2) { x = f.x1 + f.vx1 * (f.tb + t); z = f.z1 + f.vz1 * (f.tb + t); h = f.vb2 * t - 0.5 * GM * t * t; }
       else {
@@ -1569,28 +1650,49 @@
       g.stroke();
       return [cx, cy];
     }
-    // 细碎冰碴：5–7 个角、透明，左侧受光右侧偏蓝；落地后压扁
-    const chips = (() => {
-      const r = A.rng(2231), out = [];
-      for (let i = 0; i < 12; i++) {
-        const side = i % 2 ? 1 : -1, n = 5 + ((r() * 3) | 0), sz = 1.6 + r() * 2.6, pts = [];
-        for (let k = 0; k < n; k++) { const a = (k / n) * TAU + (r() - 0.5) * 0.7, rr = sz * (0.55 + r() * 0.5); pts.push([Math.cos(a) * rr * 1.25, Math.sin(a) * rr]); }
-        const ch = { d: r() * 0.05, vx: side * (60 + r() * 200), vy: -(140 + r() * 260), vz: (r() - 0.35) * 70, spin: (r() - 0.5) * 18, a0: r() * TAU, pts, sz, e: 0.26 + r() * 0.1, mu: 620 + r() * 300, x0: (r() - 0.5) * 8 };
-        for (let k = 0; k < 20 && ch.d + chipRest(ch) > T_REST; k++) { ch.vy *= 0.92; ch.vx *= 0.9; ch.vz *= 0.9; }
-        out.push(ch);
+    // 迸起的碎碴（相对撞击点 HITX、石面 HY0）：
+    //  · SHARDS：梢头上方撞碎的那一截化成 9 块 4–6 角的碎冰（画面上长 8–20 px），从各自原来的位置沿抛物线向两侧、向上弹开、旋转；
+    //  · chips：12 粒更细的冰碴从撞击点溅开。
+    // 两者都弹 1–2 下（恢复系数约 0.3），再滑行减速，第11字前全部停住；落地后在透视里压扁
+    const bitPoly = (r, n, sz, el) => { const pts = []; for (let k = 0; k < n; k++) { const a = (k / n) * TAU + (r() - 0.5) * 0.8, rr = sz * (0.55 + r() * 0.5); pts.push([Math.cos(a) * rr * el, Math.sin(a) * rr]); } return pts; };
+    function bitRest(s) {
+      const v0 = Math.sqrt(s.vy * s.vy + 2 * GM * s.h0);
+      let T = (-s.vy + v0) / GM, vx = s.vx * 0.6, vz = s.vz * 0.6;
+      for (let b = 1; b < 3; b++) { T += (2 * v0 * Math.pow(s.e, b)) / GM; vx *= 0.6; vz *= 0.6; }
+      return T + Math.hypot(vx, vz) / s.mu;
+    }
+    const settle = (s) => { for (let k = 0; k < 24 && s.d + bitRest(s) > T_REST; k++) { s.vy *= 0.92; s.vx *= 0.9; s.vz *= 0.9; } return s; };
+    const SHARDS = (() => {
+      const r = A.rng(2237), out = [], a = CUTS[CRUSH], b = CUTS[CRUSH + 1];
+      for (let i = 0; i < 9; i++) {
+        // 在撞碎那一截里取一点（落地瞬间的位置）
+        const v = (i + 0.5) / 9, u = (r() - 0.5) * 1.4;
+        const y = lerp(a[6][1], b[6][1], v), p = fallPt([axX(y) + u * RAD(y) * 0.8, y], fallT);
+        const side = i % 2 ? 1 : -1;
+        const sz = 3 + 4.5 * r();
+        out.push(settle({
+          d: 0.005 * i, x0: p[0] - HITX, z0: 0, h0: Math.max(0, HY0 - p[1] - sz * 0.4),
+          vx: side * (40 + 120 * r()), vy: -(90 + 170 * r()), vz: (r() - 0.4) * 90, spin: (r() < 0.5 ? -1 : 1) * (4 + 6 * r()), a0: r() * TAU,
+          pts: bitPoly(r, 4 + ((r() * 3) | 0), sz, 1.15 + 0.5 * r()), sz, e: 0.28 + r() * 0.06, mu: 520 + r() * 260, big: true,
+        }));
       }
       return out;
     })();
-    function chipRest(s) {
-      let T = 0, vx = s.vx, vz = s.vz;
-      for (let b = 0; b < 3; b++) { T += (-2 * s.vy * Math.pow(s.e, b)) / GM; vx *= 0.6; vz *= 0.6; }
-      return T + Math.hypot(vx, vz) / s.mu;
-    }
-    function chipAt(s, u) {
-      let t = u, x = s.x0, z = 0, vx = s.vx, vz = s.vz, ang = s.a0, spin = s.spin;
+    const chips = (() => {
+      const r = A.rng(2231), out = [];
+      for (let i = 0; i < 12; i++) {
+        const side = i % 2 ? 1 : -1, sz = 1.6 + r() * 2.6;
+        out.push(settle({ d: r() * 0.05, x0: (r() - 0.5) * 8, z0: 0, h0: 0, vx: side * (60 + r() * 200), vy: -(140 + r() * 260), vz: (r() - 0.35) * 70, spin: (r() - 0.5) * 18, a0: r() * TAU,
+          pts: bitPoly(r, 5 + ((r() * 3) | 0), sz, 1.25), sz, e: 0.26 + r() * 0.1, mu: 620 + r() * 300 }));
+      }
+      return out;
+    })();
+    function bitAt(s, u) {
+      const v0 = Math.sqrt(s.vy * s.vy + 2 * GM * s.h0);
+      let t = u, x = s.x0, z = s.z0, vx = s.vx, vz = s.vz, ang = s.a0, spin = s.spin;
       for (let b = 0; b < 3; b++) {
-        const vy = s.vy * Math.pow(s.e, b), tf = (-2 * vy) / GM;
-        if (t < tf) { const h = -(vy * t + 0.5 * GM * t * t); return { x: x + vx * t, z: z + vz * t, h, ang: ang + spin * t }; }
+        const up = b === 0 ? -s.vy : v0 * Math.pow(s.e, b), hs = b === 0 ? s.h0 : 0, tf = b === 0 ? (up + v0) / GM : (2 * up) / GM;
+        if (t < tf) return { x: x + vx * t, z: z + vz * t, h: Math.max(0, hs + up * t - 0.5 * GM * t * t), ang: ang + spin * t };
         x += vx * tf; z += vz * tf; ang += spin * tf; t -= tf;
         vx *= 0.6; vz *= 0.6; spin *= 0.45;
       }
@@ -1604,12 +1706,17 @@
       g.fillStyle = rgba('#26323e', 0.2 * clamp(1 - p.h / 90));
       g.beginPath(); g.ellipse(gx + 1.5, gy + 1, s.sz * 1.1, 1.1, 0, 0, TAU); g.fill();
       const ca = Math.cos(p.ang), sa = Math.sin(p.ang);
-      g.beginPath();
-      s.pts.forEach((q, i) => { const X = gx + q[0] * ca - q[1] * sa, Y = y + (q[0] * sa + q[1] * ca) * fl; i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
-      g.closePath();
+      const Q = s.pts.map((q) => [gx + q[0] * ca - q[1] * sa, y + (q[0] * sa + q[1] * ca) * fl]);
+      g.beginPath(); Q.forEach((q, i) => (i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]))); g.closePath();
       const gr = g.createLinearGradient(gx - s.sz * 1.2, 0, gx + s.sz * 1.2, 0);
       gr.addColorStop(0, 'rgba(255,240,212,0.92)'); gr.addColorStop(0.45, 'rgba(180,202,226,0.55)'); gr.addColorStop(1, 'rgba(78,108,146,0.75)');
       g.fillStyle = gr; g.fill();
+      if (s.big) {
+        // 朝阳（左上）一侧的边亮起来
+        g.strokeStyle = 'rgba(255,238,204,0.9)'; g.lineWidth = 0.8; g.beginPath();
+        for (let k = 0; k < Q.length; k++) { const a = Q[k], b = Q[(k + 1) % Q.length]; if ((a[0] + b[0]) / 2 < gx - s.sz * 0.15 || (a[1] + b[1]) / 2 < y - s.sz * 0.3 * fl) { g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); } }
+        g.stroke();
+      }
     }
     // 冰粉：50 颗柔白细粉从撞击点扬起 15–40 px、向两侧散开 20–80 px，再慢慢落下，约 0.7 s 淡尽
     const POWDER = Array.from({ length: 50 }, (_, i) => ({
@@ -1737,14 +1844,15 @@
           if (pk > 0.01) {
             const pr = 24 + 60 * easeOut(Math.min(1, hu / 0.8));
             const lift = 10 * easeOut(Math.min(1, hu / 0.5)) - 8 * smooth((hu - 0.5) / 1.2);
-            g.globalAlpha = 0.4 * pk;
+            g.globalAlpha = 0.55 * pk;
             g.drawImage(dot('f2powder', '#f8f6f0', 0.35), hx - pr * 1.3, HY0 - pr * 0.6 - lift, pr * 2.6, pr * 1.0);
             g.globalAlpha = 1;
           }
           // 碎块与冰碴按远近（着地点的 y）排序后再画
           const items = [];
           FRAGS.forEach((f, i) => { const p = fragAt(f, hu); items.push([HY0 + 0.35 * p.z, 0, f, p, i]); });
-          for (const s of chips) { const u = hu - s.d; if (u >= 0) { const p = chipAt(s, u); items.push([HY0 + p.z * 0.35, 1, s, p]); } }
+          for (const s of SHARDS) { const u = hu - s.d; if (u >= 0) { const p = bitAt(s, u); items.push([HY0 + p.z * 0.35, 1, s, p]); } }
+          for (const s of chips) { const u = hu - s.d; if (u >= 0) { const p = bitAt(s, u); items.push([HY0 + p.z * 0.35, 1, s, p]); } }
           items.sort((a, b) => a[0] - b[0]);
           const glints = [];
           for (const it of items) {
@@ -2658,7 +2766,9 @@
         if (Y < -0.01) continue;
         const k = F / SZ, gp = stemPts(stemGeom(e0), false);
         const S = snowStrip(gp, grp.j0, grp.j1, grow, dX * k, -dY * k);
-        fillStrip(S, 0.97 * clamp((Y + 0.01) / 0.025));
+        // 只有一层薄霜的那几组（坡陡处几乎积不住雪）不成团：滑脱时化成雪粉，0.12 s 内淡掉，不画成一根飞出去的细线
+        const thin = clamp(grp.mass / 3);
+        fillStrip(S, 0.97 * clamp((Y + 0.01) / 0.025) * (thin > 0.6 ? 1 : thin * (1 - smooth(tau / 0.12))));
       }
       // 搭在丝巾那一折顶上的薄雪：丝巾起步滑动时被抖落
       const foldTop = (dp, th) => { const tx = Math.sin(th), ty = -Math.cos(th), nx = ty, ny = -tx, up = ny < 0 ? 1 : -1; return [dp[0] + nx * up * 3.2, dp[1] + ny * up * 3.2, Math.atan2(ty, tx)]; };

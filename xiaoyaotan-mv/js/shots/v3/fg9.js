@@ -1112,6 +1112,7 @@
       draw(g, c) {
         const t = c.lt, dur = c.dur;
         const e = events(c), M = getM(e), D = M.D;
+        XYT._f8dbg = { M, G, CL, e };
         const B = g.getTransform();
         // 镜头：整镜 1.00 → 1.07 缓推；远景视差慢、近景快
         const Z = 1 + 0.07 * smooth((t + 0.7) / (dur + 0.7));

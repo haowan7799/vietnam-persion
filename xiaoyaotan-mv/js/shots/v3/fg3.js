@@ -1432,24 +1432,32 @@
   })();
 
   // ============================================================
-  // c1_lotus：盛夏正午的荷塘，少年仰卧小舟，草帽盖脸、葫芦在怀，顺水漂；水珠从斜叶上滚落入水；一阵风从左向右掠过荷塘；
-  // 第17句第9字前后镜头缓缓降低，近处挺水的高荷叶随视差升起、挡住远处的小舟，只剩空水道上一道渐弱的 V 形水纹
+  // c1_lotus：盛夏正午的荷塘，少年仰卧小舟（草帽盖脸、葫芦在怀）顺水漂；第17句第1~4字各有一颗水珠从斜叶上滚落入水；第17句第5字一阵风掠过荷塘；
+  // 第17句第6字起镜头缓缓右移、同时降低：近处（1.6 m）一丛挺水荷叶按视差升起，挡住远处（9.5 m）的小舟；
+  // 左边一段水道始终空着，第17句第11字以后只剩空水道上一道从荷丛后拖出、渐渐淡去的 V 形水纹
   // ============================================================
   (function () {
     const FB = [0.259, 0.579, 0.979, 1.359, 2.179, 2.679, 3.099, 3.579, 3.859, 4.219, 4.859];
     // 平视略俯：地平线 y=430，焦距 650 像素，眼高水面上 1.4 m；水面上深度 d 处 y = 430 + 910/d
     const HZ = 430, F = 650, CH = 1.4, WD = 1;
     const yW = (d) => HZ + (F * CH) / d;
-    // 小舟：深 9.5 m（水道中线），船长 430、少年身高 132（船长约 3.3 倍身高，卧姿约 130 像素长）；向右漂 12 px/s
-    const BOAT = { x0: 790, d: 9.5, len: 430, h: 132, v: 12 };
+    // 小舟：深 9.5 m（水道中线），船长 460、少年身高 150（船长约 3.1 倍身高，卧姿约 150 像素长）；向右漂 12 px/s
+    const BOAT = { x0: 845, d: 9.5, len: 460, h: 150, v: 12 };
     BOAT.wl = yW(BOAT.d); BOAT.deck = BOAT.wl - 0.03 * BOAT.len;
-    // 镜头降低：第17句第5字后不久起、到第17句第11字后 0.2 s，眼高平滑降低 0.14 m（smoothstep）。
-    // 小舟长 430 像素、只漂 12 px/s，靠横向漂移一秒内只能多挡住 12 像素，挡不住；镜头降低时近处（1.5 m）的高荷叶比远处（9.5 m）的小舟多升起约 51 像素，
-    // 正好把卧在舟里的人和船身整条盖住。近叶升起最快约 33 px/s（≤ 35 px/s），叶形不变、不转动，只有 ±1.5° 以内的摇曳
-    const CAM_D = 0.14, CAM_T0 = 2.2;
-    let DC = 0; // 当前帧镜头降低了多少（米）
-    const up = (d) => (F * DC) / d; // 深度 d 处的物体随镜头降低而上移的像素
-    const yWc = (d) => HZ + (F * (CH - DC)) / d;
+    // 镜头：440 像素长的船只漂 12 px/s，靠横向的遮挡（前景再以 20 px/s 反向移动）挡住整条船要十几秒，一两秒内做不到；
+    // 船连人只有约 50 像素高，所以用竖向的视差：镜头降低 0.17 m，近处 1.6 m 的荷叶比 9.5 m 的小舟多升起约 58 像素，正好把船和人整条盖住。
+    // 同时向右平移 0.04 m（近叶向左移约 16 像素，远处几乎不动），整段读起来是镜头在动，不是荷叶自己立起来。
+    // 速度是梯形曲线（两端各 0.55 s 平滑加减速），近叶最快约 35 px/s；从第17句第6、7字之间起步，第17句第11字后 0.42 s 停稳
+    const CAM_X = 0.04, CAM_Y = 0.17, CAM_LEN = 2.55, CAM_RAMP = 0.55;
+    let CX = 0, CY = 0; // 当前帧镜头右移、降低了多少（米）
+    const offX = (d) => -(F * CX) / d, offY = (d) => -(F * CY) / d; // 深度 d 处的物体在画面上的位移
+    function camU(t, T0) {
+      const T = CAM_LEN, a = CAM_RAMP, tau = clamp(t - T0, 0, T), V = 1 / (T - a);
+      const ramp = (s) => V * (s / 2 - (a / (2 * Math.PI)) * Math.sin((Math.PI * s) / a));
+      if (tau <= a) return ramp(tau);
+      if (tau <= T - a) return ramp(a) + V * (tau - a);
+      return 1 - ramp(T - tau);
+    }
     const BANK_D = 45, BANK_Y = yW(BANK_D); // 远岸
     // 风：第17句第5字一阵风从左向右掠过荷塘（650 px/s 的风头，平滑起落）
     let T_GU = 2.179;
@@ -1459,26 +1467,30 @@
       if (tau <= 0) return 0;
       return smooth(tau / 0.3) * Math.exp(-Math.max(0, tau - 0.3) / 0.5);
     }
-    // 荷叶的摇曳：0.4 Hz，±1.1°，风过时再加一点（总共不超过 ±1.5°）
+    // 荷叶的摇曳：0.4 Hz，±1.1°，风过时再加一点（总共不超过 ±1.5°）；叶形不变
     const swayAng = (t, ph, x) => 0.019 * Math.sin(TAU * 0.4 * t + ph) + 0.007 * gust(x, t) * Math.sin(TAU * 1.1 * t + ph * 1.7);
 
-    // ---------- 荷叶贴图：俯视的圆叶（叶脉放射、叶缘微波、左上受光、叶缘一道墨色与一段亮边），画时按透视压扁 ----------
+    // ---------- 荷叶贴图：俯视的圆叶（叶缘起伏、叶脉放射、左上受光、叶缘一道墨色与一段亮边），画时按透视压扁 ----------
     const LP = {
       mid: { c: ['#d6e9a4', '#8fc384', '#4f996b', '#2e6c55'], vein: '#f0f7d2', rim: '#245446', lit: '#fdffe6', under: '#a3c0a6' },
       young: { c: ['#e4efb2', '#acd28d', '#6aa975', '#3f7d5c'], vein: '#f6fadc', rim: '#2f6450', lit: '#ffffee', under: '#b5cdb0' },
       deep: { c: ['#6f9b70', '#467a5a', '#2c5e4a', '#1b4235'], vein: '#9fc296', rim: '#11302a', lit: '#cfe8b2', under: '#557a63' },
+      // 带一层蜡粉的蓝绿叶
+      blue: { c: ['#c8e0b8', '#86b894', '#4f8a74', '#2d6050'], vein: '#e8f4dc', rim: '#1f4a3a', lit: '#f4ffe8', under: '#6f9886' },
       pale: { c: ['#eaefe2', '#d2ddcf', '#b8cabb', '#9ab0a0'], vein: '#f8faf4', rim: '#83a08e', lit: '#ffffff', under: '#c8d6c8' },
-      // 高过眼睛的叶看到的是叶背：偏灰的深绿，叶脉凸起、更明显
-      back: { c: ['#7f9c86', '#61846f', '#4a6e5d', '#355648'], vein: '#bcd2ba', rim: '#22403a', lit: '#d6e6cc', under: '#3f6050' },
+      // 叶背：偏灰的蓝绿，叶脉凸起、更明显
+      back: { c: ['#a9c2ae', '#86a693', '#66897a', '#4a6b60'], vein: '#dfece0', rim: '#2e4c45', lit: '#eef6e8', under: '#4f7064' },
     };
-    function paintLeafTop(q0, P, seed, blur) {
+    function paintLeafTop(q0, P, seed, blur, beads) {
       blurInto(q0, 256, 256, blur, (q) => {
         const cx = 128, cy = 128, R = 100, r = rng(seed * 97 + 13);
-        const p1 = r() * TAU, p2 = r() * TAU;
-        const rad = (a) => R * (1 + 0.022 * Math.sin(9 * a + p1) + 0.013 * Math.sin(15 * a + p2) + 0.008 * Math.sin(23 * a + p1 * 2));
+        const p1 = r() * TAU, p2 = r() * TAU, p3 = r() * TAU;
+        // 叶缘：几道低频的大起伏加细碎的小波（荷叶边），一处叶缘向下翻折、凹进去一块
+        const rad = (a) => R * (1 + 0.035 * Math.sin(3 * a + p3) + 0.04 * Math.sin(5 * a + p1) + 0.022 * Math.sin(8 * a + p2) + 0.012 * Math.sin(13 * a + p1 * 2) + 0.006 * Math.sin(23 * a + p2 * 3)
+          - 0.07 * Math.exp(-Math.pow(Math.atan2(Math.sin(a - p2), Math.cos(a - p2)) / 0.22, 2)));
         const path = () => {
           q.beginPath();
-          for (let i = 0; i <= 120; i++) { const a = (i / 120) * TAU, rr = rad(a); const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; i ? q.lineTo(x, y) : q.moveTo(x, y); }
+          for (let i = 0; i <= 160; i++) { const a = (i / 160) * TAU, rr = rad(a); const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; i ? q.lineTo(x, y) : q.moveTo(x, y); }
           q.closePath();
         };
         path();
@@ -1512,20 +1524,30 @@
         q.restore();
         path(); q.strokeStyle = rgba(P.rim, 0.55); q.lineWidth = 3; q.stroke();
         q.fillStyle = rgba(P.c[0], 0.85); q.beginPath(); q.arc(cx, cy, 6.5, 0, TAU); q.fill();
+        // 叶面上滚着的几颗水珠：下缘一弯暗影，左上一点高光
+        for (let i = 0; i < (beads || 0); i++) {
+          const a = r() * TAU, rr = R * (0.18 + 0.45 * r()), br = 3 + 3.5 * r();
+          const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+          q.fillStyle = rgba(P.rim, 0.35); q.beginPath(); q.ellipse(x + br * 0.25, y + br * 0.35, br, br * 0.9, 0, 0, TAU); q.fill();
+          q.fillStyle = 'rgba(236,248,240,0.75)'; q.beginPath(); q.arc(x, y, br, 0, TAU); q.fill();
+          q.fillStyle = 'rgba(255,255,255,0.95)'; q.beginPath(); q.arc(x - br * 0.35, y - br * 0.35, br * 0.38, 0, TAU); q.fill();
+        }
       });
     }
     // kind：调色；v：叶形变体（0..3）；blur：建缓存时的虚化（贴图像素，叶半径 100）
-    const leafSpr = (kind, v, blur) => K.cache('c1v3leaf_' + kind + v + '_' + blur, 256, 256, 0.75, (q) => paintLeafTop(q, LP[kind], v + 1, blur));
-    // 画一片叶：先画叶缘翻起的一圈叶背（偏灰的浅绿，在叶面下方略低处，显出杯状与厚度），再画压扁的叶面；pale 是风里叶色变浅的程度
+    const leafSpr = (kind, v, blur) => K.cache('c1v4leaf_' + kind + v + '_' + blur, 256, 256, 0.75, (q) => paintLeafTop(q, LP[kind], v + 1, blur, kind !== 'back' && kind !== 'pale' && v % 2 ? 3 : 0));
+    // 画一片叶：先画叶缘翻起的一圈叶背（在叶面下方略低处，显出杯状与厚度），再画压扁的叶面；pale 是风里叶色变浅的程度；cup<0 不画叶背边
     function blade(g, x, y, rx, ry, rot, kind, v, blur, pale, cup) {
       g.save(); g.translate(x, y); g.rotate(rot);
       const P = LP[kind];
-      if (!(cup < 0)) { g.fillStyle = P.under; g.beginPath(); g.ellipse(0, ry * (cup == null ? 0.2 : cup), rx * 0.985, ry, 0, 0, Math.PI); g.fill(); }
+      if (!(cup < 0)) { g.fillStyle = mix(P.under, P.c[3], 0.35); g.beginPath(); g.ellipse(0, ry * 0.55 * (cup == null ? 0.2 : cup), rx * 0.985, ry, 0, 0, Math.PI); g.fill(); }
       const sx = (rx * 128) / 100, sy = (ry * 128) / 100;
       g.drawImage(leafSpr(kind, v, blur), -sx, -sy, 2 * sx, 2 * sy);
       if (pale > 0.01) { g.globalAlpha *= Math.min(1, pale); g.drawImage(leafSpr('pale', v, blur), -sx, -sy, 2 * sx, 2 * sy); }
       g.restore();
     }
+    // 旋转后的椭圆最高点在中心以上多少像素
+    const topExt = (rx, ry, rot) => Math.hypot(rx * Math.sin(rot), ry * Math.cos(rot));
     // 叶梗：从水面（或画面下沿以下）升到叶心，略弯；背光一侧深、迎光一侧一道浅色
     function stalk(g, xb, yb, xt, yt, w) {
       const mx = xb + (xt - xb) * 0.25, my = (yb + yt) / 2;
@@ -1580,45 +1602,56 @@
     }
     const rollSpr = () => K.cache('c1v3roll', 48, 120, 1, paintRoll);
 
-    // ---------- 场景元素（屏幕坐标为镜头未降时；d 为深度，决定随镜头降低上移多少） ----------
-    // 近处挺水的高荷叶丛（1.5–1.8 m，略虚）：在水道前、小舟下方一字排开，叶顶刚在船身下沿附近；镜头降低时整丛升起挡住小舟
-    // x, y：叶心；rx, k：叶面横半径与压扁比；bx：叶梗入画处的 x
+    // ---------- 场景元素（屏幕坐标为镜头未动时；d 为深度，决定镜头移动时在画面上移多少） ----------
+    // 近处一丛挺水荷叶（1.6 m，略虚）：前排叶顶在 y≈522（刚在船的吃水线下，船身与人整条露在叶上），镜头降低后升到 y≈453，把船盖住；
+    // 后排（1.75 m）补前排叶与叶之间的凹口；下排（1.6 m）是更低处的叶；右边几片高叶与一卷嫩叶（1.7–1.9 m）先挡住船头将要漂进去的地方
+    // x：叶心；top：叶的最高点（由它算叶心 y）；rx, k：叶面横半径与压扁比；bx：叶梗入画处
+    const STAND_TOP = 522;
     const NEAR = [
-      { x: 1040, y: 552, rx: 104, k: 0.34, rot: 0.06, v: 1, d: 1.8, bx: 1018, ph: 2.4, cup: 0.22 },
-      { x: 700, y: 556, rx: 92, k: 0.36, rot: -0.07, v: 2, d: 1.8, bx: 690, ph: 0.8, cup: 0.2 },
-      { x: 870, y: 562, rx: 98, k: 0.35, rot: 0.03, v: 3, d: 1.8, bx: 880, ph: 4.0, cup: 0.22 },
-      { x: 640, y: 560, rx: 86, k: 0.37, rot: -0.1, v: 0, d: 1.5, bx: 624, ph: 1.6, cup: 0.24 },
-      { x: 790, y: 558, rx: 112, k: 0.35, rot: 0.05, v: 1, d: 1.5, bx: 774, ph: 3.1, cup: 0.22 },
-      { x: 950, y: 560, rx: 108, k: 0.36, rot: -0.04, v: 2, d: 1.5, bx: 962, ph: 5.2, cup: 0.22 },
-      { x: 1090, y: 548, rx: 96, k: 0.37, rot: 0.08, v: 3, d: 1.5, bx: 1104, ph: 0.3, cup: 0.24 },
-      { x: 720, y: 640, rx: 126, k: 0.33, rot: 0.04, v: 0, d: 1.5, bx: 708, ph: 2.0, cup: 0.2 },
-      { x: 1000, y: 650, rx: 120, k: 0.34, rot: -0.05, v: 3, d: 1.5, bx: 990, ph: 4.6, cup: 0.2 },
-      { x: 860, y: 700, rx: 132, k: 0.32, rot: 0.02, v: 2, d: 1.5, bx: 852, ph: 1.1, cup: 0.2 },
-    ].sort((a, b) => b.d - a.d || a.y - b.y);
-    // 近丛里一卷未展开的嫩叶（在船头以外，不挡小舟）
-    const NEAR_ROLL = { x: 1140, y: 470, h: 96, d: 1.6, ph: 3.7 };
-    // 右侧中近景（4.4–5 m）：两朵盛开的荷花（花径约 40 像素）立在高梗上，几片挺水叶
-    const RIGHT = [
-      { x: 1244, y: 510, rx: 40, k: 0.36, rot: 0.1, v: 2, d: 4.6, ph: 0.6 },
+      // 前排
+      { x: 698, top: STAND_TOP, rx: 96, k: 0.34, rot: -0.16, v: 0, kind: 'blue', d: 1.6, bx: 680, ph: 1.6, cup: 0.24, blur: 3.2 },
+      { x: 820, top: STAND_TOP, rx: 122, k: 0.24, rot: 0.06, v: 1, kind: 'young', d: 1.6, bx: 814, ph: 3.1, cup: 0.22, blur: 3.2 },
+      { x: 960, top: STAND_TOP, rx: 110, k: 0.38, rot: -0.08, v: 2, kind: 'mid', d: 1.6, bx: 968, ph: 5.2, cup: 0.22, blur: 3.2 },
+      { x: 1080, top: STAND_TOP, rx: 98, k: 0.28, rot: 0.12, v: 3, kind: 'blue', d: 1.6, bx: 1090, ph: 0.3, cup: 0.24, blur: 3.2 },
+      // 后排（补凹口）
+      { x: 760, top: STAND_TOP, rx: 72, k: 0.4, rot: 0.2, v: 2, kind: 'mid', d: 1.75, bx: 752, ph: 2.4, cup: 0.22, blur: 2.6 },
+      { x: 892, top: STAND_TOP, rx: 78, k: 0.3, rot: -0.12, v: 3, kind: 'young', d: 1.75, bx: 900, ph: 4.0, cup: 0.22, blur: 2.6 },
+      { x: 1022, top: STAND_TOP, rx: 70, k: 0.42, rot: 0.16, v: 0, kind: 'mid', d: 1.75, bx: 1014, ph: 0.8, cup: 0.22, blur: 2.6 },
+      // 中排：补在前排与下排之间（镜头降低后，船的吃水线一带正好在这一排后面，船身与倒影都不会从叶缝里露出来）
+      { x: 842, y: 598, rx: 112, k: 0.3, rot: 0.05, v: 2, kind: 'mid', d: 1.6, bx: 836, ph: 3.9, cup: 0.22, blur: 3.6 },
+      { x: 1000, y: 604, rx: 118, k: 0.28, rot: -0.06, v: 1, kind: 'young', d: 1.6, bx: 1010, ph: 0.6, cup: 0.22, blur: 3.6 },
+      // 下排：更低处的叶，倾角各不相同（有的朝镜头斜着，露出整面）
+      { x: 730, y: 640, rx: 128, k: 0.5, rot: 0.1, v: 3, kind: 'young', d: 1.6, bx: 718, ph: 2.0, cup: 0.2, blur: 4.2 },
+      { x: 1040, y: 656, rx: 140, k: 0.3, rot: -0.12, v: 1, kind: 'mid', d: 1.6, bx: 1044, ph: 4.6, cup: 0.2, blur: 4.2 },
+      { x: 1228, y: 616, rx: 110, k: 0.55, rot: 0.22, v: 2, kind: 'blue', d: 1.6, bx: 1240, ph: 3.5, cup: 0.22, blur: 4.2 },
+      { x: 890, y: 726, rx: 150, k: 0.36, rot: 0.04, v: 0, kind: 'mid', d: 1.6, bx: 882, ph: 1.1, cup: 0.2, blur: 4.6 },
+      // 右边的高叶：一片高举的叶（船头将要漂进它下面），一片在它下方补齐
+      { x: 1180, y: 470, rx: 92, k: 0.5, rot: 0.24, v: 1, kind: 'young', d: 1.7, bx: 1172, ph: 5.8, cup: 0.24, blur: 2.8 },
+      { x: 1176, top: STAND_TOP, rx: 88, k: 0.36, rot: 0.14, v: 0, kind: 'mid', d: 1.7, bx: 1196, ph: 2.9, cup: 0.22, blur: 2.8 },
     ];
+    for (const L of NEAR) { L.ry = L.rx * L.k; if (L.top != null) L.y = L.top + topExt(L.rx, L.ry, L.rot) + 1.5; }
+    NEAR.sort((a, b) => b.d - a.d || a.y - b.y);
+    // 一卷未展开的嫩叶（船头前方，高叶左下）
+    const NEAR_ROLL = { x: 1128, y: 474, h: 116, d: 1.7, ph: 3.7 };
+    // 右边高梗上的两朵盛开的荷花（花径约 50 像素）与一个花苞（3 m）
     const FLOWERS = [
-      { x: 1164, y: 456, s: 40, d: 4.4, lean: -0.05, ph: 1.2 },
-      { x: 1252, y: 466, s: 42, d: 4.8, lean: 0.06, ph: 3.4 },
+      { x: 1214, y: 404, s: 54, d: 3.0, lean: -0.05, ph: 1.2 },
+      { x: 1262, y: 442, s: 46, d: 3.1, lean: 0.06, ph: 3.4 },
     ];
-    const RBUD = { x: 1106, y: 462, s: 26, d: 4.2, ph: 2.2 };
-    // 四片斜着的叶：水珠从叶心滚向最低的叶缘，脱落、落进叶旁的空水面（第17句第1~4字各一颗，位置各不相同）
-    // lo：最低叶缘点相对叶心的方向（屏幕上），水珠在那里脱落
+    const RBUD = { x: 1140, y: 430, s: 30, d: 2.9, ph: 2.2 };
+    // 四片斜着的叶（左边的空水面上方，4–5 m）：水珠从叶心滚向最低的叶缘，脱落、落进叶旁的空水面（第17句第1~4字各一颗，位置各不相同）
+    // lo：最低叶缘点相对叶心的方向（叶面坐标），水珠在那里脱落
     const DROPS = [
-      { x: 1214, y: 548, rx: 38, k: 0.42, rot: 0.32, v: 1, d: 4.6, lo: [0.92, 0.38], ph: 0.4 },
-      { x: 470, y: 556, rx: 32, k: 0.42, rot: 0.28, v: 3, d: 5.6, lo: [0.9, 0.42], ph: 2.1 },
-      { x: 402, y: 586, rx: 40, k: 0.42, rot: 0.3, v: 0, d: 4.3, lo: [0.9, 0.4], ph: 3.3 },
-      { x: 1180, y: 594, rx: 32, k: 0.42, rot: -0.3, v: 2, d: 5.0, lo: [-0.9, 0.42], ph: 4.4 },
+      { x: 510, y: 590, rx: 44, k: 0.42, rot: 0.3, v: 1, d: 4.2, lo: [0.92, 0.38], ph: 0.4 },
+      { x: 420, y: 574, rx: 36, k: 0.42, rot: 0.28, v: 3, d: 5.2, lo: [0.9, 0.42], ph: 2.1 },
+      { x: 470, y: 634, rx: 50, k: 0.42, rot: -0.3, v: 0, d: 3.6, lo: [-0.9, 0.4], ph: 3.3 },
+      { x: 588, y: 566, rx: 34, k: 0.42, rot: -0.28, v: 2, d: 5.0, lo: [-0.9, 0.42], ph: 4.4 },
     ];
     for (const D of DROPS) {
       D.ry = D.rx * D.k;
       D.yWater = yW(D.d) + 4; // 落点：叶缘正下方的水面
     }
-    // 左侧（歌词区）近处的大荷叶（约 1.7 m，虚化、偏深，叶脉与左上亮边仍看得见）；高处的叶子看到叶背
+    // 左侧（歌词区）近处的大荷叶（约 1.7 m，虚化、偏深，叶脉与左上亮边仍看得见）
     const LEFT_D = 1.7;
 
     // ---------- 静态远景：天空、云、远山与柳岸、水面 ----------
@@ -1668,50 +1701,46 @@
       }
     }
     // 远景（透明）：两层青山（越远越淡越蓝，山脚化进薄雾）、柳岸、柳梢下的一层薄雾
-    const FAR_Y0 = 300, FAR_H = BANK_Y + 8 - 300;
+    const FAR_Y0 = 300, FAR_H = BANK_Y + 8 - 300, FAR_W = 1290;
     function paintFar(g) {
       g.translate(0, -FAR_Y0);
       const hill = (pts, c0, c1) => {
-        g.beginPath(); g.moveTo(-20, BANK_Y + 4); smoothPath(g, pts, false, true); g.lineTo(1300, BANK_Y + 4); g.closePath();
+        g.beginPath(); g.moveTo(-20, BANK_Y + 4); smoothPath(g, pts, false, true); g.lineTo(1310, BANK_Y + 4); g.closePath();
         const gr = g.createLinearGradient(0, 330, 0, BANK_Y); gr.addColorStop(0, c0); gr.addColorStop(1, c1);
         g.fillStyle = gr; g.fill();
       };
-      blurInto(g, 1280, BANK_Y + 10, 1.4, (q) => {
+      blurInto(g, FAR_W, BANK_Y + 10, 1.4, (q) => {
         const og = g; g = q;
-        hill([[-20, 384], [120, 356], [270, 372], [430, 338], [580, 364], [720, 348], [880, 326], [1030, 356], [1180, 340], [1300, 362]], 'rgba(170,200,196,0.85)', 'rgba(226,236,228,0.4)');
-        hill([[-20, 406], [170, 392], [340, 400], [520, 384], [700, 398], [890, 380], [1070, 396], [1300, 388]], 'rgba(146,184,170,0.9)', 'rgba(214,230,220,0.55)');
+        hill([[-20, 384], [120, 356], [270, 372], [430, 338], [580, 364], [720, 348], [880, 326], [1030, 356], [1180, 340], [1310, 362]], 'rgba(170,200,196,0.85)', 'rgba(226,236,228,0.4)');
+        hill([[-20, 406], [170, 392], [340, 400], [520, 384], [700, 398], [890, 380], [1070, 396], [1310, 388]], 'rgba(146,184,170,0.9)', 'rgba(214,230,220,0.55)');
         g = og;
       });
-      // 柳岸
-      g.fillStyle = '#7a9a6a'; g.fillRect(-20, BANK_Y - 2.5, 1320, 4);
+      g.fillStyle = '#7a9a6a'; g.fillRect(-20, BANK_Y - 2.5, FAR_W + 40, 4);
       drawWillows(g, false);
-      // 柳梢下的薄雾带（远处的空气透视）
       const mg = g.createLinearGradient(0, BANK_Y - 34, 0, BANK_Y + 2);
       mg.addColorStop(0, 'rgba(246,244,232,0)'); mg.addColorStop(0.6, 'rgba(246,244,232,0.5)'); mg.addColorStop(1, 'rgba(246,244,232,0.25)');
-      g.fillStyle = mg; g.fillRect(0, BANK_Y - 34, 1280, 37);
+      g.fillStyle = mg; g.fillRect(0, BANK_Y - 34, FAR_W, 37);
     }
-    // 水面（不透明，比画面多出 100 行：镜头降低时水面按地平线纵向压缩）：映着天光，近处偏深；柳影、远处成片的浮叶、水道、近处的浮叶
-    const WY0 = Math.floor(BANK_Y) - 2, WH = 720 + 100 - WY0;
-    const OPEN = [[470 + 30, 5.6], [402 + 36, 4.3], [1214 + 35, 4.6], [1180 - 29, 5.0]]; // 水珠落点：周围留出空水面
+    // 水面（不透明，比画面宽 32 像素、高 100 行：镜头右移时近处的水面向左错开，降低时按地平线纵向压缩）：
+    // 映着天光，近处偏深；柳影、远处成片的浮叶、水道、近处平躺在水面上的浮叶
+    const WY0 = Math.floor(BANK_Y) - 2, WH = 720 + 100 - WY0, WW = 1312;
     function paintWater(g) {
       g.translate(0, -WY0);
       const gr = g.createLinearGradient(0, WY0, 0, WY0 + WH);
       gr.addColorStop(0, '#eaf1e5'); gr.addColorStop(0.07, '#dbece4'); gr.addColorStop(0.28, '#bfe0d5'); gr.addColorStop(0.6, '#9ccbbb'); gr.addColorStop(1, '#77ae9d');
-      g.fillStyle = gr; g.fillRect(0, WY0, 1280, WH);
+      g.fillStyle = gr; g.fillRect(0, WY0, WW, WH);
       // 柳影：以岸线为轴翻转，偏暗、略模糊，带横向的碎波
-      blurInto(g, 1280, WY0 + WH, 1.6, (q) => {
-        const og = g; g = q;
-        q.save(); q.beginPath(); q.rect(0, BANK_Y + 1, 1280, 110); q.clip();
+      blurInto(g, WW, WY0 + WH, 1.6, (q) => {
+        q.save(); q.beginPath(); q.rect(0, BANK_Y + 1, WW, 110); q.clip();
         drawWillows(q, true);
         q.restore();
-        g = og;
       });
       g.strokeStyle = 'rgba(236,246,238,0.35)'; g.lineWidth = 1;
-      for (let y = BANK_Y + 4; y < BANK_Y + 70; y += 3.2) { g.beginPath(); g.moveTo(0, y); g.lineTo(1280, y); g.stroke(); }
+      for (let y = BANK_Y + 4; y < BANK_Y + 70; y += 3.2) { g.beginPath(); g.moveTo(0, y); g.lineTo(WW, y); g.stroke(); }
       const r = rng(808);
       // 远处成片的浮叶（14–40 m）：扁椭圆，越远越扁越密
       for (let i = 0; i < 420; i++) {
-        const d = 14 + Math.pow(r(), 1.3) * 26, x = -40 + r() * 1360, rad = 0.2 + 0.18 * r();
+        const d = 14 + Math.pow(r(), 1.3) * 26, x = -40 + r() * 1400, rad = 0.2 + 0.18 * r();
         const rx = (F * rad) / d, ry = rx * (CH / d) * (1.05 + 0.25 * r()), y = yW(d);
         g.fillStyle = r() < 0.5 ? 'rgba(102,160,112,0.9)' : 'rgba(84,144,100,0.9)';
         g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill();
@@ -1720,34 +1749,37 @@
       }
       // 远处的几点荷花
       for (let i = 0; i < 26; i++) {
-        const d = 15 + r() * 22, x = r() * 1280, s = (F * 0.22) / d;
+        const d = 15 + r() * 22, x = r() * 1300, s = (F * 0.22) / d;
         g.drawImage(flowerSpr(), x - s / 2, yW(d) - s * 1.3, s, s * 0.875);
       }
       // 水道（8.3–12 m）：开阔、映天光，几道细横纹
       const c0 = yW(12.2), c1 = yW(8.2);
       const cg = g.createLinearGradient(0, c0, 0, c1);
       cg.addColorStop(0, 'rgba(240,248,240,0.0)'); cg.addColorStop(0.35, 'rgba(240,248,240,0.32)'); cg.addColorStop(1, 'rgba(240,248,240,0.12)');
-      g.fillStyle = cg; g.fillRect(0, c0, 1280, c1 - c0);
+      g.fillStyle = cg; g.fillRect(0, c0, WW, c1 - c0);
       g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1;
-      for (let y = c0 + 3; y < c1; y += 4.5) { const o = 40 * Math.sin(y * 0.9); g.beginPath(); g.moveTo(o, y); g.lineTo(1280 + o, y); g.stroke(); }
-      // 近处的浮叶（3.3–8 m）：平躺在水面上的扁椭圆（压扁比 = 视线与水面的夹角，约 0.2–0.4），有的叶缘翻起一角；水珠落点与水道留空
-      for (let i = 0; i < 70; i++) {
-        const d = 3.3 + Math.pow(r(), 0.9) * 4.7, x = 330 + r() * 990, rad = 0.17 + 0.13 * r();
-        const rx = (F * rad) / d, ry = rx * (CH / d) * (1.0 + 0.15 * r()), y = yW(d), rot = (r() - 0.5) * 0.12, v = (r() * 4) | 0, curl = r() < 0.25;
-        if (OPEN.some(([ox, od]) => Math.abs(x - ox) < rx + 52 && Math.abs(y - yW(od)) < ry + 18)) continue;
-        if (x > 560 && x < 1140) continue; // 近丛下方（被近丛挡住）不画
+      for (let y = c0 + 3; y < c1; y += 4.5) { const o = 40 * Math.sin(y * 0.9); g.beginPath(); g.moveTo(o, y); g.lineTo(WW + o, y); g.stroke(); }
+      // 近处的浮叶（3.3–8 m）：平躺在水面上的扁椭圆（压扁比 = 视线与水面的夹角，约 0.2–0.45），有的叶缘翻起一角；
+      // 水珠落点四周留空；左边靠水道的一条（6.5 m 以外）留空，镜头降低后水道下缘仍是空的；近丛下面（被挡住）不画
+      const OPEN = DROPS.map((D) => [D.x + D.lo[0] * D.rx * 1.05, D.d]);
+      for (let i = 0; i < 80; i++) {
+        const d = 3.3 + Math.pow(r(), 0.9) * 4.7, x = 330 + r() * 1000, rad = 0.17 + 0.13 * r();
+        const rx = (F * rad) / d, ry = rx * (CH / d) * (1.0 + 0.15 * r()), y = yW(d), rot = (r() - 0.5) * 0.14, v = (r() * 4) | 0, curl = r() < 0.3;
+        if (OPEN.some(([ox, od]) => Math.abs(x - ox) < rx + 56 && Math.abs(y - yW(od)) < ry + 22)) continue;
+        if (x > 630 && x < 1180) continue;
+        if (x < 640 && d > 6.5) continue;
         g.fillStyle = 'rgba(40,96,80,0.22)';
         g.beginPath(); g.ellipse(x + rx * 0.06, y + ry * 0.3, rx, ry, rot, 0, TAU); g.fill();
-        blade(g, x, y, rx, ry, rot, r() < 0.5 ? 'mid' : 'young', v, 0.6, 0, curl ? 0.32 : 0.12);
+        blade(g, x, y, rx, ry, rot, r() < 0.5 ? 'mid' : 'young', v, 0.6, 0, curl ? 0.34 : 0.12);
       }
     }
-    // 远岸以外、水道对面的挺水叶与荷花（12–24 m）：一张透明贴图；风里叶色偏浅的一张
-    const MID_Y0 = 440, MID_H = 80, MID_D = 15;
+    // 水道对面的挺水叶与荷花（12–24 m）：一张透明贴图；风里叶色偏浅的一张
+    const MID_Y0 = 440, MID_H = 80, MID_D = 15, MID_W = 1296;
     function paintMid(g, pale) {
       g.translate(0, -MID_Y0);
       const r = rng(515), items = [];
       for (let i = 0; i < 90; i++) {
-        const d = 12.4 + Math.pow(r(), 1.2) * 12, x = -20 + r() * 1320, hgt = 0.25 + 0.7 * r(), R = 0.18 + 0.14 * r();
+        const d = 12.4 + Math.pow(r(), 1.2) * 12, x = -20 + r() * 1336, hgt = 0.25 + 0.7 * r(), R = 0.18 + 0.14 * r();
         items.push({ d, x, hgt, R, k: 0.3 + 0.2 * r(), rot: (r() - 0.5) * 0.4, v: (r() * 4) | 0, fl: r() < 0.12 });
       }
       items.sort((a, b) => b.d - a.d);
@@ -1759,22 +1791,20 @@
         else blade(g, it.x, yc, rx, rx * it.k, it.rot, pale ? 'pale' : 'mid', it.v, 0.6, 0, 0.25);
       }
     }
-    // 左侧（歌词区）的大荷叶：透明贴图（比画面高出 80 行：镜头降低时下面的部分升进画面）
-    const LEFT_W = 400, LEFT_H = 820;
+    // 左侧（歌词区）的大荷叶：透明贴图（比画面高出 140 行：镜头降低时下面的部分升进画面）。
+    // 四片大小、倾角各不相同、被画框裁切的大叶：最高的一片斜举，看到的是叶背；中间一片陡斜着露出整面；一片杯状的大叶；最低一片几乎平展
+    const LEFT_W = 420, LEFT_H = 860;
     function paintLeft(g, pale) {
       const kind = pale ? 'pale' : 'deep';
-      // 叶梗（从画面下沿以下升起）
-      for (const [xb, xt, yt, w] of [[150, 96, 230, 9], [250, 214, 440, 8], [70, 70, 560, 10], [300, 236, 640, 8], [330, 312, 300, 5]]) stalk(g, xb, LEFT_H + 10, xt, yt, w);
-      // 高处的一片：叶面朝下斜着，看到的是偏灰绿的叶背（叶脉明显）
-      g.save(); g.globalAlpha = 0.96;
-      blade(g, 96, 228, 190, 96, -0.3, pale ? 'pale' : 'back', 1, 3, 0, -1);
+      for (const [xb, xt, yt, w] of [[150, 84, 186, 9], [270, 214, 330, 7], [96, 134, 500, 10], [40, 30, 730, 11], [340, 330, 268, 5]]) stalk(g, xb, LEFT_H + 10, xt, yt, w);
+      blade(g, 214, 330, 150, 82, 0.34, kind, 3, 3.5, 0, 0.2);
+      g.save(); g.globalAlpha = 0.97;
+      blade(g, 84, 186, 214, 98, -0.3, pale ? 'pale' : 'back', 1, 4, 0, -1);
       g.restore();
-      blade(g, 214, 440, 150, 64, 0.14, kind, 2, 3, 0, 0.24);
-      blade(g, 70, 560, 210, 92, -0.08, kind, 0, 3, 0, 0.22);
-      blade(g, 236, 640, 160, 62, 0.16, kind, 3, 3, 0, 0.24);
-      blade(g, 90, 770, 230, 96, 0.04, kind, 1, 3, 0, 0.2);
+      blade(g, 134, 500, 226, 92, 0.1, kind, 2, 3.5, 0, 0.3);
+      blade(g, 30, 730, 262, 104, -0.05, kind, 0, 4, 0, 0.2);
       // 一个粉色花苞：打破大片的深绿
-      g.save(); g.translate(312, 300); g.rotate(0.12);
+      g.save(); g.translate(330, 268); g.rotate(0.1);
       g.drawImage(budSpr(), -18, -40, 36, 40);
       g.restore();
     }
@@ -1793,27 +1823,33 @@
       RBG.setTransform(S, 0, 0, S, 0, 0); RBG.globalAlpha = 1; RBG.globalCompositeOperation = 'source-over';
       return RBG;
     }
+    // 船身是晒旧的浅木色，人是深色剪影（轮廓光在迎着太阳的左侧），在船上、在亮的水道前都看得清
     function drawBoatAndMan(g, bx, by, t, wind) {
-      const opts = { body: '#4a3826', rim: '#fff4dc', rimSide: -1 };
+      const opts = { body: '#6e5439', rim: '#fff4dc', rimSide: -1 };
       const m = XYT.sil.boat(g, bx, by, BOAT.len, t, Object.assign({ layer: 'back' }, opts));
-      XYT.sil.draw(g, 'youth', 'lieBoat', bx + 6, by, BOAT.h, t + 0.7, { facing: 1, boat: m, wind, windDir: WD, body: '#262b30', rim: '#fff4dc', rimSide: -1, rimWidth: 1.3 });
+      XYT.sil.draw(g, 'youth', 'lieBoat', bx + 6, by, BOAT.h, t + 0.7, { facing: 1, boat: m, wind, windDir: WD, body: '#1f2328', rim: '#fff6e0', rimSide: -1, rimWidth: 1.5 });
       XYT.sil.boat(g, bx, by, BOAT.len, t, Object.assign({ layer: 'front' }, opts));
       return m;
     }
-    // 水面闪光点：水道与空水面上的日光碎点（世界坐标 x、深度 d），慢闪，淡入淡出
+    // 水面闪光点：水道与空水面上的日光碎点（世界坐标 x、深度 d），慢闪，淡入淡出；另有几道缓缓漂移的细亮纹
     const GLINTS = (() => {
       const r = rng(5), out = [];
-      for (let i = 0; i < 64; i++) {
+      for (let i = 0; i < 72; i++) {
         let x, d;
-        if (i < 40) { d = 8.4 + r() * 3.6; x = 360 + r() * 920; } else if (i < 54) { d = 3.6 + r() * 3.6; x = 370 + r() * 200; } else { d = 4 + r() * 3; x = 1150 + r() * 130; }
+        if (i < 44) { d = 8.4 + r() * 3.6; x = 360 + r() * 940; } else if (i < 60) { d = 3.6 + r() * 3.0; x = 370 + r() * 220; } else { d = 4 + r() * 3; x = 1150 + r() * 140; }
         out.push({ x, d, ph: r() * TAU, f: 0.35 + 0.45 * r(), s: 1.2 + 1.6 * r(), i });
       }
+      return out;
+    })();
+    const STREAKS = (() => {
+      const r = rng(77), out = [];
+      for (let i = 0; i < 18; i++) out.push({ x: 380 + r() * 900, d: 8.6 + r() * 3.2, len: 10 + r() * 18, ph: r() * TAU, f: 0.12 + 0.1 * r() });
       return out;
     })();
     // 竖条叠色：按风力 w(x) 把“风里”那张贴图分成竖条叠到“静”的上面（alpha 取条中心的风力）
     function paleStrips(g, img, ox, oy, w, h, t, amp) {
       const k = img.width / img.lw;
-      for (let x = Math.max(0, ox); x < Math.min(1280, ox + w); x += 32) {
+      for (let x = Math.max(0, Math.floor(ox)); x < Math.min(1280, ox + w); x += 32) {
         const a = amp * gust(x + 16, t);
         if (a < 0.01) continue;
         const sw = Math.min(32, ox + w - x);
@@ -1830,18 +1866,29 @@
         const tc = (k) => charLt(c, k, 0, FB);
         T_GU = tc(4);
         const tKong = tc(10);
-        DC = CAM_D * smooth((t - CAM_T0) / (tKong + 0.2 - CAM_T0));
-        const kz = (CH - DC) / CH; // 水面纵向压缩
-        // 天空（不透明）与向右缓移的云（约 4 px/s）
+        // 镜头移动：第17句第11字后 0.42 s 停稳，往前推 CAM_LEN 起步（在第17句第6、7字之间）
+        const u = camU(t, tKong + 0.42 - CAM_LEN);
+        CX = CAM_X * u; CY = CAM_Y * u;
+        const kz = (CH - CY) / CH; // 镜头降低时水面纵向压缩
+        // 天空（不透明，无穷远不动）与向右缓移的云（约 4 px/s）
         g.drawImage(ocache('c1v3sky', 1280, Math.ceil(BANK_Y) + 4, paintSky), 0, 0, 1280, Math.ceil(BANK_Y) + 4);
         g.drawImage(K.cache('c1v3cloud', 1800, 320, 0.5, paintClouds), -330 + 4 * (t + 1), -10, 1800, 320);
-        // 水面：按地平线纵向压缩（镜头降低时近处的水面向地平线收拢）
-        const wimg = ocache('c1v3water', 1280, WH, paintWater), wk = wimg.width / 1280;
+        // 水面：按地平线纵向压缩；镜头右移时按每行的深度向左错开（分成横条贴，条与条之间错开不到一像素）
+        const wimg = ocache('c1v4water', WW, WH, paintWater), wk = wimg.width / WW;
         const wy0 = HZ + (WY0 - HZ) * kz;
         const rows = Math.min(WH, (720 - wy0) / kz + 2);
-        g.drawImage(wimg, 0, 0, wimg.width, rows * wk, 0, wy0, 1280, rows * kz);
-        // 远山与柳岸（45 m 以外，镜头降低时只升起不到 2 像素）
-        g.drawImage(K.cache('c1v3far', 1280, FAR_H, 1, paintFar), 0, FAR_Y0 - up(BANK_D), 1280, FAR_H);
+        if (CX < 1e-4) g.drawImage(wimg, 0, 0, wimg.width, rows * wk, 0, wy0, WW, rows * kz);
+        else {
+          const NB = 28;
+          for (let i = 0; i < NB; i++) {
+            const r0 = Math.floor((rows * i) / NB), r1 = i === NB - 1 ? rows : Math.floor((rows * (i + 1)) / NB);
+            if (r1 <= r0) continue;
+            const ys = WY0 + (r0 + r1) / 2, sh = (-CX * (ys - HZ)) / CH;
+            g.drawImage(wimg, 0, r0 * wk, wimg.width, (r1 - r0) * wk, sh, HZ + (WY0 + r0 - HZ) * kz, WW, (r1 - r0) * kz);
+          }
+        }
+        // 远山与柳岸（45 m，镜头移动时只移动一两个像素）
+        g.drawImage(K.cache('c1v4far', FAR_W, FAR_H, 1, paintFar), offX(BANK_D), FAR_Y0 + offY(BANK_D), FAR_W, FAR_H);
         // 风过水面：被风揉皱的水面映出更多天光，一道偏灰的浅色带随风头向右扫过
         if (t > T_GU && t < T_GU + 4.5) {
           for (let x = 0; x < 1280; x += 32) {
@@ -1851,28 +1898,38 @@
           }
         }
         // 水道对面的挺水叶与荷花
-        const m0 = K.cache('c1v3mid0', 1280, MID_H, 1, (q) => paintMid(q, false));
-        const myy = MID_Y0 - up(MID_D);
-        g.drawImage(m0, 0, myy, 1280, MID_H);
-        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v3mid1', 1280, MID_H, 1, (q) => paintMid(q, true)), 0, myy, 1280, MID_H, t, 0.65);
-        // 水道上的闪光点（随拍轻轻提亮，淡入淡出）
-        const bx = BOAT.x0 + BOAT.v * t, by = BOAT.deck - up(BOAT.d), wl = BOAT.wl - up(BOAT.d);
+        const m0 = K.cache('c1v4mid0', MID_W, MID_H, 1, (q) => paintMid(q, false));
+        const mxx = offX(MID_D), myy = MID_Y0 + offY(MID_D);
+        g.drawImage(m0, mxx, myy, MID_W, MID_H);
+        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v4mid1', MID_W, MID_H, 1, (q) => paintMid(q, true)), mxx, myy, MID_W, MID_H, t, 0.65);
+        // 小舟在画面上的位置（水道 9.5 m）
+        const bx = BOAT.x0 + BOAT.v * t + offX(BOAT.d), by = BOAT.deck + offY(BOAT.d), wl = BOAT.wl + offY(BOAT.d);
+        // 水面的闪光点与细亮纹（随拍轻轻提亮，淡入淡出）
         {
           const bb = 0.65 + 0.35 * be(c, 0.35);
           g.save(); g.globalCompositeOperation = 'lighter';
+          const spr = K.cache('c1v3glint', 16, 8, 2, (q) => {
+            q.globalAlpha = 0.4; q.drawImage(glowSpr('#fffbe8'), 1, 0.8, 14, 6.4); q.globalAlpha = 1;
+            q.fillStyle = 'rgba(255,252,236,1)'; q.beginPath(); q.ellipse(8, 4, 3.2, 0.9, 0, 0, TAU); q.fill();
+          });
           for (const G of GLINTS) {
-            const gy = yWc(G.d), gx = G.x;
+            const gy = HZ + ((F * CH) / G.d) * kz, gx = G.x + offX(G.d);
             // 船身后面的闪光点按离船的远近平滑压掉
             const hide = G.d > BOAT.d - 0.3 ? smooth((Math.abs(gx - bx) - BOAT.len * 0.52) / 30) : 1;
             const tw = Math.pow(Math.max(0, Math.sin(TAU * G.f * t + G.ph)), 3) * bb * hide;
             if (tw < 0.03) continue;
             const s = G.s * Math.min(1.6, 6 / G.d + 0.4);
-            const spr = K.cache('c1v3glint', 16, 8, 2, (q) => {
-              q.globalAlpha = 0.4; q.drawImage(glowSpr('#fffbe8'), 1, 0.8, 14, 6.4); q.globalAlpha = 1;
-              q.fillStyle = 'rgba(255,252,236,1)'; q.beginPath(); q.ellipse(8, 4, 3.2, 0.9, 0, 0, TAU); q.fill();
-            });
             g.globalAlpha = Math.min(1, 0.9 * tw);
             g.drawImage(spr, gx - 4 * s, gy - 2 * s, 8 * s, 4 * s);
+          }
+          // 细亮纹：缓缓左右漂移、明灭（水面的微光），船身后面的不画
+          for (const S of STREAKS) {
+            const gx = S.x + offX(S.d) + 7 * Math.sin(TAU * S.f * t + S.ph), gy = HZ + ((F * CH) / S.d) * kz;
+            const hide = smooth((Math.abs(gx - bx) - BOAT.len * 0.52) / 30);
+            const a = (0.18 + 0.14 * Math.sin(TAU * S.f * 1.7 * t + S.ph * 2)) * hide;
+            if (a < 0.02) continue;
+            g.globalAlpha = a;
+            g.drawImage(spr, gx - S.len / 2, gy - 1.6, S.len, 3.2);
           }
           g.globalAlpha = 1;
           g.restore();
@@ -1896,46 +1953,30 @@
           g.drawImage(RF, 0, (wlB - k - 1) * S, RF.width, S, ox + dx, wlr + k, RBW, 1);
         }
         g.globalAlpha = 1;
-        // 船尾后的 V 形水纹：两道从船尾向后张开的细纹，离船越远越淡；第17句第11字以后在空水道上 2 s 内渐弱
+        // 船尾后的 V 形水纹：两道从船尾向后张开的细纹，离船越远越淡；第17句第11字前后起 2 s 内渐弱，镜头结束时仍留一点
         {
-          const stern = bx - BOAT.len * 0.47, L = 360;
-          const wf = 1 - 0.82 * smooth((t - tKong + 0.2) / 2.0);
-          for (const [col, lw, dy, a] of [['255,255,250', 1.7, 0, 0.75], ['46,104,98', 1.3, 1.6, 0.45]]) {
+          const stern = bx - BOAT.len * 0.47, L = 380;
+          const wf = 1 - 0.58 * smooth((t - tKong + 0.2) / 2.4);
+          for (const [col, lw, dy, a] of [['255,255,250', 2.2, 0, 0.9], ['46,104,98', 1.5, 1.8, 0.55]]) {
             const gr = g.createLinearGradient(stern, 0, stern - L, 0);
-            gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.05, `rgba(${col},${(a * wf).toFixed(3)})`); gr.addColorStop(0.5, `rgba(${col},${(a * 0.4 * wf).toFixed(3)})`); gr.addColorStop(1, `rgba(${col},0)`);
+            gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.05, `rgba(${col},${(a * wf).toFixed(3)})`); gr.addColorStop(0.5, `rgba(${col},${(a * 0.6 * wf).toFixed(3)})`); gr.addColorStop(1, `rgba(${col},0)`);
             g.strokeStyle = gr; g.lineWidth = lw;
             g.beginPath();
             for (const sgn of [-1, 1]) {
               for (let s0 = 0; s0 <= L; s0 += 10) {
-                const y = wl + 1 + dy + sgn * (1 + s0 * (sgn > 0 ? 0.06 : 0.035)) + 0.8 * Math.sin(s0 * 0.12 - t * 2);
+                const y = wl + 1 + dy + sgn * (1 + s0 * (sgn > 0 ? 0.06 : 0.035) * kz) + 0.8 * Math.sin(s0 * 0.12 - t * 2);
                 s0 ? g.lineTo(stern - s0, y) : g.moveTo(stern - s0, y);
               }
             }
             g.stroke();
           }
         }
-        g.drawImage(RB, ox, oy, RBW, RBH);
-        // 右侧中近景：挺水叶、两朵荷花与一个花苞（随风轻摇，±1.5° 以内）
-        for (const L of RIGHT) {
-          const dy = up(L.d), a = swayAng(t, L.ph, L.x);
-          stalk(g, L.x - 4, yWc(L.d), L.x, L.y - dy, Math.max(1.4, (F * 0.012) / L.d));
-          blade(g, L.x, L.y - dy, L.rx, L.rx * L.k, L.rot + a, 'mid', L.v, 0.8, 0.6 * gust(L.x, t), 0.24);
-        }
-        for (const Fl of [...FLOWERS, RBUD]) {
-          const dy = up(Fl.d), a = swayAng(t, Fl.ph, Fl.x) + (Fl.lean || 0);
-          const yb = yWc(Fl.d), tx = Fl.x + Math.sin(a) * (yb - Fl.y), ty = Fl.y - dy;
-          g.strokeStyle = '#557f4c'; g.lineWidth = Math.max(1.2, (F * 0.012) / Fl.d); g.lineCap = 'round';
-          g.beginPath(); g.moveTo(Fl.x, yb); g.quadraticCurveTo(Fl.x, (yb + ty) / 2, tx, ty); g.stroke();
-          g.save(); g.translate(tx, ty); g.rotate(a);
-          if (Fl === RBUD) g.drawImage(budSpr(), -Fl.s * 0.3, -Fl.s, Fl.s * 0.6, Fl.s);
-          else g.drawImage(flowerSpr(), -Fl.s / 2, -Fl.s * 0.82, Fl.s, Fl.s * 0.875);
-          g.restore();
-        }
+        if (!window.__C1DBG) g.drawImage(RB, ox, oy, RBW, RBH);
         // 四片斜叶与水珠：水珠先静静停在叶心旁（开镜就在），到时在叶面上滚向最低的叶缘（0.35 s，渐快），脱落后自由落体，
         // 正好在第17句第1~4字落进叶旁的空水面，荡开一亮一暗的涟漪（约 1.2 s 扩到四十像素上下）
         for (let k = 0; k < 4; k++) {
-          const D = DROPS[k], dy = up(D.d), a = swayAng(t, D.ph, D.x);
-          const cx = D.x, cy = D.y - dy, yWat = D.yWater - dy;
+          const D = DROPS[k], a = swayAng(t, D.ph, D.x);
+          const cx = D.x + offX(D.d), cy = D.y + offY(D.d), yWat = D.yWater + offY(D.d);
           stalk(g, cx - 3, yWat - 4, cx, cy, Math.max(1.4, (F * 0.012) / D.d));
           blade(g, cx, cy, D.rx, D.ry, D.rot + a, 'mid', D.v, 0.8, 0.6 * gust(D.x, t), 0.3);
           // 叶缘最低点（屏幕上，叶随摇曳一起转）
@@ -1947,18 +1988,18 @@
           const tDet = hit - fall, tRoll = tDet - 0.35;
           let p = null;
           if (t < tRoll) p = [sx0, sy0];
-          else if (t < tDet) { const u = (t - tRoll) / 0.35, e = u * u; p = [lerp(sx0, rimX, e), lerp(sy0, rimY, e) - 1.2 * Math.sin(Math.PI * e)]; }
-          else if (t < hit) { const u = t - tDet; p = [rimX + D.lo[0] * 10 * u, rimY + 0.5 * gpx * u * u]; }
+          else if (t < tDet) { const u2 = (t - tRoll) / 0.35, e = u2 * u2; p = [lerp(sx0, rimX, e), lerp(sy0, rimY, e) - 1.2 * Math.sin(Math.PI * e)]; }
+          else if (t < hit) { const u2 = t - tDet; p = [rimX + D.lo[0] * 10 * u2, rimY + 0.5 * gpx * u2 * u2]; }
           if (p) {
             g.save(); g.globalCompositeOperation = 'lighter';
-            glowAt(g, p[0], p[1] - 1, 8, 8, '#fffbe6', 0.65);
+            glowAt(g, p[0], p[1] - 1, 9, 9, '#fffbe6', 0.7);
             g.restore();
-            g.fillStyle = 'rgba(214,240,236,0.95)'; g.beginPath(); g.arc(p[0], p[1] - 2.4, 2.8, 0, TAU); g.fill();
-            g.fillStyle = 'rgba(255,255,255,1)'; g.beginPath(); g.arc(p[0] - 0.9, p[1] - 3.3, 1.0, 0, TAU); g.fill();
+            g.fillStyle = 'rgba(214,240,236,0.95)'; g.beginPath(); g.arc(p[0], p[1] - 2.8, 3.4, 0, TAU); g.fill();
+            g.fillStyle = 'rgba(255,255,255,1)'; g.beginPath(); g.arc(p[0] - 1.1, p[1] - 3.9, 1.2, 0, TAU); g.fill();
           }
           const age = t - hit;
           if (age > 0 && age < 2.6) {
-            const lx = rimX + D.lo[0] * 10 * fall, R1 = (40 * 4.6) / D.d, kk = CH / D.d;
+            const lx = rimX + D.lo[0] * 10 * fall, R1 = (40 * 4.6) / D.d, kk = (CH - CY) / D.d;
             for (let j = 0; j < 3; j++) {
               const a2 = age - j * 0.2;
               if (a2 <= 0) continue;
@@ -1972,23 +2013,34 @@
             }
           }
         }
-        // 近处的高荷叶丛（1.5–1.8 m，略虚）：叶梗从画面下沿以下升起；叶形不变，只随风轻摇
+        // 右边高梗上的荷花与花苞（随风轻摇，±1.5° 以内）
+        for (const Fl of [RBUD, ...FLOWERS]) {
+          const a = swayAng(t, Fl.ph, Fl.x) + (Fl.lean || 0);
+          const fx = Fl.x + offX(Fl.d), yb = yW(Fl.d) + offY(Fl.d), ty = Fl.y + offY(Fl.d), tx = fx + Math.sin(a) * (yb - ty);
+          g.strokeStyle = '#557f4c'; g.lineWidth = Math.max(1.6, (F * 0.012) / Fl.d); g.lineCap = 'round';
+          g.beginPath(); g.moveTo(fx, yb); g.quadraticCurveTo(fx, (yb + ty) / 2, tx, ty); g.stroke();
+          g.save(); g.translate(tx, ty); g.rotate(a);
+          if (Fl === RBUD) g.drawImage(budSpr(), -Fl.s * 0.3, -Fl.s, Fl.s * 0.6, Fl.s);
+          else g.drawImage(flowerSpr(), -Fl.s / 2, -Fl.s * 0.82, Fl.s, Fl.s * 0.875);
+          g.restore();
+        }
+        // 近处的挺水荷叶丛（1.6–1.9 m，略虚）：叶梗从画面下沿以下升起；叶形、倾角都不变，只随风轻摇
         {
-          const ro = NEAR_ROLL, rdy = up(ro.d), ra = swayAng(t, ro.ph, ro.x);
-          stalk(g, ro.x - 6, 760, ro.x, ro.y - rdy + ro.h * 0.95, 4.5);
-          g.save(); g.translate(ro.x, ro.y - rdy + ro.h); g.rotate(ra + 0.04);
+          const ro = NEAR_ROLL, ra = swayAng(t, ro.ph, ro.x), rx0 = ro.x + offX(ro.d), ry0 = ro.y + offY(ro.d);
+          stalk(g, rx0 - 6, 770, rx0, ry0 + ro.h * 0.95, 4.5);
+          g.save(); g.translate(rx0, ry0 + ro.h); g.rotate(ra + 0.04);
           g.drawImage(rollSpr(), -ro.h * 0.2, -ro.h, ro.h * 0.4, ro.h);
           g.restore();
         }
         for (const L of NEAR) {
-          const dy = up(L.d), a = swayAng(t, L.ph, L.x), ry = L.rx * L.k;
-          stalk(g, L.bx, 770, L.x + Math.sin(a) * 6, L.y - dy + ry * 0.2, (F * 0.011) / L.d);
-          blade(g, L.x, L.y - dy, L.rx, ry, L.rot + a, 'mid', L.v, 1.6, 0.55 * gust(L.x, t), L.cup);
+          const a = swayAng(t, L.ph, L.x), lx = L.x + offX(L.d), ly = L.y + offY(L.d);
+          stalk(g, L.bx + offX(L.d), 770, lx + Math.sin(a) * 6, ly + L.ry * 0.2, (F * 0.011) / L.d);
+          blade(g, lx, ly, L.rx, L.ry, L.rot + a, L.kind, L.v, L.blur, 0.55 * gust(L.x, t), L.cup);
         }
-        // 最近处：左侧（歌词区）的大荷叶，随镜头降低按自己的深度上移
-        const ly = -up(LEFT_D);
-        g.drawImage(K.cache('c1v3left0', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, false)), 0, ly, LEFT_W, LEFT_H);
-        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v3left1', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, true)), 0, ly, LEFT_W, LEFT_H, t, 0.45);
+        // 最近处：左侧（歌词区）的大荷叶，随镜头按自己的深度移动
+        const lxo = offX(LEFT_D), lyo = offY(LEFT_D);
+        g.drawImage(K.cache('c1v4left0', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, false)), lxo, lyo, LEFT_W, LEFT_H);
+        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v4left1', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, true)), lxo, lyo, LEFT_W, LEFT_H, t, 0.45);
         // 白雾化入：转场的 0.8 s 里与上一镜补的雾一起，使整段的雾色权重平滑落下（不在转场开头突然变白）
         const fa = 0.3 * (1 - smooth((t + FOG_TR) / 1.2));
         if (fa > 0.001) { g.fillStyle = rgba(FOG_COL, fa); g.fillRect(0, 0, 1280, 720); }

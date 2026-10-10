@@ -218,13 +218,28 @@
     g.restore();
   }
   const RIDER_HAT = true;
-  // 两组追逐（背剑少年追骑马人），相隔半圈；一组在第11句中段、另一组在第12句前经过正面
-  const PAIR_S = [118, 118 + CIRC / 2], HORSE_DX = 156, HSC = 1.05;
-  const RIV0 = 1098, RIV1 = 1300;
+  // 三组追逐（背剑少年追骑马人），在转轮上等分三份：任何时刻正面几乎都同时看得到一个追的少年和一个被追的骑者
+  // （按 4 s 一圈逐帧统计，约 77–80% 的时间两者都在正面中段，从不出现只剩风景的空档）
+  const PAIR_S = [40, 40 + CIRC / 3, 40 + 2 * CIRC / 3], HORSE_DX = 156, HSC = 1.05;
+  // 三组之间各留约 160 px 的空档放风景：松树、小河与乌篷船、远处小松与雁行
+  const RIV0 = 770, RIV1 = 880, BOATX = 825;
+  // 剪纸祥云（奔跑扬起的尘）：三瓣云头 + 镂空的回旋纹，原点在云底中点
+  function puff(g, x, y, s, flip) {
+    g.save(); g.translate(x, y); g.scale(flip ? -s : s, s);
+    g.beginPath(); g.moveTo(-14, 0);
+    g.bezierCurveTo(-17, -6, -11, -10.5, -5.5, -8.5);
+    g.bezierCurveTo(-3.5, -15, 6.5, -15, 8, -8.5);
+    g.bezierCurveTo(13.5, -10.5, 18, -5, 14, 0);
+    g.quadraticCurveTo(0, 2, -14, 0); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.lineWidth = 1.2; g.lineCap = 'round';
+    g.beginPath(); g.arc(1.2, -7, 3.2, 0.4, TAU * 0.8); g.stroke();
+    g.beginPath(); g.arc(-8.5, -4.2, 1.8, 0.6, TAU * 0.75); g.stroke();
+    g.restore();
+  }
   // 转轮展开图（一周）：剪纸全部画成黑色，最后统一着色
   function lanternStrip(blur) {
     const sp = silMod() ? 'p' : 'n';
-    const raw = cache('lan_strip_raw3_' + sp, CIRC + PAD, SH, (g) => {
+    const raw = cache('lan_strip_raw4_' + sp, CIRC + PAD, SH, (g) => {
       g.fillStyle = '#000'; g.strokeStyle = '#000';
       // 前后各补一份：接缝两侧的内容都能取到
       const rep = (fn) => { for (const off of [-CIRC, 0, CIRC]) { g.save(); g.translate(off, 0); fn(); g.restore(); } };
@@ -232,7 +247,7 @@
       const groundY = (s) => {
         const u = s / CIRC * TAU;
         const land = GY + 5 * Math.sin(u * 3 + 0.7) + 3 * Math.sin(u * 7 + 2.1);
-        const dw = ss(w0 - 40, w0 + 10, s) * (1 - ss(w1 - 10, w1 + 40, s));
+        const dw = ss(w0 - 30, w0 + 8, s) * (1 - ss(w1 - 8, w1 + 30, s));
         return lerp(land, GY + 10, dw);
       };
       const hills = (s0, s1, hgt, al, seed) => {
@@ -245,9 +260,9 @@
         g.lineTo(s1, GY); g.closePath(); g.fill(); g.restore();
       };
       rep(() => {
-        // 远山（浅一层的薄纸）：松树后一组、河后一组
-        hills(400, 780, 92, 0.3, 0.5); hills(360, 560, 120, 0.2, 2.2);
-        hills(1010, 1390, 100, 0.3, 1.4); hills(1180, 1330, 70, 0.2, 3.1);
+        // 远山（浅一层的薄纸）：松树后一组、河后一组、小松后一组
+        hills(250, 620, 95, 0.3, 0.5); hills(290, 470, 120, 0.2, 2.2);
+        hills(690, 1010, 100, 0.3, 1.4); hills(1150, 1400, 82, 0.25, 3.1);
         // 地面与水
         g.beginPath(); g.moveTo(-10, SH);
         for (let s = -10; s <= CIRC + 10; s += 4) g.lineTo(s, groundY(s));
@@ -255,29 +270,30 @@
         // 草丛
         for (let i = 0; i < 70; i++) {
           const s = h2(i, 11) * CIRC;
-          if (s > w0 - 30 && s < w1 + 30) continue;
+          if (s > w0 - 34 && s < w1 + 30) continue;
           const y = groundY(s), hh = 6 + h2(i, 12) * 9;
           g.beginPath(); g.moveTo(s - 4, y + 1); g.quadraticCurveTo(s - 2, y - hh * 0.6, s - 5, y - hh); g.quadraticCurveTo(s, y - hh * 0.5, s + 1, y + 1);
           g.quadraticCurveTo(s + 3, y - hh * 0.7, s + 6, y - hh * 0.85); g.quadraticCurveTo(s + 3, y - hh * 0.3, s + 4, y + 1); g.closePath(); g.fill();
         }
-        // 浪花镂空
+        // 浪花镂空（避开船身）
         g.save(); g.globalCompositeOperation = 'destination-out';
-        for (let s = w0 + 20; s < w1 - 20; s += 22) {
-          if (s > 1136 && s < 1266) continue;
+        for (let s = w0 + 6; s < w1 - 6; s += 14) {
+          if (Math.abs(s - BOATX) < 50) continue;
           const y = GY + 14 + 3 * Math.sin(s * 0.13);
-          g.beginPath(); g.arc(s, y, 6, Math.PI * 1.05, Math.PI * 1.95); g.arc(s + 1.5, y + 1, 4, Math.PI * 1.95, Math.PI * 1.05, true); g.closePath(); g.fill();
+          g.beginPath(); g.arc(s, y, 5, Math.PI * 1.05, Math.PI * 1.95); g.arc(s + 1.3, y + 1, 3.4, Math.PI * 1.95, Math.PI * 1.05, true); g.closePath(); g.fill();
         }
         g.restore();
-        // 芦苇
-        for (let i = 0; i < 9; i++) {
-          const s = w1 + 6 + i * 7 + h2(i, 31) * 4, y = groundY(s), hh = 24 + h2(i, 32) * 18, lean = -4 - h2(i, 33) * 5;
+        // 芦苇：长在河的左岸（马头前方、低于马头）
+        for (let i = 0; i < 5; i++) {
+          const s = w0 - 20 + i * 5.5 + h2(i, 31) * 3, y = groundY(s), hh = 20 + h2(i, 32) * 16, lean = -3 - h2(i, 33) * 4;
           g.lineWidth = 1.4; g.beginPath(); g.moveTo(s, y); g.quadraticCurveTo(s + lean * 0.3, y - hh * 0.6, s + lean, y - hh); g.stroke();
           g.beginPath(); g.ellipse(s + lean, y - hh - 4, 1.8, 5, lean * 0.04, 0, TAU); g.fill();
         }
-        pine(g, 560, groundY(560) + 2, 1.0);
-        boatCut(g, 1200, GY + 9);
-        for (let i = 0; i < 4; i++) goose(g, 1150 + i * 26 + (i % 2) * 6, 92 + i * 9 - (i % 2) * 4, 0.9 - i * 0.08, i % 2 ? 2 : -1);
-        // 马与骑者、前倾举剑追赶的少年（剪纸刚体，不做关节动作）
+        pine(g, 377, groundY(377) + 2, 1.0);
+        pine(g, 1272, groundY(1272) + 2, 0.72);
+        g.save(); g.translate(BOATX, GY + 9); g.scale(0.85, 0.85); boatCut(g, 0, 0); g.restore();
+        for (let i = 0; i < 4; i++) goose(g, 1206 + i * 26 + (i % 2) * 6, 96 + i * 9 - (i % 2) * 4, 0.9 - i * 0.08, i % 2 ? 2 : -1);
+        // 马与骑者、前倾举剑追赶的少年（剪纸刚体，不做关节动作）；马后蹄与少年脚跟后各扬起一朵剪纸祥云
         const SL = silMod();
         for (const s0 of PAIR_S) {
           const hx = s0 + HORSE_DX;
@@ -285,11 +301,13 @@
           // 骑者：整身侧坐剪影坐在鞍上（与马同色，腿与马身连成整块）
           if (SL) SL.draw(g, 'old', 'sitSide', 1, -90, 112, 0.5, { facing: 1, wind: 0.55, windDir: -1, body: '#000', accent: '#000', rim: null, hat: RIDER_HAT });
           g.restore();
+          puff(g, hx - 116, groundY(hx - 116) + 1, 0.9, false);
           if (SL) {
-            // 少年：举剑的侧影整张绕脚底前倾，发带后飘，像奔跑中的剪纸
-            g.save(); g.translate(s0, groundY(s0) + 1); g.rotate(0.2);
+            // 少年：举剑的侧影整张绕脚底前倾（约 15°），发带后飘，像奔跑中的剪纸
+            g.save(); g.translate(s0, groundY(s0) + 1); g.rotate(0.26);
             SL.draw(g, 'youth', 'swordUp', 0, 0, 124, 0.5, { facing: 1, wind: 1, windDir: -1, body: '#000', accent: '#000', rim: null });
             g.restore();
+            puff(g, s0 - 30, groundY(s0 - 30) + 1, 0.7, false);
           }
         }
       });
@@ -298,14 +316,14 @@
       g.fillStyle = '#4a2814'; g.fillRect(0, 0, CIRC + PAD, SH);
     });
     if (!blur) return raw;
-    return cache('lan_strip3_b' + blur + '_' + sp, CIRC + PAD, SH, (g) => {
+    return cache('lan_strip4_b' + blur + '_' + sp, CIRC + PAD, SH, (g) => {
       fblur(g, blur); g.drawImage(raw, 0, 0, CIRC + PAD, SH); g.filter = 'none';
     });
   }
   // 横向拖影版（转速加快时叠一层，模拟运动模糊）：9 份等权相加
   function lanternStripMB() {
     const src = lanternStrip(1.1);
-    return cache('lan_strip3_mb_' + (silMod() ? 'p' : 'n'), CIRC + PAD, SH, (g) => {
+    return cache('lan_strip4_mb_' + (silMod() ? 'p' : 'n'), CIRC + PAD, SH, (g) => {
       g.globalCompositeOperation = 'lighter'; g.globalAlpha = 1 / 9;
       for (let k = -4; k <= 4; k++) g.drawImage(src, k * 1.4, 0, CIRC + PAD, SH);
     });
@@ -313,7 +331,7 @@
   // 左右翻转的展开图：背面的影子透过来是反的，逐列取样时列内的内容也要反向
   function lanternStripM(blur) {
     const src = lanternStrip(blur);
-    return cache('lan_strip_m' + blur + '_' + (silMod() ? 'p' : 'n'), CIRC + PAD, SH, (g) => {
+    return cache('lan_strip4_m' + blur + '_' + (silMod() ? 'p' : 'n'), CIRC + PAD, SH, (g) => {
       g.translate(CIRC + PAD, 0); g.scale(-1, 1); g.drawImage(src, 0, 0, CIRC + PAD, SH);
     });
   }
@@ -719,15 +737,38 @@
     g.drawImage(lanFore(), -40, 0, 200, H);
     g.restore();
 
-    // 入场圆形渐开：引擎的圆形遮罩前段太慢、后段太快（约 0.25 s 从小圆盖满全画面，亮度骤降）。
-    // 本镜只能在自己的画面上做文章：渐开期间整体透明度从 0.25 平滑升到 1，
-    // 小圆刚出现时只是一层淡淡的暖色，亮度下降摊到约 0.4 s；圆形边缘仍由引擎遮罩决定
+    // 入场圆形渐开：遮罩归引擎（半径按 easeInOut 长），亮→暗的过渡主要由上一镜（b1_bridge）结尾按 √smoothstep 铺开的暗圆承担。
+    // 本镜只处理最初几帧：引擎的小圆口里正好是烛焰最亮的一团，边缘只有 0.25r 的羽化，像桥洞里冒出一轮太阳。
+    // 这里在同一圆心叠一层更宽的软边（至少 90 px，向圆心渐亮），并让本镜在渐开前段从 45% 透明度平滑升到不透明：
+    // 小圆口里先是一团柔和、偏暗的暖光（暗窗里的灯），p = 0.5 前软边与透明度都已退回原样，不把亮度下降挤到最后几帧
     const tr = c.seg && c.seg.trans;
+    // 暗部先带一层很淡的暖褐曝光（只把墙与木案提到与上一镜暗圆相近的亮度，不比它亮），转场后半到入镜 0.4 s 内退去，
+    // 像眼睛适应暗屋：引擎圆口后半段扫得最快的那几帧，亮度差小一半，余下的变暗摊到入镜后的十来帧
+    if (tr && tr.type === 'iris') {
+      const lift = 1 - smooth((lt + 0.35) / 0.75);
+      if (lift > 0.002) {
+        g.save(); g.globalCompositeOperation = 'screen';
+        g.fillStyle = `rgba(124,100,82,${(0.3 * lift).toFixed(4)})`;
+        g.fillRect(-60, -60, W + 120, H + 120); g.restore();
+      }
+    }
     if (lt < 0 && tr && tr.type === 'iris') {
       const p = clamp((lt + tr.dur) / tr.dur);
-      const a = 0.25 + 0.75 * smooth(clamp((p - 0.3) / 0.7));
-      if (a < 0.999) {
-        g.save(); g.globalCompositeOperation = 'destination-in'; g.fillStyle = `rgba(0,0,0,${a.toFixed(4)})`;
+      const cx = tr.x != null ? tr.x : 640, cy = tr.y != null ? tr.y : 360;
+      const Rm = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) / 0.75 + 4;
+      const re = easeInOut(p) * Rm + 1;
+      const wf = 1 - smooth((p - 0.2) / 0.3), al = 0.45 + 0.55 * smooth(p / 0.45);
+      if (wf > 0.002 || al < 0.998) {
+        g.save(); g.globalCompositeOperation = 'destination-in';
+        if (wf > 0.002) {
+          const ri = Math.max(0, 0.75 * re - 90 * wf), ro = Math.max(ri + 1, re);
+          const gr = g.createRadialGradient(cx, cy, ri, cx, cy, ro);
+          gr.addColorStop(0, `rgba(0,0,0,${al.toFixed(4)})`);
+          gr.addColorStop(0.35, `rgba(0,0,0,${(al * (1 - 0.3 * wf)).toFixed(4)})`);
+          gr.addColorStop(0.7, `rgba(0,0,0,${(al * (1 - 0.72 * wf)).toFixed(4)})`);
+          gr.addColorStop(1, `rgba(0,0,0,${(al * (1 - wf)).toFixed(4)})`);
+          g.fillStyle = gr;
+        } else g.fillStyle = `rgba(0,0,0,${al.toFixed(4)})`;
         g.fillRect(-60, -60, W + 120, H + 120); g.restore();
       }
     }

@@ -605,19 +605,25 @@
       }
     }
 
-    // 涟漪：一圈圈从落点向外扩散并衰减（远侧亮、近侧暗）
-    function rings(g, x, y, age, amp, n, sp, ratio) {
-      for (let k = 0; k < n; k++) {
-        const a2 = age - k * 0.08;
-        if (a2 <= 0) continue;
-        const r = 4 + sp * a2 * (1 - 0.22 * Math.min(a2, 1.5));
-        const al = amp * Math.exp(-a2 / 0.7) * smooth(a2 / 0.05) * (1 - k * 0.25);
+    // 涟漪：从落点向外扩散并衰减（远侧亮、近侧暗）。一滴水的涟漪不大：
+    // 领头一圈 r = r0 + v·t，接近上限 cap 时平滑收住；后随的圈相隔 gap 像素；振幅 exp(−t/τ)，life 秒内淡尽
+    const RING_DROP = { r0: 20, v: 110, cap: 160, gap: 15, n: 3, tau: 0.6, life: 1.4, amp: 1, lw: 1.9 };
+    const RING_PETAL = { r0: 8, v: 55, cap: 70, gap: 12, n: 2, tau: 0.5, life: 1.2, amp: 0.4, lw: 1.4 };
+    function rings(g, x, y, age, R, ratio) {
+      if (age <= 0 || age >= R.life) return;
+      const lin = R.r0 + R.v * age, knee = R.cap - 20;
+      const r = lin < knee ? lin : R.cap - 20 * Math.exp(-(lin - knee) / 20);
+      const env = R.amp * Math.exp(-age / R.tau) * smooth(age / 0.05) * (1 - smooth((age - 0.6 * R.life) / (0.4 * R.life)));
+      for (let k = 0; k < R.n; k++) {
+        const rk = r - k * R.gap;
+        if (rk < 3) continue;
+        const al = env * (1 - k * 0.28) * smooth((rk - 3) / 8);
         if (al < 0.012) continue;
-        g.lineWidth = 2.2 - k * 0.4;
+        g.lineWidth = R.lw - k * 0.35;
         g.strokeStyle = `rgba(255,251,238,${0.7 * al})`;
-        g.beginPath(); g.ellipse(x, y, r, r * ratio, 0, Math.PI * 1.04, Math.PI * 1.96); g.stroke();
+        g.beginPath(); g.ellipse(x, y, rk, rk * ratio, 0, Math.PI * 1.04, Math.PI * 1.96); g.stroke();
         g.strokeStyle = `rgba(48,80,88,${0.32 * al})`;
-        g.beginPath(); g.ellipse(x, y + 1.5, r * 0.98, r * ratio, 0, 0.12, Math.PI - 0.12); g.stroke();
+        g.beginPath(); g.ellipse(x, y + 1.2, rk * 0.98, rk * ratio, 0, 0.12, Math.PI - 0.12); g.stroke();
       }
     }
     // 叶、苞、花随风轻颤（风向右）：时间的纯函数，冰化尽之前为零
@@ -761,8 +767,20 @@
       }
       // 比实物暗约 35%，偏向水色
       gb.globalCompositeOperation = 'source-atop'; gb.fillStyle = 'rgba(30,54,62,0.38)'; gb.fillRect(0, 0, rw * sB, cb.height);
-      g.save(); g.globalAlpha = 0.55; g.imageSmoothingEnabled = true;
-      g.drawImage(cb, 0, 0, rw * sB, cb.height, RX0, WATER_Y, rw, RH);
+      // 叠到水面：逐 3 px 一行取样，每行各自轻微错动、明暗起伏，倒影碎成横向的波光片；
+      // 越往画面下方（越近镜头、视线越陡）水面反射越弱（菲涅耳），枝梢的倒影在画框底边已很淡，不成一块污迹
+      g.save(); g.imageSmoothingEnabled = true;
+      const ROW = 3, ys = cb.height / RH;
+      for (let y = 0; y < RH; y += ROW) {
+        const d = y / RH;
+        const fres = lerp(1, 0.12, smooth(d / 0.85));
+        const brk = 0.5 + 0.5 * Math.sin(y * 0.83 + t * 2.3 + 4 * noise1(y * 0.045 + t * 0.15, 78));
+        const a = 0.6 * fres * (0.35 + 0.65 * brk);
+        if (a < 0.01) continue;
+        const dx = (1.2 + 0.035 * y) * Math.sin(y * 0.37 - t * 1.9);
+        g.globalAlpha = a;
+        g.drawImage(cb, 0, y * ys, rw * sB, ROW * ys, RX0 + dx, WATER_Y + y, rw, ROW);
+      }
       g.restore();
     }
 
@@ -834,12 +852,12 @@
           g.globalAlpha = 1;
         }
         // 融水落点的涟漪（随水流向右漂）与弹起的小水柱
-        if (t > tLand) rings(g, dropX + FLOW * (t - tLand), WATER_Y, t - tLand, 1, 3, 420, 0.3);
+        if (t > tLand) rings(g, dropX + FLOW * (t - tLand), WATER_Y, t - tLand, RING_DROP, 0.3);
         splash(g, t, KD, 1);
         // 落水后的花瓣：随水右漂，水面上有淡淡的影
         if (t >= tTouch) {
           const af = t - tTouch, px0 = touchX(c, tPetal);
-          rings(g, px0 + FLOW * af, WATER_Y + 4, af, 0.45, 2, 260, 0.3);
+          rings(g, px0 + FLOW * af, WATER_Y + 4, af, RING_PETAL, 0.3);
           const Mf = floatMat(px0, af);
           g.save(); g.transform(...mMul(Mf, mT(PK.Lk * 0.5, 0)));
           g.globalAlpha = smooth(af / 0.3);
@@ -1130,8 +1148,8 @@
       cx.restore();
       g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cc, 0, 0); g.restore();
     });
-    // 朱印：边缘略残、印面是抽象篆刻线
-    const seal = () => K.cache('o3:seal', 80, 80, 2, (g) => {
+    // 朱印：边缘略残、印面是抽象篆刻线（白文，非对称）
+    const seal = () => K.cache('o3:seal2', 80, 80, 2, (g) => {
       const s = SEAL[2];
       g.translate(40, 40);
       g.fillStyle = '#b8322a';
@@ -1146,29 +1164,69 @@
         i ? g.lineTo(px, py) : g.moveTo(px, py);
       }
       g.closePath(); g.fill();
-      // 印面：白文，两列折线
-      g.strokeStyle = '#f3e7d6'; g.lineCap = 'square'; g.lineWidth = 2.6;
-      const m = s / 2 - 6;
-      const col = (x0, seed) => {
-        g.beginPath();
-        g.moveTo(x0 - 8, -m + 4); g.lineTo(x0 + 8, -m + 4);
-        g.moveTo(x0, -m + 4); g.lineTo(x0, -m + 14);
-        g.moveTo(x0 - 9, -m + 14); g.lineTo(x0 + 9, -m + 14);
-        g.moveTo(x0 - 9, -m + 14); g.lineTo(x0 - 9, 2);
-        g.moveTo(x0 + 9, -m + 14); g.lineTo(x0 + 9, 2);
-        g.moveTo(x0 - 5, -4 + 3 * h2(seed, 1)); g.lineTo(x0 + 5, -4 + 3 * h2(seed, 1));
-        g.moveTo(x0 - 9, 8); g.lineTo(x0 + 9, 8);
-        g.moveTo(x0 - 4, 8); g.lineTo(x0 - 4, m - 4);
-        g.moveTo(x0 + 4, 8); g.lineTo(x0 + 4, m - 4);
-        g.moveTo(x0 - 9, m - 4); g.lineTo(x0 + 9, m - 4);
+      const outline = new Path2D();
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, side = Math.min(3, Math.floor(u * 4)), f = u * 4 - side;
+        const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
+        const [ax, ay] = pts[side], [bx, by] = pts[side + 1];
+        const j = (h2(i, 71) - 0.5) * 1.6;
+        const px = (ax + (bx - ax) * f) * s / 2 + j, py = (ay + (by - ay) * f) * s / 2 + j * 0.7;
+        i ? outline.lineTo(px, py) : outline.moveTo(px, py);
+      }
+      outline.closePath();
+      g.save(); g.clip(outline);
+      // 印泥浓淡不匀：几团偏淡处（纸色微透）与边缘略积的深红
+      blurInto(g, 80, 80, 3, (tg) => {
+        tg.translate(40, 40);
+        for (let i = 0; i < 5; i++) {
+          tg.fillStyle = `rgba(0,0,0,${0.06 + 0.08 * h2(i, 75)})`;
+          tg.beginPath(); tg.ellipse((h2(i, 76) - 0.5) * s * 0.8, (h2(i, 77) - 0.5) * s * 0.8, 5 + 7 * h2(i, 78), 4 + 5 * h2(i, 79), h2(i, 80) * 3, 0, TAU); tg.fill();
+        }
+      }, 1, 'destination-out');
+      g.strokeStyle = 'rgba(112,22,16,0.28)'; g.lineWidth = 2.2; g.stroke(outline);
+      g.restore();
+      // 印面：白文（刻去的笔画露出纸色），两列抽象篆刻笔画。
+      // 右列与左列结构各不相同，任何一列都不左右对称，也没有重复的行；转折处略圆，像刀刻后的篆意
+      const RC = [
+        [[4, -20], [19, -20], [19, -12]],
+        [[8, -15], [8, -7], [15, -7]],
+        [[3, -1], [21, -1]],
+        [[12, -1], [12, 7], [6, 13], [6, 21]],
+        [[16, 5], [20, 5], [20, 20], [12, 20]],
+      ];
+      const LC = [
+        [[-18, -21], [-18, 20]],
+        [[-13, -12], [-4, -12], [-4, -4], [-11, -4]],
+        [[-14, 2], [-3, 2]],
+        [[-13, 8], [-6, 8], [-6, 14], [-12, 14], [-12, 20], [-3, 20]],
+        [[-13, -20], [-3, -20], [-3, -16]],
+      ];
+      const stroke = (pts, wd) => {
+        g.lineWidth = wd;
+        g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length - 1; i++) g.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 2.2);
+        g.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
         g.stroke();
       };
-      col(-11, 3); col(11, 5);
-      // 印泥不匀：细小的白点与缺口
-      g.fillStyle = 'rgba(243,231,214,0.85)';
-      for (let i = 0; i < 46; i++) {
-        const x = (h2(i, 81) - 0.5) * s, y = (h2(i, 82) - 0.5) * s;
-        g.beginPath(); g.arc(x, y, 0.4 + 0.9 * h2(i, 83), 0, TAU); g.fill();
+      g.save();
+      g.globalCompositeOperation = 'destination-out';
+      g.strokeStyle = '#000'; g.lineJoin = 'round'; g.lineCap = 'butt';
+      RC.concat(LC).forEach((pts, i) => stroke(pts, 3.0 + 0.4 * h2(i, 84)));
+      // 印泥不匀：红地上的细小白点；边缘几处崩口
+      for (let i = 0; i < 34; i++) {
+        const x = (h2(i, 81) - 0.5) * s * 0.96, y = (h2(i, 82) - 0.5) * s * 0.96;
+        g.globalAlpha = 0.55 + 0.45 * h2(i, 85);
+        g.beginPath(); g.arc(x, y, 0.3 + 0.7 * h2(i, 83), 0, TAU); g.fill();
+      }
+      g.globalAlpha = 1;
+      for (const [x, y, r] of [[-s / 2 + 0.5, -9, 1.8], [s / 2 - 0.4, 13, 2.4], [6, -s / 2 + 0.3, 1.5], [-17, s / 2 - 0.2, 2.1], [s / 2 - 1, -s / 2 + 1, 2.6]]) {
+        g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+      }
+      g.restore();
+      // 笔画里残留的几点印泥，让刻线断续、不像印刷
+      g.fillStyle = '#b8322a';
+      for (const [x, y, r] of [[19, -15, 0.9], [8, -10, 0.8], [17, -1, 0.9], [-18, 6, 1.0], [-9, 14, 0.8], [20, 13, 0.9], [-7, 2, 0.7]]) {
+        g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
       }
     });
     // 自上而下的羽化显现

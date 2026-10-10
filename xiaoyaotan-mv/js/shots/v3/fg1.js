@@ -134,15 +134,21 @@
     const BMX = -0.355 * LEN, OLDX = 0.27 * LEN; // 船夫、老者在船上的位置（相对船中）
     const RIM = '#f7d9a6';
     const BODY = '#1f232a';
-    // 撑篙周期 2 秒：p∈[0.23,0.62]（约 0.8 s）篙尖钉在河床上推船，其余时间收篙、前送、再下篙
+    // 撑篙周期 2 秒：p∈[0.23,0.62]（约 0.8 s）推船。下篙那一刻篙身入水的点（水面上）钉在世界坐标里，
+    // 船往前走、篙身绕这个点向后倒；推完把篙沿篙身抽出水面、向前摆、再在新的点下篙
     const PA = 0.23, PB = 0.62, TB0 = 0.35;
     const V0 = 45, DV = 7;
     const X0 = 280;
-    const BED = WY + 32; // 河床（篙尖着点，水深约 1.2 m）
-    const LP = 108; // 篙长（约 4 m，推到头时手上方还留一截）
-    // 收篙：前 60% 把篙沿篙身抽到水面，篙身先拖在船后、30% 之后才向前摆
-    const UM = 0.6, SWA = 0.3;
-    const swing = (u) => cosE((u - SWA) / (1 - SWA));
+    const LP = 108; // 篙长（约 4 m）
+    const PH0 = 0.1; // 下篙时篙身与竖直的夹角（篙尖略在手后）
+    const DPL = 30; // 篙插进水里的长度（到河床，约 1.1 m；水下部分看不见）
+    const LIFT = 6; // 收篙时篙尖提出水面的高度
+    const PIN = 0.1; // 篙尖入水后 0.1 s 内咬住水底（入水点从随船过渡到钉住，期间最多挪约 1 px）
+    const DIVE = 0.3; // 入水后插到底的时长；入水前 0.11 s 起向下（与插入连成一条平滑的曲线）
+    const PRE = 0.11;
+    // 收篙（u 是收篙阶段的进度 0..1）：前 35% 沿篙身抽出水面；25% 起向前摆，92% 摆到下篙角
+    const UA = 0.35, SW0 = 0.25, SW1 = 0.92;
+    const swing = (u) => cosE((u - SW0) / (SW1 - SW0));
     // 船速 = 45 ± 7：推送阶段余弦加速，滑行阶段余弦减速；位移是速度的解析积分，平均正好 45 px/s
     function boatX(lt) {
       const tb = lt + TB0, p = (((tb / 2) % 1) + 1) % 1;
@@ -152,7 +158,7 @@
       else { const T = (PA + 1 - PB) * 2, u = (q - PB) / (PA + 1 - PB); I = (T * Math.sin(Math.PI * u)) / Math.PI; }
       return X0 + V0 * lt + DV * I;
     }
-    // 与 XYT.sil 船夫撑篙循环一致的上手位置（单位坐标）与篙角
+    // 与 XYT.sil 船夫撑篙循环一致的两只手（单位坐标）与篙角
     const keys = (p, Kf) => {
       for (let i = 0; i < Kf.length - 1; i++) { const a = Kf[i], b = Kf[i + 1]; if (p >= a[0] && p <= b[0]) return a[1] + (b[1] - a[1]) * cosE((p - a[0]) / (b[0] - a[0])); }
       return Kf[0][1];
@@ -161,52 +167,70 @@
       const p = (((tb / 2) % 1) + 1) % 1;
       return { th: keys(p, [[0, 0.22], [0.62, 0.58], [1, 0.22]]), lean: keys(p, [[0, 0.04], [0.15, 0.08], [0.6, 0.3], [0.85, 0.08], [1, 0.04]]) };
     }
-    // 上手的世界坐标（含船的起伏与摇摆）
+    // 握篙点的世界坐标（含船的起伏与摇摆）：取上手与下手的中点，篙从两只拳头之间穿过
     function handW(lt) {
       const tb = lt + TB0, c = bmCycle(tb);
       const x = 13.1, y = -24.4, co = Math.cos(c.lean), si = Math.sin(c.lean);
-      const ux = -0.5 + x * co - y * si, uy = -50 + x * si + y * co;
+      const ux = -0.5 + x * co - y * si - 7.5 * Math.sin(c.th), uy = -50 + x * si + y * co + 7.5 * Math.cos(c.th);
       const u = FH / 100, br = 1 + 0.004 * Math.sin((TAU * tb) / 3.6 + 0.5);
       const bx = boatX(lt), m = SIL.boatMotion(bx, DECK, LEN, lt, {});
       const px = bx + BMX + ux * u, py = DECK + uy * u * br;
       const cr = Math.cos(m.rot), sr = Math.sin(m.rot);
-      return [m.px + (px - m.px) * cr - (py - m.py) * sr, m.py + m.dy + (px - m.px) * sr + (py - m.py) * cr, c.th];
+      return [m.px + (px - m.px) * cr - (py - m.py) * sr, m.py + m.dy + (px - m.px) * sr + (py - m.py) * cr];
     }
-    // 篙的状态：篙穿过上手，φ 为篙与竖直的夹角（篙尖在后），s 为上手到篙尖的距离
+    // 第 n 次下篙的时刻（tb 时基）与入水点 x（水面 y = WY）
+    const plantT = (n) => n * 2 + PA * 2;
+    const plantX = (n) => { const Hq = handW(plantT(n) - TB0); return Hq[0] - (WY - Hq[1]) * Math.tan(PH0); };
+    // 篙尖在水面以下的深度（沿篙身）：入水前 PRE 秒从 −LIFT 开始下插，入水时刻正好为 0，DIVE 秒后到底
+    const diveD = (tau) => -LIFT + (DPL + LIFT) * smooth((tau + PRE) / (PRE + DIVE));
+    // 推送阶段（tb∈[tp,te]）篙身的角度：过握篙点与入水点
+    function pushPhi(lt, n, tp) {
+      const H = handW(lt), tau = lt + TB0 - tp;
+      const Ex = plantX(n);
+      // 入水的头 0.1 s：入水点从“随船带着走”的位置过渡到钉住的位置
+      const carried = H[0] - (WY - H[1]) * Math.tan(PH0);
+      const ex = Ex + (carried - Ex) * (1 - smooth(tau / PIN));
+      return { H, ex, phi: Math.atan2(H[0] - ex, WY - H[1]) };
+    }
+    // 篙的状态：篙穿过握篙点 H，φ 为篙与竖直的夹角（篙尖在后），s 为握篙点到篙尖的距离；ex 为入水点（在水里时）
     function poleAt(lt) {
       const tb = lt + TB0;
       const n = Math.floor((tb - PA * 2) / 2);
-      const tp = n * 2 + PA * 2, te = n * 2 + PB * 2, tn = tp + 2;
-      const Hh = handW(lt);
-      const plant = (tq) => { const Hq = handW(tq - TB0), ph = Hq[2]; return [Hq[0] - (BED - Hq[1]) * Math.tan(ph), BED]; };
+      const tp = plantT(n), te = n * 2 + PB * 2, tn = plantT(n + 1);
       if (tb < te) {
-        const T0 = plant(tp);
-        const dx = Hh[0] - T0[0], dy = T0[1] - Hh[1];
-        return { H: Hh, phi: Math.atan2(dx, dy), s: Math.hypot(dx, dy), push: 1 };
+        const P = pushPhi(lt, n, tp);
+        const L = Math.hypot(P.H[0] - P.ex, WY - P.H[1]);
+        return { H: P.H, phi: P.phi, s: L + Math.max(0, diveD(tb - tp)), ex: P.ex, push: 1 };
       }
-      const T0 = plant(tp), He = handW(te - TB0);
-      const phE = Math.atan2(He[0] - T0[0], T0[1] - He[1]), sE = Math.hypot(He[0] - T0[0], T0[1] - He[1]);
-      const Hn = handW(tn - TB0), phN = Hn[2], sN = (BED - Hn[1]) / Math.cos(phN);
-      const u = (tb - te) / (tn - te);
-      const phi = lerp(phE, phN, swing(u));
-      // 篙尖升到水面上约 3 像素（u=UM），再插回河床
-      const Hm = handW(te + UM * (tn - te) - TB0), phM = lerp(phE, phN, swing(UM));
-      const sMin = (WY - 3 - Hm[1]) / Math.cos(phM);
-      const s = u < UM ? lerp(sE, sMin, cosE(u / UM)) : lerp(sMin, sN, cosE((u - UM) / (1 - UM)));
-      return { H: Hh, phi, s, push: 0 };
+      const H = handW(lt);
+      // 推完那一刻的篙角与角速度：收篙时角速度在 0.12 s 内衰减掉，不会一下停住
+      const Pe = pushPhi(te - TB0, n, tp), Pe0 = pushPhi(te - TB0 - 0.01, n, tp);
+      const phE = Pe.phi, wE = (Pe.phi - Pe0.phi) / 0.01;
+      const tau = tb - te, u = tau / (tn - te);
+      const phA = phE + wE * 0.12 * (1 - Math.exp(-tau / 0.12));
+      // 下篙前篙身摆到 PH0（与 plantX 的定义一致：到入水时刻正好穿过入水点）
+      const phi = lerp(phA, PH0, swing(u));
+      // 篙尖的高度：先沿篙身抽出水面（UA 内从水下 DPL 升到水面上 LIFT），停在水面上方，入水前 PRE 秒再下插
+      let ty;
+      const tIn = tn - tb;
+      if (tIn < PRE) ty = WY + diveD(-tIn) * Math.cos(phi);
+      else if (u < UA) ty = lerp(WY + DPL * Math.cos(phE), WY - LIFT, cosE(u / UA));
+      else ty = WY - LIFT;
+      const s = (ty - H[1]) / Math.cos(phi);
+      return { H, phi, s, ex: null, push: 0 };
     }
     const tipOf = (P) => [P.H[0] - P.s * Math.sin(P.phi), P.H[1] + P.s * Math.cos(P.phi)];
-    // 第 n 个周期里篙尖出水、入水的时刻与位置（二分求解，确定性）
+    // 第 n 个周期里篙尖入水（钉住的点）与出水的时刻与位置（确定性解析/二分）
     function crossings(n) {
-      const tb0 = n * 2 + PB * 2, tb1 = n * 2 + PA * 2 + 2;
-      const f = (tb) => tipOf(poleAt(tb - TB0))[1] - WY;
-      const tm = tb0 + UM * (tb1 - tb0);
-      if (f(tm) >= 0) return [];
-      const solve = (a, b) => { for (let i = 0; i < 16; i++) { const m = (a + b) / 2; if ((f(a) > 0) === (f(m) > 0)) a = m; else b = m; } return (a + b) / 2; };
       const out = [];
-      const tx = solve(tb0, tm), ti = solve(tm, tb1);
-      out.push({ t: tx - TB0, x: tipOf(poleAt(tx - TB0))[0], k: 0.55 });
-      out.push({ t: ti - TB0, x: tipOf(poleAt(ti - TB0))[0], k: 1 });
+      // 入水：时刻 plantT(n)，位置就是钉住的入水点
+      out.push({ t: plantT(n) - TB0, x: plantX(n), k: 1 });
+      // 出水：收篙阶段 u<UA 内，篙尖高度过水面
+      const tp = plantT(n), te = n * 2 + PB * 2, tn = plantT(n + 1);
+      const Pe = pushPhi(te - TB0, n, tp);
+      const k = (DPL * Math.cos(Pe.phi)) / (DPL * Math.cos(Pe.phi) + LIFT);
+      const uX = (UA * Math.acos(1 - 2 * k)) / Math.PI, tX = te + uX * (tn - te);
+      out.push({ t: tX - TB0, x: tipOf(poleAt(tX - TB0))[0], k: 0.55 });
       return out;
     }
     function drawPole(g, lt) {
@@ -233,7 +257,8 @@
       const m = SIL.boat(g, bx, DECK, LEN, lt, { layer: 'back', body: '#29231c', rim: RIM, rimSide: 1 });
       drawPole(g, lt);
       SIL.draw(g, 'boatman', 'pole', bx + BMX, DECK, FH, lt + TB0, { facing: 1, boat: m, rim: RIM, rimSide: 1, wind: 0.25, windDir: -1, waterDepth: -10 * FH, body: BODY });
-      SIL.draw(g, 'old', 'sitBoat', bx + OLDX, DECK, FH, lt + 1.7, { facing: 1, boat: m, rim: RIM, rimSide: 1, wind: 0.35, windDir: -1, body: BODY });
+      // 远景里的归人用端坐的背影（sitBack）：上身直、圆头顶一个白髻，没有举到嘴边的手臂（sitBoat 的饮酒手臂在 20 px 高时像鸟喙）
+      SIL.draw(g, 'old', 'sitBack', bx + OLDX, DECK, FH, lt + 1.7, { facing: 1, boat: m, rim: RIM, rimSide: 1, rimWidth: 1, wind: 0.35, windDir: -1, body: BODY });
       SIL.boat(g, bx, DECK, LEN, lt, { layer: 'front', body: '#29231c', rim: RIM, rimSide: 1 });
       return { c: sc.c, S: sc.S, ox, oy };
     }
@@ -425,7 +450,7 @@
       return K.cache('fg1_i2_col', 220, H - HZ, 0.5, (g) => {
         const hh = H - HZ;
         for (let y = 0; y < hh; y += 2) {
-          const v = y / hh, w = 10 + v * 70, a = 0.34 * Math.pow(1 - v, 1.3) + 0.04;
+          const v = y / hh, w = 10 + v * 70, a = 0.44 * Math.pow(1 - v, 1.3) + 0.05;
           const gr = g.createLinearGradient(110 - w * 1.6, 0, 110 + w * 1.6, 0);
           gr.addColorStop(0, 'rgba(250,226,186,0)'); gr.addColorStop(0.5, `rgba(250,228,190,${a.toFixed(3)})`); gr.addColorStop(1, 'rgba(250,226,186,0)');
           g.fillStyle = gr; g.fillRect(0, y, 220, 2);
@@ -440,11 +465,95 @@
         g.fillStyle = gr; g.fillRect(0, -12, 32, 32); g.restore();
       });
     }
+    // ---- 右下角近景芦苇（焦外的深色剪影）：几根芦秆带互生的长叶，加几片基生叶；根在画框下沿以外 ----
+    // 每片叶/每根秆单独预渲染成带模糊的贴图（ctx.filter 只在建缓存时用），逐帧只绕根部做小角度摆动
+    const REED_COL = '#1e272e';
+    const REEDS = (() => {
+      const r = rng(6061), out = [];
+      // 芦秆：根 (x, 740)，高 hgt，略向左弯（迎面风向左）
+      for (const [x, hgt] of [[1128, 214], [1196, 178], [1252, 236]]) {
+        const leaves = [];
+        const nL = 4 + Math.floor(r() * 2);
+        for (let k = 0; k < nL; k++) {
+          const at = 0.28 + (k / nL) * 0.62 + r() * 0.05; // 着生高度（占秆长）
+          const side = k % 2 ? 1 : -1;
+          leaves.push({ at, side, len: 70 + r() * 50, ang: 0.5 + r() * 0.35, droop: 0.9 + r() * 0.5, w: 7 + r() * 2.2 });
+        }
+        out.push({ kind: 'stalk', x, y: 742, hgt, bend: -(0.12 + r() * 0.08), w: 4.4 + r() * 0.8, leaves, ph: r() * TAU });
+      }
+      // 基生叶：从根部斜出的长叶
+      for (let i = 0; i < 11; i++) {
+        const x = 1066 + r() * 216;
+        out.push({ kind: 'blade', x, y: 744, len: 90 + r() * 110, ang: -0.55 + r() * 0.85, droop: 0.5 + r() * 0.7, w: 8.5 + r() * 3.5, ph: r() * TAU });
+      }
+      return out;
+    })();
+    // 一片叶：沿弯曲的中线展开，两端尖、中间宽（局部坐标：根在原点，初始方向 a0，向下弯 droop）
+    function leafPath(g, len, a0, droop, w) {
+      const N = 18, L = [], R = [];
+      let x = 0, y = 0;
+      for (let i = 0; i <= N; i++) {
+        const u = i / N, a = a0 + droop * u * u; // 越往梢越下垂
+        const dx = Math.sin(a), dy = -Math.cos(a);
+        const hw = (w / 2) * Math.sin(Math.PI * Math.min(1, u * 1.15 + 0.02)) * (1 - 0.15 * u);
+        L.push([x - dy * hw, y + dx * hw]); R.push([x + dy * hw, y - dx * hw]);
+        x += (dx * len) / N; y += (dy * len) / N;
+      }
+      g.beginPath(); g.moveTo(L[0][0], L[0][1]);
+      for (const q of L) g.lineTo(q[0], q[1]);
+      for (let i = R.length - 1; i >= 0; i--) g.lineTo(R[i][0], R[i][1]);
+      g.closePath();
+    }
+    const REED_PAD = 24;
+    function reedSprite(i) {
+      const R = REEDS[i];
+      const ext = R.kind === 'stalk' ? R.hgt + 140 : R.len + 20;
+      const SZ = 2 * ext + 2 * REED_PAD;
+      return K.cache('fg1_i2_reed' + i, SZ, SZ, 0.5, (g) => {
+        blurInto(g, SZ, SZ, 1.3, (tg) => {
+          tg.translate(SZ / 2, SZ / 2);
+          tg.fillStyle = REED_COL;
+          if (R.kind === 'blade') { leafPath(tg, R.len, R.ang, R.droop, R.w); tg.fill(); return; }
+          // 秆：一条细长、上细下粗的弯线
+          const N = 20, pts = [];
+          for (let k = 0; k <= N; k++) { const u = k / N; pts.push([R.bend * R.hgt * u * u, -R.hgt * u]); }
+          tg.beginPath();
+          for (let k = 0; k <= N; k++) { const u = k / N, hw = R.w * (1 - 0.7 * u) / 2; tg.lineTo(pts[k][0] - hw, pts[k][1]); }
+          for (let k = N; k >= 0; k--) { const u = k / N, hw = R.w * (1 - 0.7 * u) / 2; tg.lineTo(pts[k][0] + hw, pts[k][1]); }
+          tg.closePath(); tg.fill();
+          // 秆梢：一小截细尖（嫩芦苇，未抽穗）
+          for (const lf of R.leaves) {
+            const k = Math.round(lf.at * N), b = pts[k];
+            tg.save(); tg.translate(b[0], b[1]);
+            // 叶向两侧斜出后下垂；迎面风向左，左侧的叶更平、右侧的叶被吹得向上翻回
+            const a0 = lf.side * lf.ang - 0.15, dr = lf.side * lf.droop * (lf.side < 0 ? 1 : 0.75);
+            leafPath(tg, lf.len, a0, dr, lf.w); tg.fill();
+            tg.restore();
+          }
+        });
+      });
+    }
+    function drawReeds(g, lt) {
+      for (let i = 0; i < REEDS.length; i++) {
+        const R = REEDS[i], tex = reedSprite(i);
+        const ext = R.kind === 'stalk' ? R.hgt + 140 : R.len + 20, sz = 2 * ext + 2 * REED_PAD;
+        // 摆动：两三个正弦叠加，0.3–0.6 Hz，秆梢最多约 3 px；整体略向左偏（风向左）
+        const sw = 0.011 * (0.6 * Math.sin(TAU * 0.33 * lt + R.ph) + 0.28 * Math.sin(TAU * 0.53 * lt + 1.7 * R.ph) + 0.12 * Math.sin(TAU * 0.81 * lt + 2.9 * R.ph)) - 0.008;
+        g.save();
+        g.translate(R.x, R.y); g.rotate(sw);
+        g.drawImage(tex, -sz / 2, -sz / 2, sz, sz);
+        g.restore();
+      }
+    }
+    // 13–15 s 间从船前掠过的一缕薄雾（alpha ≤ 0.28）
+    const WISP_A = (lt) => 0.28 * smooth((lt - 1.7) / 0.9) * (1 - smooth((lt - 4.0) / 1.0));
+
     const MP = 1600;
     const bands = () => [
       mistBand('fg1_i2_m1', MP, 120, 71, '#f4efe4', 0.7),
       mistBand('fg1_i2_m2', MP, 100, 83, '#f5f1e8', 0.6),
       mistBand('fg1_i2_m3', MP, 80, 97, '#f6f3ec', 0.8),
+      mistBand('fg1_i2_m4', MP, 96, 113, '#f7f3ea', 0.9, 0.5),
     ];
 
     XYT.registerShot('i2_river', {
@@ -479,7 +588,7 @@
           const gx = (h2(i, 5) + h2(i, 6) + h2(i, 7) - 1.5) * spread * 1.3;
           const len = 4 + (y - HZ) * 0.1 * (0.5 + h2(i, 8));
           const sh = 0.5 + 0.5 * Math.sin(lt * (1.6 + 2.6 * h2(i, 9)) + h2(i, 10) * TAU);
-          const a = (0.8 - 0.55 * v) * sh * sh * (1 + 0.15 * be);
+          const a = (0.95 - 0.6 * v) * sh * sh * (1 + 0.15 * be);
           if (a < 0.02) continue;
           g.globalAlpha = Math.min(1, a);
           g.drawImage(fl, SUN[0] + gx - len / 2, y - 1.5 - v, len, 3 + 2 * v);
@@ -550,14 +659,19 @@
         // 低雾：岸边（0.15）与水上（0.3）
         drawBand(g, B[1], MP, 396, 74, lt, 6, -1, 0.5);
         drawBand(g, B[2], MP, 438, 80, lt, 12, -1, 0.34);
-        // 日晕呼吸：强拍上微亮
+        // 日晕呼吸：强拍上微亮（暖色焦点：比水墨底子更亮一档）
         g.save();
         g.globalCompositeOperation = 'screen';
-        const gl = g.createRadialGradient(SUN[0], SUN[1], 0, SUN[0], SUN[1], 300);
-        const ga = 0.22 + 0.06 * de;
-        gl.addColorStop(0, `rgba(255,236,200,${ga.toFixed(3)})`); gl.addColorStop(0.35, `rgba(250,220,170,${(ga * 0.45).toFixed(3)})`); gl.addColorStop(1, 'rgba(250,220,170,0)');
-        g.fillStyle = gl; g.fillRect(SUN[0] - 300, SUN[1] - 300, 600, 600);
+        const gl = g.createRadialGradient(SUN[0], SUN[1], 0, SUN[0], SUN[1], 340);
+        const ga = 0.32 + 0.06 * de;
+        gl.addColorStop(0, `rgba(255,232,190,${ga.toFixed(3)})`); gl.addColorStop(0.12, `rgba(252,222,172,${(ga * 0.8).toFixed(3)})`); gl.addColorStop(0.4, `rgba(248,214,160,${(ga * 0.32).toFixed(3)})`); gl.addColorStop(1, 'rgba(248,214,160,0)');
+        g.fillStyle = gl; g.fillRect(SUN[0] - 340, SUN[1] - 340, 680, 680);
         g.restore();
+        // 一缕薄雾从船前掠过
+        const wa = WISP_A(lt);
+        if (wa > 0.003) drawBand(g, B[3], MP, 486, 96, lt, 12, -1, wa);
+        // 近景芦苇
+        drawReeds(g, lt);
       },
     });
   })();
@@ -568,20 +682,30 @@
   (function () {
     const HZ = 432; // 对岸水线
     const FX = 860, FY = 640, FH = 300;
-    const SUNX = 1400, SUNY = 250; // 画外右侧低处
-    const RIM = '#f3c48c';
+    const SUNX = 1222, SUNY = 322; // 右侧低处、雾里的初阳（与 i2 同一个早晨）
+    const RIM = '#ffd29a';
     const DECK = '#2b2f36';
     const VP = [905, HZ]; // 船板缝的灭点（在地平线上）
     const FIGB = SIL.bounds('old', 'standBack', FH);
 
     function paintSky(g) {
-      g.fillStyle = A.vgrad(g, 0, HZ, [[0, '#dcdcd4'], [0.5, '#e9e4d6'], [1, '#efe6d2']]);
+      g.fillStyle = A.vgrad(g, 0, HZ, [[0, '#d8dbd6'], [0.5, '#e6e3d8'], [1, '#ece5d4']]);
       g.fillRect(0, 0, W, HZ);
-      const gr = g.createRadialGradient(SUNX, SUNY, 0, SUNX, SUNY, 760);
-      gr.addColorStop(0, 'rgba(252,228,188,0.95)'); gr.addColorStop(0.25, 'rgba(246,214,168,0.5)');
-      gr.addColorStop(0.6, 'rgba(240,210,170,0.14)'); gr.addColorStop(1, 'rgba(240,210,170,0)');
+      // 背光的左侧偏冷、偏灰
+      let gr = g.createLinearGradient(0, 0, 760, 0);
+      gr.addColorStop(0, 'rgba(150,168,178,0.2)'); gr.addColorStop(1, 'rgba(150,168,178,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, HZ);
+      // 向阳的右侧：雾被晨光照透，暖而亮
+      gr = g.createRadialGradient(SUNX, SUNY, 0, SUNX, SUNY, 820);
+      gr.addColorStop(0, 'rgba(252,226,182,0.95)'); gr.addColorStop(0.2, 'rgba(248,214,164,0.58)');
+      gr.addColorStop(0.55, 'rgba(242,212,172,0.18)'); gr.addColorStop(1, 'rgba(240,210,170,0)');
       g.fillStyle = gr; g.fillRect(0, 0, W, HZ);
       cloudWash(g, [[330, 110, 560, 50, 0.09], [820, 60, 520, 36, 0.07]], 909, '#9ea8aa');
+      // 雾里的日轮：一枚淡暖的圆，边缘化在雾里
+      blurInto(g, W, HZ, 3, (tg) => {
+        tg.fillStyle = 'rgba(255,242,220,0.9)';
+        tg.beginPath(); tg.arc(SUNX, SUNY, 21, 0, TAU); tg.fill();
+      });
     }
     function skyTex() { return K.cache('fg1_i3_sky', W, HZ, 1, paintSky); }
     // 远山：两层低丘
@@ -741,9 +865,9 @@
         const hh = FOG_Y1 - FOG_Y0;
         for (let y = 0; y < hh; y += 2) {
           const v = (y + 1) / hh, prof = smooth(v / 0.4) * (1 - smooth((v - 0.72) / 0.28));
-          const gr = g.createLinearGradient(150, 0, 820, 0);
-          if (k === 0) { gr.addColorStop(0, `rgba(238,232,220,${prof.toFixed(3)})`); gr.addColorStop(1, `rgba(242,231,212,${prof.toFixed(3)})`); }
-          else { gr.addColorStop(0, `rgba(238,232,220,${prof.toFixed(3)})`); gr.addColorStop(1, 'rgba(242,231,212,0)'); }
+          const gr = g.createLinearGradient(150, 0, 1180, 0);
+          if (k === 0) { gr.addColorStop(0, `rgba(230,233,231,${prof.toFixed(3)})`); gr.addColorStop(0.55, `rgba(240,233,220,${prof.toFixed(3)})`); gr.addColorStop(1, `rgba(250,232,204,${prof.toFixed(3)})`); }
+          else { gr.addColorStop(0, `rgba(230,233,231,${prof.toFixed(3)})`); gr.addColorStop(0.65, 'rgba(240,233,220,0)'); gr.addColorStop(1, 'rgba(250,232,204,0)'); }
           g.fillStyle = gr; g.fillRect(0, y, W, 2);
         }
       });
@@ -757,10 +881,17 @@
         g.translate(0, -HZ);
         g.fillStyle = A.vgrad(g, HZ, H, [[0, '#e9e3d4'], [0.3, '#d6d9d3'], [1, '#bcc6c6']]);
         g.fillRect(0, HZ, W, H - HZ);
-        const gr = g.createRadialGradient(1280, HZ + 10, 0, 1280, HZ + 10, 620);
-        gr.addColorStop(0, 'rgba(250,226,186,0.65)'); gr.addColorStop(0.5, 'rgba(244,220,184,0.2)'); gr.addColorStop(1, 'rgba(244,220,184,0)');
-        g.save(); g.translate(1280, HZ + 10); g.scale(1, 0.35); g.translate(-1280, -(HZ + 10));
+        const gr = g.createRadialGradient(SUNX, HZ + 6, 0, SUNX, HZ + 6, 640);
+        gr.addColorStop(0, 'rgba(250,224,180,0.75)'); gr.addColorStop(0.45, 'rgba(244,218,180,0.24)'); gr.addColorStop(1, 'rgba(244,220,184,0)');
+        g.save(); g.translate(SUNX, HZ + 6); g.scale(1, 0.35); g.translate(-SUNX, -(HZ + 6));
         g.fillStyle = gr; g.fillRect(0, HZ - 400, W, 1600); g.restore();
+        // 日轮正下方的暖色光带：近水平处窄而亮，向近处展宽变淡
+        for (let y = HZ; y < H; y += 2) {
+          const v = (y - HZ) / (H - HZ), w = 14 + v * 120, a = 0.3 * Math.pow(1 - v, 1.4) + 0.03;
+          const cg = g.createLinearGradient(SUNX - w * 1.6, 0, SUNX + w * 1.6, 0);
+          cg.addColorStop(0, 'rgba(250,222,178,0)'); cg.addColorStop(0.5, `rgba(250,224,182,${a.toFixed(3)})`); cg.addColorStop(1, 'rgba(250,222,178,0)');
+          g.fillStyle = cg; g.fillRect(SUNX - w * 1.6, y, w * 3.2, 2);
+        }
         // 远山与小镇的倒影
         blurInto(g, W, H, 1.8, (tg) => {
           tg.save(); tg.translate(0, 2 * HZ); tg.scale(1, -1);
@@ -902,6 +1033,200 @@
       });
     }
     function drawBow(g) { g.drawImage(bowTex(), 480, 560, 760, 300); }
+    // 雾散后小镇白墙被晨光染暖：同一张小镇贴图罩一层暖色（右侧向阳更暖），按雾散的进度叠上去
+    function warmTownTex() {
+      return K.cache('fg1_i3_townwarm', W, HZ + 10, 1, (g) => {
+        g.drawImage(townTex(), 0, 0, W, HZ + 10);
+        g.save(); g.globalCompositeOperation = 'source-atop';
+        const gr = g.createLinearGradient(180, 0, 780, 0);
+        gr.addColorStop(0, 'rgba(250,206,150,0.16)'); gr.addColorStop(1, 'rgba(255,204,140,0.34)');
+        g.fillStyle = gr; g.fillRect(0, 0, W, HZ + 10);
+        g.restore();
+      });
+    }
+    // 日轮贴图：淡暖的圆盘，边缘在雾里化开
+    function sunTex() {
+      return K.cache('fg1_i3_sun', 80, 80, 1, (g) => {
+        blurInto(g, 80, 80, 2.6, (tg) => {
+          const gr = tg.createRadialGradient(40, 40, 0, 40, 40, 20);
+          gr.addColorStop(0, 'rgba(255,248,232,0.96)'); gr.addColorStop(0.8, 'rgba(255,240,214,0.9)'); gr.addColorStop(1, 'rgba(255,236,206,0.75)');
+          tg.fillStyle = gr; tg.beginPath(); tg.arc(40, 40, 20, 0, TAU); tg.fill();
+        });
+      });
+    }
+    // 水面碎金：日轮正下方，x 约 950–1280，越远越密越细
+    function glintTex() {
+      return K.cache('fg1_i3_glint', 32, 8, 1, (g) => {
+        const gr = g.createRadialGradient(16, 4, 0, 16, 4, 16);
+        gr.addColorStop(0, 'rgba(255,232,186,0.95)'); gr.addColorStop(0.4, 'rgba(248,206,140,0.45)'); gr.addColorStop(1, 'rgba(248,206,140,0)');
+        g.save(); g.translate(16, 4); g.scale(1, 0.25); g.translate(-16, -4);
+        g.fillStyle = gr; g.fillRect(0, -12, 32, 32); g.restore();
+      });
+    }
+    function drawGlints(g, lt, be) {
+      const fl = glintTex();
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 90; i++) {
+        const v = Math.pow(h2(i, 41), 1.5), y = HZ + 3 + v * 168;
+        const spread = 12 + (y - HZ) * 0.9;
+        const gx = (h2(i, 42) + h2(i, 43) + h2(i, 44) - 1.5) * spread;
+        const x = SUNX + gx;
+        if (x < 930 || x > 1300) continue;
+        const len = 5 + (y - HZ) * 0.12 * (0.5 + h2(i, 45));
+        const sh = 0.5 + 0.5 * Math.sin(lt * (1.4 + 2.4 * h2(i, 46)) + h2(i, 47) * TAU);
+        const a = (0.75 - 0.45 * v) * sh * sh * (1 + 0.15 * be);
+        if (a < 0.02) continue;
+        g.globalAlpha = Math.min(1, a);
+        g.drawImage(fl, x - len / 2, y - 1.5 - v, len, 3 + 2 * v);
+      }
+      g.restore();
+    }
+    // 两只白鹭：20 s 起从右侧画外飞入，贴着远处水面向左慢飞（顺风），逆光下偏灰、上缘一道暖边
+    const EG_T0 = 2.7;
+    function drawEgret(g, x, y, s, t, ph, a) {
+      const th = 0.85 * Math.sin(TAU * 2.1 * t + ph) + 0.15; // 翅膀上下（向上为正）
+      g.save();
+      g.translate(x, y + 0.5 * s * Math.sin(TAU * 2.1 * t + ph + 1.4)); g.scale(s, s);
+      g.globalAlpha *= a;
+      const wing = (k, col) => {
+        const ty = -8.6 * k * Math.sin(th), tx = 1.4 + 1.8 * (1 - Math.cos(th));
+        g.fillStyle = col;
+        g.beginPath();
+        g.moveTo(-2.4, -0.4);
+        g.quadraticCurveTo(-1.6 + tx * 0.3, ty * 0.55 - 0.6, tx - 0.8, ty);
+        g.quadraticCurveTo(tx + 1.2, ty * 0.5, 1.6, -0.3);
+        g.closePath(); g.fill();
+      };
+      wing(0.82, '#9c9d99'); // 远侧翅
+      // 腿向后拖、颈缩成 S、喙前伸
+      g.strokeStyle = '#6d6a62'; g.lineWidth = 0.5; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(3.2, 0.5); g.lineTo(9.2, 1.3); g.stroke();
+      g.fillStyle = '#c2bfb7';
+      g.beginPath(); g.ellipse(0, 0, 4.3, 1.35, -0.05, 0, TAU); g.fill();
+      g.beginPath(); g.ellipse(-4.4, 0.55, 1.7, 1.15, 0.3, 0, TAU); g.fill();
+      g.beginPath(); g.arc(-6.1, -0.15, 0.95, 0, TAU); g.fill();
+      g.strokeStyle = '#c9a556'; g.lineWidth = 0.55;
+      g.beginPath(); g.moveTo(-6.9, -0.05); g.lineTo(-9.8, 0.35); g.stroke();
+      wing(1, '#cbc8c0'); // 近侧翅
+      g.strokeStyle = 'rgba(255,226,180,0.7)'; g.lineWidth = 0.45;
+      g.beginPath(); g.moveTo(-3.6, -1.0); g.quadraticCurveTo(0, -1.5, 3.6, -0.6); g.stroke();
+      g.restore();
+    }
+    function drawEgrets(g, lt) {
+      for (const [dt, dy, s, ph] of [[0, 0, 1.3, 0], [0.55, -16, 1.15, 2.2]]) {
+        const tt = lt - EG_T0 - dt;
+        if (tt < 0) continue;
+        const x = 1300 - 52 * tt, y = 404 + dy + 6 * smooth(tt / 6);
+        if (x < 880) continue;
+        drawEgret(g, x, y, s, lt, ph, 0.9);
+      }
+    }
+    // 近景左上的垂柳枝（焦外）：枝从画外伸进来，柳丝顺风（向左）垂下；每根柳丝单独绕枝上的根摆动
+    // 左上角水印的位置（x 34–175、y 24–44）留空：枝从 x≈260 处才进画，柳丝在 y<60 处都在 x>215
+    const WL_P = [[140, -20], [270, 52], [420, 70]];
+    const wlPt = (t) => { const a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t; return [a * WL_P[0][0] + b * WL_P[1][0] + c * WL_P[2][0], a * WL_P[0][1] + b * WL_P[1][1] + c * WL_P[2][1]]; };
+    const WL_STR = (() => {
+      const r = rng(7171), out = [];
+      for (let i = 0; i < 12; i++) {
+        const t = 0.44 + Math.pow(i / 11, 0.85) * 0.55 + (r() - 0.5) * 0.05;
+        // 长短参差；柳丝下段被风吹得向左弯（curl），整根再略向左偏（lean）
+        out.push({ t, len: 50 + Math.pow(r(), 0.8) * 170, lean: -(0.02 + r() * 0.2), curl: -(0.04 + r() * 0.22), ph: r() * TAU, seed: 7200 + i, w: 0.8 + r() * 0.5, dy: r() * 6 });
+      }
+      return out;
+    })();
+    const WL_COL = '#36423a';
+    function willowTwigTex() {
+      return K.cache('fg1_i3_wltwig', 460, 120, 0.5, (g) => {
+        blurInto(g, 460, 120, 2.2, (tg) => {
+          tg.translate(0, 60);
+          tg.strokeStyle = '#2f3631'; tg.lineCap = 'round';
+          tg.lineWidth = 5; tg.beginPath(); tg.moveTo(WL_P[0][0], WL_P[0][1]); tg.quadraticCurveTo(WL_P[1][0], WL_P[1][1], WL_P[2][0], WL_P[2][1]); tg.stroke();
+          tg.lineWidth = 2.2; let q = wlPt(0.6); tg.beginPath(); tg.moveTo(q[0], q[1]); tg.quadraticCurveTo(q[0] + 26, q[1] + 18, q[0] + 50, q[1] + 18); tg.stroke();
+          tg.lineWidth = 1.6; q = wlPt(0.82); tg.beginPath(); tg.moveTo(q[0], q[1]); tg.quadraticCurveTo(q[0] + 14, q[1] - 10, q[0] + 34, q[1] - 12); tg.stroke();
+        });
+      });
+    }
+    // 一根柳丝（局部坐标：根在 (0, 0)，向下垂、下段向左弯；画布宽 W0、高 len+30，根在 (W0−40, 10)）
+    const WLS_W = 120;
+    function willowStrandTex(i) {
+      const S0 = WL_STR[i], L = S0.len;
+      return K.cache('fg1_i3_wls' + i, WLS_W, L + 30, 1, (g) => {
+        blurInto(g, WLS_W, L + 30, 1.5, (tg) => {
+          const r = rng(S0.seed);
+          tg.translate(WLS_W - 40, 10);
+          const P = (u) => [S0.curl * L * u * u + 2 * Math.sin(Math.PI * u), u * L];
+          tg.strokeStyle = WL_COL; tg.lineWidth = S0.w; tg.lineCap = 'round';
+          tg.beginPath(); for (let k = 0; k <= 16; k++) { const q = P(k / 16); if (!k) tg.moveTo(q[0], q[1]); else tg.lineTo(q[0], q[1]); } tg.stroke();
+          // 细长的柳叶沿丝互生，叶尖顺着丝朝下、略张开
+          const nLf = Math.floor(L / 4.2);
+          for (let k = 0; k < nLf; k++) {
+            const u = (k + 0.3 + 0.4 * r()) / nLf, q = P(u), q2 = P(Math.min(1, u + 0.02));
+            const dir = Math.atan2(-(q2[0] - q[0]), q2[1] - q[1]);
+            const side = k % 2 ? 1 : -1, ang = dir + side * (0.35 + r() * 0.32), ll = (8 + r() * 5) * (1 - 0.3 * u);
+            tg.fillStyle = rgba(r() < 0.5 ? WL_COL : '#4a564c', 0.58);
+            tg.save(); tg.translate(q[0], q[1]); tg.rotate(ang);
+            tg.beginPath(); tg.ellipse(0, ll / 2, 1.3 + r() * 0.6, ll / 2, 0, 0, TAU); tg.fill();
+            tg.restore();
+          }
+        });
+      });
+    }
+    function drawWillow(g, lt, zn) {
+      g.save();
+      g.translate(FX, 470); g.scale(zn, zn); g.translate(-FX, -470);
+      // 整枝绕画外的根轻摆（±0.3°）
+      const bs = 0.005 * Math.sin((TAU * lt) / 5.6 + 0.4) + 0.002 * Math.sin((TAU * lt) / 3.1);
+      g.translate(60, -90); g.rotate(bs); g.translate(-60, 90);
+      g.drawImage(willowTwigTex(), 0, -60, 460, 120);
+      for (let i = 0; i < WL_STR.length; i++) {
+        const S0 = WL_STR[i], p0 = wlPt(S0.t), p = [p0[0], p0[1] + S0.dy];
+        const sw = S0.lean + 0.04 * (0.62 * Math.sin(TAU * 0.46 * lt + S0.ph) + 0.38 * Math.sin(TAU * 0.71 * lt + 1.9 * S0.ph));
+        g.save(); g.translate(p[0], p[1]); g.rotate(-sw);
+        g.drawImage(willowStrandTex(i), -(WLS_W - 40), -10, WLS_W, S0.len + 30);
+        g.restore();
+      }
+      g.restore();
+    }
+    // 迎面风里的几缕散发（XYT.sil 的老者背影只有耳后两缕很短的散发，这里在后颈左侧补三缕长一点的，
+    // 根压在头部轮廓里、先于人物画在身后，只在轮廓外顺风向左飘；本地补丁，见报告）
+    const LOOSE = [[-4.6, -89.6, 9.5, 0.3, 0.86], [-5.3, -91.6, 8.0, 1.9, 0.72], [-3.9, -87.9, 7.0, 3.7, 0.66]];
+    function looseHair(g, lt, tf) {
+      const br = 1 + 0.004 * Math.sin((TAU * tf) / 3.6);
+      const u = FH / 100;
+      g.save();
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      for (const [ax, ay, len, ph, w] of LOOSE) {
+        const N = 9, pts = [];
+        let x = FX + ax * u, y = FY + ay * u * br;
+        pts.push([x, y]);
+        for (let k = 1; k <= N; k++) {
+          const s = k / N;
+          const a = -0.3 - 0.85 * Math.pow(s, 0.7) + 0.17 * Math.pow(s, 1.3) * (0.65 * Math.sin(TAU * 0.58 * lt - 2.2 * s + ph) + 0.35 * Math.sin(TAU * 0.86 * lt - 3.1 * s + 1.7 * ph));
+          x += (Math.sin(a) * len * u) / N; y += (Math.cos(a) * len * u) / N;
+          pts.push([x, y]);
+        }
+        for (let k = 0; k < N; k++) {
+          g.strokeStyle = rgba('#c3c0b8', 0.92 - 0.35 * (k / N));
+          g.lineWidth = w * u * (1 - 0.55 * (k / N));
+          g.beginPath(); g.moveTo(pts[k][0], pts[k][1]); g.lineTo(pts[k + 1][0], pts[k + 1][1]); g.stroke();
+        }
+      }
+      g.restore();
+    }
+    // 白发的体积：受光的右半偏暖、背光的左半偏冷偏暗（只罩在头部椭圆里、只作用于已画出的人物像素）
+    function hairShade(g, tf) {
+      const br = 1 + 0.004 * Math.sin((TAU * tf) / 3.6);
+      const u = FH / 100, cx = FX, cy = FY - 92.6 * u * br;
+      g.save();
+      g.globalCompositeOperation = 'source-atop';
+      g.beginPath(); g.ellipse(cx, cy, 6.9 * u, 9.2 * u, 0, 0, TAU); g.clip();
+      const gr = g.createLinearGradient(cx - 6.5 * u, 0, cx + 6.5 * u, 0);
+      gr.addColorStop(0, 'rgba(92,108,122,0.34)'); gr.addColorStop(0.42, 'rgba(110,122,134,0.08)');
+      gr.addColorStop(0.6, 'rgba(255,222,176,0)'); gr.addColorStop(1, 'rgba(255,214,160,0.34)');
+      g.fillStyle = gr; g.fillRect(cx - 8 * u, cy - 10 * u, 16 * u, 20 * u);
+      g.restore();
+    }
     const MP = 1600;
     const bands = () => [
       mistBand('fg1_i3_m1', MP, 130, 141, '#f2ede2', 0.7),
@@ -922,8 +1247,9 @@
         g.save();
         g.translate(FX, 470); g.scale(z, z); g.translate(-FX, -470);
         g.drawImage(bgTownTex(), 0, 0, W, HZ + 10);
-        // 小镇：雾从 3.0 s 起渐散，6.0 s 散到 0.45
+        // 小镇：雾从 3.0 s 起渐散，6.0 s 散到 0.45；雾散时白墙被晨光染暖
         const fogK = smooth((lt - 3.0) / 3.0);
+        if (fogK > 0.003) { g.save(); g.globalAlpha = 0.85 * fogK; g.drawImage(warmTownTex(), 0, 0, W, HZ + 10); g.restore(); }
         // 水面与倒影
         g.drawImage(waterTex(), 0, HZ, W, H - HZ + 2);
         const tr = townReflTex();
@@ -943,29 +1269,43 @@
           g.globalAlpha = a0;
           drawBand(g, B[0], MP, 300, 130, lt, 2, -1, 0.7 * lerp(1, 0.55, fogK));
         }
-        // 水上中层雾（0.12）
-        drawBand(g, B[1], MP, 438, 110, lt, 4.8, -1, 0.42);
-        // 右侧水面碎光（太阳在画外右侧）
+        // 雾里的日晕：低低的初阳透过雾，暖色光晕；强拍上微亮
+        const de = c.de ? c.de(0.6) : 0, be = c.be ? c.be(0.3) : 0;
         g.save();
-        g.globalCompositeOperation = 'lighter';
-        const be = c.be ? c.be(0.3) : 0;
-        for (let i = 0; i < 60; i++) {
-          const v = Math.pow(h2(i, 31), 1.4), y = HZ + 3 + v * 190;
-          const x = 1060 + h2(i, 32) * 240 + v * 60;
-          const len = 3 + v * 16 * (0.5 + h2(i, 33));
-          const sh = 0.5 + 0.5 * Math.sin(lt * (1.5 + 2.5 * h2(i, 34)) + h2(i, 35) * TAU);
-          const a = (0.34 - 0.2 * v) * sh * sh * (1 + 0.15 * be);
-          if (a < 0.02) continue;
-          g.fillStyle = `rgba(150,120,80,${a.toFixed(3)})`;
-          g.fillRect(x, y, len, 0.8 + v);
+        {
+          const ga = 0.5 * (1 + 0.08 * de);
+          let gl = g.createRadialGradient(SUNX, SUNY, 0, SUNX, SUNY, 120);
+          gl.addColorStop(0, `rgba(242,196,138,${ga.toFixed(3)})`); gl.addColorStop(0.35, `rgba(242,196,138,${(ga * 0.5).toFixed(3)})`); gl.addColorStop(1, 'rgba(242,196,138,0)');
+          g.fillStyle = gl; g.fillRect(SUNX - 120, SUNY - 120, 240, 240);
+          g.drawImage(sunTex(), SUNX - 40, SUNY - 40, 80, 80);
+          g.globalCompositeOperation = 'screen';
+          gl = g.createRadialGradient(SUNX, SUNY, 0, SUNX, SUNY, 420);
+          gl.addColorStop(0, `rgba(250,222,180,${(0.18 + 0.03 * de).toFixed(3)})`); gl.addColorStop(1, 'rgba(250,222,180,0)');
+          g.fillStyle = gl; g.fillRect(SUNX - 420, SUNY - 420, 840, 840);
         }
         g.restore();
+        // 两只白鹭贴着远水飞过
+        drawEgrets(g, lt);
+        // 水上中层雾（0.12）
+        drawBand(g, B[1], MP, 438, 110, lt, 4.8, -1, 0.42);
+        // 日轮下的水面碎金
+        drawGlints(g, lt, be);
         // 船头与人：同一个变换（起伏 ±2 px、摇摆 ±0.5°，绕脚下）
         const roll = (0.5 * Math.PI / 180) * Math.sin((TAU * lt) / 4);
         const bob = 2 * Math.sin((TAU * lt) / 4 + 1.1);
         g.save();
         g.translate(FX, FY + bob); g.rotate(roll); g.translate(-FX, -FY);
         drawBow(g);
+        // 船板上的暖色反光：低角度的晨光从右侧掠过船板（人的右侧）
+        g.save();
+        deckPath(g); g.clip();
+        g.globalCompositeOperation = 'screen';
+        {
+          const bg = g.createRadialGradient(FX + 90, FY + 26, 0, FX + 90, FY + 26, 170);
+          bg.addColorStop(0, 'rgba(236,178,118,0.2)'); bg.addColorStop(0.5, 'rgba(220,160,104,0.08)'); bg.addColorStop(1, 'rgba(220,160,104,0)');
+          g.fillStyle = bg; g.fillRect(FX - 100, FY - 20, 300, 200);
+        }
+        g.restore();
         // 接触阴影与投影（光从右前方来，影子落向左下）
         g.save();
         g.translate(FX - 30, FY + 6); g.scale(1, 0.22); g.rotate(-0.35);
@@ -984,7 +1324,9 @@
           const ox = Math.floor(FX + FIGB.left - 40), oy = Math.floor(FY + FIGB.top - 24);
           const fs = scratch('fg1_i3_fig', FIGB.right - FIGB.left + 72, FIGB.bottom - FIGB.top + 36, zs);
           fs.g.translate(-ox, -oy);
-          SIL.draw(fs.g, 'old', 'standBack', FX, FY, FH, lt + 3.1, { wind: 0.5, windDir: -1, rim: RIM, rimSide: 1, body: '#1d2128' });
+          looseHair(fs.g, lt, lt + 3.1);
+          SIL.draw(fs.g, 'old', 'standBack', FX, FY, FH, lt + 3.1, { wind: 0.55, windDir: -1, rim: RIM, rimSide: 1, rimWidth: 3, body: '#1d2128' });
+          hairShade(fs.g, lt + 3.1);
           g.drawImage(fs.c, 0, 0, fs.c.width, fs.c.height, ox, oy, fs.c.width / fs.S, fs.c.height / fs.S);
         }
         // 脚下的接触暗部压在鞋尖上（鞋尖的亮边不至于像亮点）
@@ -1005,6 +1347,8 @@
         // 近处一缕薄雾（0.25），偶尔掠过下摆
         drawBand(g, B[2], MP, 548, 120, lt, 10, -1, 0.26);
         g.restore();
+        // 近景柳枝：比背景推得多一点（视差约 1.5 倍）
+        drawWillow(g, lt, 1 + 0.075 * easeInOut(clamp(lt / c.dur)));
       },
     });
   })();

@@ -2421,23 +2421,29 @@
             }
           }
         }
-        // 结尾接圆形渐开（下一镜是夜里的灯）：最后 1.1s 先整体缓缓压暗到约 72%（smoothstep），亮→暗分摊到三十多帧；
-        // 圆口还小的时候在它外缘铺一圈淡暗晕，读起来是“推开一扇暗窗”而不是冒出一个太阳——圆口变大前暗晕就收掉，不叠在最快的那几帧上
-        // （圆形渐开本身在引擎里，这里只能从本镜一侧缓和）
+        // 结尾接圆形渐开（下一镜是夜里的灯）。引擎的圆口半径按 easeInOut 长，面积几乎都堆在最后几帧；
+        // 引擎不归本组改，这里从本镜一侧补：
+        // 1) 最后 1.1s 整体缓缓压暗约 20%（smoothstep）；
+        // 2) 渐开的 0.7s 里，以同一圆心 (640,360) 铺一片暖暗色的圆，半径 r = Rmax·√smoothstep(p)（面积匀速长大），
+        //    羽化 ±110px，Rmax 到最远画角——下一镜的画面在已经暗下来的圆里打开，读作“暗窗里亮着一盏灯”，
+        //    不是灰天里突然冒出一个太阳，亮→暗也不再挤在六帧里
         {
-          const td = t - (c.dur - 1.1);
+          const td = t - (c.dur - 1.5);
           if (td > 0) {
-            g.fillStyle = `rgba(24,22,20,${(0.28 * smooth(td / 1.0)).toFixed(3)})`;
+            g.fillStyle = `rgba(24,22,20,${(0.28 * smooth(td / 1.5)).toFixed(3)})`;
             g.fillRect(0, 0, W, H);
             const IRIS = 0.7, pi = (t - (c.dur - IRIS)) / IRIS;
-            const ha = 0.4 * smooth(pi / 0.1) * (1 - smooth((pi - 0.25) / 0.2));
-            if (pi > 0 && ha > 0.005) {
-              const R0 = Math.hypot(640, 360) / 0.75 + 4;
-              const r = easeInOut(pi) * R0 + 1, ri = r * 0.72, ro = r * 0.75 + 60 + 80 * smooth(pi * 3);
+            if (pi > 0) {
+              const RM = Math.hypot(640, 360) + 20, F = 110;
+              const rd = RM * Math.sqrt(smooth(clamp(pi)));
+              const a = 0.56 * smooth(pi / 0.12);
+              const ri = Math.max(0, rd - F), ro = rd + F;
               const hg = g.createRadialGradient(640, 360, ri, 640, 360, ro);
-              hg.addColorStop(0, `rgba(26,20,18,${ha.toFixed(3)})`);
-              hg.addColorStop(0.45, `rgba(26,20,18,${(ha * 0.45).toFixed(3)})`);
-              hg.addColorStop(1, 'rgba(26,20,18,0)');
+              hg.addColorStop(0, `rgba(30,24,20,${a.toFixed(3)})`);
+              hg.addColorStop(0.25, `rgba(30,24,20,${(a * 0.86).toFixed(3)})`);
+              hg.addColorStop(0.5, `rgba(30,24,20,${(a * 0.5).toFixed(3)})`);
+              hg.addColorStop(0.75, `rgba(30,24,20,${(a * 0.14).toFixed(3)})`);
+              hg.addColorStop(1, 'rgba(30,24,20,0)');
               g.fillStyle = hg; g.fillRect(0, 0, W, H);
             }
           }

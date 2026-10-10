@@ -172,7 +172,7 @@
       const sk = g.createLinearGradient(0, 0, 0, H);
       sk.addColorStop(0, '#b7c99a'); sk.addColorStop(0.3, '#e4ebc8'); sk.addColorStop(0.55, '#d3e0b2'); sk.addColorStop(1, '#8aa676');
       g.fillStyle = sk; g.fillRect(0, 0, W, H);
-      const ax = ARCH.base[0], ay = ARCH.base[1] - 50;
+      const ax = ARCH.base[0], ay = ARCH.base[1] - 64;
       let gr = g.createRadialGradient(ax, ay, 10, ax, ay, 460);
       gr.addColorStop(0, rgba('#fffbe4', 1)); gr.addColorStop(0.22, rgba('#f7f4d2', 0.75)); gr.addColorStop(0.55, rgba('#e6eec6', 0.25)); gr.addColorStop(1, rgba('#e6eec6', 0));
       g.fillStyle = gr; g.fillRect(0, 0, W, H);
@@ -242,9 +242,12 @@
       g.restore();
     }
     // ---------- 牌坊：一间二柱一楼，石造，顶上小庑殿顶 ----------
+    // 整体按 ARCH_S 放大（以台基中点为准），小额枋也略抬高：门洞净高约 2.8 米，是人高的 1.6 倍，宽 2.5 米；总高约 4.5 米
+    // （再大，屋顶就会钻进前景树冠里）
+    const ARCH_S = 1.25, LINTEL = 2.24;
     function drawArch(g) {
       const { p, y } = ARCH;
-      const P = (lx, ly) => proj(p.X + p.tz * lx, y + ly, p.Z - p.tx * lx);
+      const P = (lx, ly) => proj(p.X + p.tz * lx * ARCH_S, y + ly * ARCH_S, p.Z - p.tx * lx * ARCH_S);
       const half = 1.0, pw = 0.3, xo = half + pw;
       const col = '#55604a', dark = '#3a4232', rim = '#f6efcc';
       const rect = (x0, y0, x1, y1, c) => { poly(g, [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)]); g.fillStyle = c; g.fill(); };
@@ -259,13 +262,13 @@
         g.beginPath(); g.moveTo(e[0] + 0.5, e[1]); g.lineTo(e2[0] + 0.5, e2[1]); g.stroke();
       }
       // 小额枋、字牌、大额枋：与柱外皮齐平
-      rect(-xo, 2.12, xo, 2.32, col);
-      rect(-xo, 2.66, xo, 2.9, col);
-      rect(-0.62, 2.32, 0.62, 2.66, mix(col, '#2f3529', 0.25));
-      rect(-0.54, 2.36, 0.54, 2.62, mix(col, '#1f241b', 0.45));
+      rect(-xo, LINTEL, xo, LINTEL + 0.18, col);
+      rect(-xo, 2.68, xo, 2.9, col);
+      rect(-0.62, LINTEL + 0.18, 0.62, 2.68, mix(col, '#2f3529', 0.25));
+      rect(-0.54, LINTEL + 0.21, 0.54, 2.65, mix(col, '#1f241b', 0.45));
       // 雀替：小额枋下、柱内侧的弧形托木
       for (const sd of [-1, 1]) {
-        const c0 = P(sd * half, 2.12), c1 = P(sd * (half - 0.42), 2.12), c2 = P(sd * half, 1.78);
+        const c0 = P(sd * half, LINTEL), c1 = P(sd * (half - 0.42), LINTEL), c2 = P(sd * half, LINTEL - 0.34);
         g.beginPath(); g.moveTo(c0[0], c0[1]); g.lineTo(c1[0], c1[1]);
         g.quadraticCurveTo(lerp(c1[0], c2[0], 0.75), lerp(c1[1], c2[1], 0.2), c2[0], c2[1]);
         g.closePath(); g.fillStyle = col; g.fill();
@@ -277,7 +280,7 @@
       // 庑殿顶：檐口两端明显起翘，正脊两端鸱吻上卷
       const e0 = P(-xo - 0.62, 3.12), e1 = P(xo + 0.62, 3.12);
       const r0 = P(-xo + 0.25, 3.62), r1 = P(xo - 0.25, 3.62);
-      const lift = Math.max(3, ARCH.k * 0.16);
+      const lift = Math.max(3, ARCH.k * 0.16 * ARCH_S);
       g.beginPath();
       g.moveTo(e0[0] - lift * 0.5, e0[1] - lift);
       g.quadraticCurveTo(e0[0] + lift * 2, e0[1] + 1, (e0[0] + e1[0]) / 2, e0[1] + 1);
@@ -457,10 +460,10 @@
     }
     // 牌坊后的亮雾：远树之前、牌坊之后
     function archGlow(g) {
-      const ax = ARCH.base[0], ay = ARCH.base[1] - 45;
-      const gr = g.createRadialGradient(ax, ay, 4, ax, ay, 230);
+      const ax = ARCH.base[0], ay = ARCH.base[1] - 60;
+      const gr = g.createRadialGradient(ax, ay, 4, ax, ay, 250);
       gr.addColorStop(0, rgba('#fffbe6', 0.95)); gr.addColorStop(0.3, rgba('#f6f3d6', 0.55)); gr.addColorStop(1, rgba('#eef2d4', 0));
-      g.fillStyle = gr; g.fillRect(ax - 240, ay - 240, 480, 480);
+      g.fillStyle = gr; g.fillRect(ax - 260, ay - 260, 520, 520);
     }
     // 林下地面的蕨丛、草丛（避开石阶、石碑和牌坊前）
     const GPLANTS = [];
@@ -662,16 +665,21 @@
       for (const t of trees) if (t[1] <= 17) trunk(g, t[0], t[1], t[2], (t[0] * 10 + t[1]) | 0);
       // 树冠：画面上沿成片的叶，左上留出透光的缺口
       const R = rng(511);
+      // 牌坊正上方的叶团略往上收，让开屋脊和鸱吻（叶团的下缘不低于屋顶最高处）
+      const archTop = ARCH.base[1] - ARCH.k * 3.62 * ARCH_S - 1.4 * Math.max(3, ARCH.k * 0.16 * ARCH_S) - 5;
+      const clearRoof = (x, y, ry) => y - Math.exp(-Math.pow((x - ARCH.base[0]) / 110, 2)) * Math.max(0, y + ry - archTop);
       for (let i = 0; i < 34; i++) {
         const x = -60 + R() * (W + 120), y = -40 + R() * 90;
         const gap = Math.exp(-Math.pow((x - 330) / 170, 2));
         if (gap > 0.6 && R() < 0.8) continue;
-        leafCluster(g, x, y, 80 + R() * 70, 34 + R() * 26, 120, '#1e2c1a', '#7da35a', 700 + i);
+        const rx = 80 + R() * 70, ry = 34 + R() * 26;
+        leafCluster(g, x, clearRoof(x, y, ry + 0.1 * rx), rx, ry, 120, '#1e2c1a', '#7da35a', 700 + i);
       }
       // 透光的嫩叶（亮黄绿，叶后有光）
       for (let i = 0; i < 10; i++) {
         const x = 180 + R() * 330, y = -10 + R() * 60;
-        leafCluster(g, x, y, 34 + R() * 26, 16 + R() * 10, 40, '#6f9a48', '#d6e89a', 760 + i, true);
+        const rx = 34 + R() * 26, ry = 16 + R() * 10;
+        leafCluster(g, x, clearRoof(x, y, ry + 0.1 * rx), rx, ry, 40, '#6f9a48', '#d6e89a', 760 + i, true);
       }
       // 光柱：左上方树冠缺口射下（烘进本层，节拍只体现在光斑上）
       g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.85;
@@ -1561,6 +1569,9 @@
       });
       fluff(g, lt, c);
       layer(1.25, () => { grassRow(g, H + 26, -80, 760, 90, lt, 120, true); });
+      // 硬切进来（前一镜是林荫下的暗绿）：曝光从 −20% 平滑回到正常，在第20句第1字唱出前完成，减轻切点处的亮度跳变
+      const ex = 0.2 * (1 - smooth(clamp(lt / 0.28)));
+      if (ex > 0.002) { g.fillStyle = 'rgba(0,0,0,' + ex.toFixed(4) + ')'; g.fillRect(-20, -20, W + 40, H + 40); }
     }
     // 远山与城：热浪起后做平滑的竖向扰动（±1.2 像素）。
     // 做法：上移、下移各一份，按随 x 平滑起伏、随时间流动的权重 v(x) 线性混合（预乘透明度下相加），
@@ -1665,12 +1676,17 @@
     const LANT_Y0 = 2.35, LANT_Y1 = 2.77;
     const HER = { X: 3.86, h: 137 };
     HER.p = P(HER.X, FLOOR, D0);
-    const PAV_H = 520, NEAR_Y0 = 590;   // 水榭缓存的下界、近景缓存的上界（只缓存有内容的部分）
+    const PAV_H = 520, NEAR_Y0 = 566;   // 水榭缓存的下界、近景缓存的上界（只缓存有内容的部分）
     const WOOD = '#3a2d27', WOOD_D = '#241c19', WOOD_L = '#5a4434';
     const MOON = '#c9d6e6', WARM = '#f2c27a';
-    // 近处平台与矮几
-    const DECK_Y = 0.15, TBL_Y = 0.5, TBL_D0 = 1.85, TBL_D1 = 2.4, TBL_X0 = -1.12, TBL_X1 = 0.42;
-    const QIN = { X0: -0.98, X1: 0.24, D0: 2.08, D1: 2.27, Y: 0.565 };
+    // 近处平台与矮几：几案和琴斜放（琴头朝右前，偏转 YAW），整张琴落在画面 y≈578–650
+    // 沿琴身方向 s（向琴头为正）、横向 w（向远处为正）
+    const DECK_Y = 0.15, TBL_Y = 0.5, DECK_D = 3.0;
+    const YAW = 0.26, AX = [Math.cos(YAW), -Math.sin(YAW)], AN = [Math.sin(YAW), Math.cos(YAW)];
+    const TBL = { X: -0.25, D: 2.45, hs: 0.78, hw: 0.28, th: 0.045 };
+    const tblW = (s, w) => [TBL.X + AX[0] * s + AN[0] * w, TBL.D + AX[1] * s + AN[1] * w];
+    const tblPt = (s, w, Y) => { const q = tblW(s, w); return P(q[0], Y, q[1]); };
+    const QIN = { X: -0.27, D: 2.43, L: 1.22, Wd: 0.19, Y: 0.55 };
     const qw = (u) => {
       let w = lerp(0.72, 0.84, smooth(u / 0.78)) - 0.05 * Math.exp(-Math.pow((u - 0.42) / 0.05, 2));
       w = lerp(w, 1.0, smooth((u - 0.74) / 0.08));
@@ -1679,7 +1695,12 @@
       return w;
     };
     // 琴面上的点：u 由尾（0）到头（1），v 由近边（0）到远边（1），按宽度轮廓收放
-    const tq = (u, v, dy) => P(lerp(QIN.X0, QIN.X1, u), QIN.Y + (dy || 0) + 0.006 * Math.sin(Math.PI * v), lerp(QIN.D0, QIN.D1, 0.5 + (v - 0.5) * qw(u)));
+    const tq = (u, v, dy) => {
+      const s = (u - 0.5) * QIN.L, w = (v - 0.5) * QIN.Wd * qw(u);
+      return P(QIN.X + AX[0] * s + AN[0] * w, QIN.Y + (dy || 0) + 0.006 * Math.sin(Math.PI * v), QIN.D + AX[1] * s + AN[1] * w);
+    };
+    // 酒杯（侧躺在几面右端、琴头之外）
+    const CUP = (() => { const q = tblW(0.69, 0.05); return { X: q[0], D: q[1] }; })();
 
     // ---------- 夜空与远岸 ----------
     function buildSky(g) {
@@ -1911,6 +1932,34 @@
       a = P(-4.8, FLOOR, D0); b = P(4.8, FLOOR, D0); g.globalAlpha = 0.45; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
       g.globalAlpha = 1;
     }
+    // 檐下（屋顶挡住月光、只有灯笼照着）的范围：檐底椽子、额枋、柱间室内、栏杆、台基木枋
+    // 月出后这里保持灯笼的暖色（只暗约 15%），银白只落在屋面、檐口、栏杆顶、台基前沿、石柱、台阶和水上
+    function warmPath(g) {
+      const EDGE_D = D0 - 1.05, EDGE_Y = 3.62;
+      const pts = [P(-5.8, EDGE_Y, EDGE_D), P(5.8, EDGE_Y, EDGE_D), P(5.8, BEAM + 0.24, D0), P(4.85, BEAM + 0.24, D0),
+        P(4.85, FLOOR - 0.16, D0), P(-4.85, FLOOR - 0.16, D0), P(-4.85, BEAM + 0.24, D0), P(-5.8, BEAM + 0.24, D0)];
+      pts[0] = [pts[0][0], pts[0][1] + 2]; pts[1] = [pts[1][0], pts[1][1] + 2];   // 让开檐口那道瓦头线（它受月光）
+      poly(g, pts);
+    }
+    // 银白版本，但檐下保持暖色：先整幅压成银白，再把檐下那块原图（暗 15%，色相不变）盖回去；flip 为真时按水线翻转（倒影用）
+    function silverWarm(key, w, h, src, flip, extra) {
+      const full = silverOf(key + '-all', w, h, src);
+      const warm = K.cache(key + '-warm', w, h, 1, (g) => {
+        g.save();
+        if (flip) { g.translate(0, 2 * WL); g.scale(1, -1); }
+        warmPath(g);
+        g.restore();
+        g.clip();
+        g.drawImage(src, 0, 0, w, h);
+        g.globalCompositeOperation = 'source-atop';
+        g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(0, 0, w, h);
+      });
+      return K.cache(key, w, h, 1, (g) => {
+        g.drawImage(full, 0, 0, w, h);
+        g.drawImage(warm, 0, 0, w, h);
+        if (extra) extra(g);
+      });
+    }
     // 倒影：整幅水榭以水线为轴翻转，压暗、偏冷、略糊
     // 每部分以它自己脚下的水线为轴：水榭以前檐水线 WL，伸出来的台阶以它自己的水线 WLS
     function buildReflect(g) {
@@ -1927,14 +1976,23 @@
       });
     }
     // ---------- 近处：平台、矮几、古琴、倒下的酒杯、空坐垫 ----------
+    // 琴身轮廓（dy = 相对琴面的高度，米）
+    function qinBody(g, dy) {
+      g.beginPath();
+      for (let i = 0; i <= 60; i++) { const p = tq(i / 60, 0, dy); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }
+      for (let i = 60; i >= 0; i--) { const p = tq(i / 60, 1, dy); g.lineTo(p[0], p[1]); }
+      g.closePath();
+    }
+    // 十三徽的位置（u）：弹琴的人坐在镜头这一侧（琴头在他右手边），徽嵌在离他远的一侧边上、一弦之外
+    const HUI = [0.125, 0.167, 0.2, 0.25, 0.333, 0.4, 0.5, 0.6, 0.667, 0.75, 0.8, 0.833, 0.875].map((r) => 0.955 - 0.92 * r);
     function buildNear(g) {
       // 平台木板（画面最下沿一窄条）
-      const d0 = P(0, DECK_Y, 3.0)[1];
+      const d0 = P(0, DECK_Y, DECK_D)[1];
       const dg = g.createLinearGradient(0, d0, 0, H);
       dg.addColorStop(0, '#2c2420'); dg.addColorStop(1, '#1a1513');
       g.fillStyle = dg; g.fillRect(0, d0, W, H - d0);
       g.strokeStyle = 'rgba(10,8,8,0.6)'; g.lineWidth = 1;
-      for (let x = -3; x <= 3; x += 0.22) { const a = P(x, DECK_Y, 3.0), b = P(x, DECK_Y, 1.4); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+      for (let x = -3; x <= 3; x += 0.22) { const a = P(x, DECK_Y, DECK_D), b = P(x, DECK_Y, 1.4); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
       g.fillStyle = rgba('#6a5444', 0.5); g.fillRect(0, d0 - 1, W, 1.5);
       // 空坐垫（蒲团，直径 0.5 m、厚 0.09 m）：几案右边的平台上，整块在平台内（远沿 D 2.9 < 平台边 3.0），近半被画框下沿裁掉
       {
@@ -1949,43 +2007,52 @@
         g.strokeStyle = 'rgba(20,14,12,0.3)'; g.lineWidth = 1;
         for (let k = 1; k < 6; k++) { g.beginPath(); g.ellipse(ct.x, ct.y + ct.ry * 0.04 * k, ct.rx * k / 6, ct.ry * k / 6, 0, 0, TAU); g.stroke(); }
       }
-      // 矮几：几面（深色木，前缘略亮）、几面前沿、两条腿
-      const a = P(TBL_X0, TBL_Y, TBL_D0), b = P(TBL_X1, TBL_Y, TBL_D0), c = P(TBL_X1, TBL_Y, TBL_D1), d = P(TBL_X0, TBL_Y, TBL_D1);
+      // 矮几（斜放）：先画远腿（上半截被几面挡住，脚落在平台上），再画几面、近沿与右端的边，最后近腿
+      const Y2 = TBL_Y - TBL.th;
+      const leg = (s, w) => {
+        const e = 0.028;
+        quad(g, tblPt(s - e, w - e, Y2), tblPt(s + e, w - e, Y2), tblPt(s + e, w - e, DECK_Y), tblPt(s - e, w - e, DECK_Y));
+        g.fillStyle = '#1c1512'; g.fill();
+        quad(g, tblPt(s + e, w - e, Y2), tblPt(s + e, w + e, Y2), tblPt(s + e, w + e, DECK_Y), tblPt(s + e, w - e, DECK_Y));
+        g.fillStyle = '#241b17'; g.fill();
+      };
+      for (const [s, w] of [[-0.7, 0.22], [0.7, 0.22]]) {
+        const q = tblW(s, w), f = P(q[0], DECK_Y, q[1]);
+        g.fillStyle = 'rgba(8,6,6,0.5)'; g.beginPath(); g.ellipse(f[0] - 2, f[1], 10, 2.2, 0, 0, TAU); g.fill();
+        leg(s, w);
+      }
+      const a = tblPt(-TBL.hs, -TBL.hw, TBL_Y), b = tblPt(TBL.hs, -TBL.hw, TBL_Y), c = tblPt(TBL.hs, TBL.hw, TBL_Y), d = tblPt(-TBL.hs, TBL.hw, TBL_Y);
+      const a2 = tblPt(-TBL.hs, -TBL.hw, Y2), b2 = tblPt(TBL.hs, -TBL.hw, Y2), c2 = tblPt(TBL.hs, TBL.hw, Y2);
       quad(g, a, b, c, d);
-      const tg = g.createLinearGradient(0, d[1], 0, a[1]);
+      const tg = g.createLinearGradient(0, d[1], 0, b[1]);
       tg.addColorStop(0, '#1d1513'); tg.addColorStop(1, '#2a1f1b');
       g.fillStyle = tg; g.fill();
-      const a2 = P(TBL_X0, TBL_Y - 0.045, TBL_D0), b2 = P(TBL_X1, TBL_Y - 0.045, TBL_D0);
       quad(g, a, b, b2, a2); g.fillStyle = '#140f0d'; g.fill();
+      quad(g, b, c, c2, b2); g.fillStyle = '#1b1411'; g.fill();
       g.strokeStyle = rgba('#a0704a', 0.45); g.lineWidth = 1; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
-      for (const x of [TBL_X0 + 0.08, TBL_X1 - 0.12]) {
-        const l0 = P(x, TBL_Y - 0.045, TBL_D0 + 0.03), l1 = P(x + 0.06, DECK_Y, TBL_D0 + 0.03);
-        g.fillStyle = '#1c1512'; g.fillRect(l0[0], l0[1], l1[0] - l0[0], H - l0[1]);
-      }
-      // 古琴：琴身（漆面）、岳山、龙龈、徽
-      const body = (dy) => {
+      for (const [s, w] of [[-0.7, -0.22], [0.7, -0.22]]) leg(s, w);
+      // 琴下的接触影（琴底由雁足垫起约 1.5 厘米，影子贴着几面）
+      qinBody(g, TBL_Y - QIN.Y); g.fillStyle = 'rgba(6,4,4,0.45)'; g.fill();
+      // 古琴：看得见的近侧与琴头端面（边厚约 3.5 厘米，上沿圆润略亮），一整块连续的侧面
+      {
+        const SD = -0.035;
         g.beginPath();
-        for (let i = 0; i <= 60; i++) { const p = tq(i / 60, 0, dy); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }
-        for (let i = 60; i >= 0; i--) { const p = tq(i / 60, 1, dy); g.lineTo(p[0], p[1]); }
+        for (let i = 0; i <= 60; i++) { const p = tq(i / 60, 0); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }
+        for (let j = 0; j <= 10; j++) { const p = tq(1, j / 10); g.lineTo(p[0], p[1]); }
+        for (let j = 10; j >= 0; j--) { const p = tq(1, j / 10, SD); g.lineTo(p[0], p[1]); }
+        for (let i = 60; i >= 0; i--) { const p = tq(i / 60, 0, SD); g.lineTo(p[0], p[1]); }
         g.closePath();
-      };
-      // 琴侧（厚度）
-      body(-0.05); g.fillStyle = '#0e0a09'; g.fill();
-      body(-0.02); g.fillStyle = '#1a1210'; g.fill();
-      body(0);
-      const qg = g.createLinearGradient(0, tq(0, 1)[1], 0, tq(0, 0)[1]);
-      qg.addColorStop(0, '#3c2a22'); qg.addColorStop(1, '#4a3329');
+        const sg = g.createLinearGradient(0, tq(0.5, 0)[1] - 4, 0, tq(0.5, 0, SD)[1] + 4);
+        sg.addColorStop(0, '#2b1e19'); sg.addColorStop(0.35, '#17100e'); sg.addColorStop(1, '#0c0908');
+        g.fillStyle = sg; g.fill();
+      }
+      // 琴面：深色漆（黑里透褐），丝弦在上面才看得清
+      qinBody(g, 0);
+      const qg = g.createLinearGradient(0, tq(0, 1)[1], 0, tq(1, 0)[1]);
+      qg.addColorStop(0, '#271b16'); qg.addColorStop(1, '#33241d');
       g.fillStyle = qg; g.fill();
-      // 漆面映着对岸灯光的一道暖光
-      g.save(); body(0); g.clip();
-      const sh = tq(0.55, 0.65);
-      const sgr = g.createRadialGradient(sh[0], sh[1], 1, sh[0], sh[1], 260);
-      sgr.addColorStop(0, rgba('#e0a060', 0.3)); sgr.addColorStop(1, rgba('#e0a060', 0));
-      g.fillStyle = sgr; g.fillRect(sh[0] - 270, sh[1] - 40, 540, 80);
-      g.restore();
-      // 漆面上的断纹（极淡）
-      g.save(); body(0); g.clip();
       // 漆面的断纹：零碎、不规则的细短纹（不能像品位）
+      g.save(); qinBody(g, 0); g.clip();
       g.strokeStyle = 'rgba(12,8,8,0.22)'; g.lineWidth = 0.6;
       { const R = rng(29); for (let i = 0; i < 40; i++) { const u = 0.06 + R() * 0.88, v = 0.15 + R() * 0.7, p0 = tq(u, v), p1 = tq(u + (R() - 0.5) * 0.01, v + 0.08 + R() * 0.12); g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke(); } }
       g.restore();
@@ -1994,19 +2061,17 @@
       g.strokeStyle = '#120c0b'; g.lineWidth = 2.6; g.beginPath(); g.moveTo(q0[0], q0[1]); g.lineTo(q1[0], q1[1]); g.stroke();
       q0 = tq(0.035, 0.18); q1 = tq(0.035, 0.82);
       g.lineWidth = 2; g.beginPath(); g.moveTo(q0[0], q0[1]); g.lineTo(q1[0], q1[1]); g.stroke();
-      // 十三徽：弹琴的人坐在镜头这一侧（琴头在他右手边），徽嵌在离他远的一侧边上、一弦之外
-      for (let k = 1; k <= 13; k++) {
-        const u = 0.955 - (0.92 * [0.125, 0.167, 0.2, 0.25, 0.333, 0.4, 0.5, 0.6, 0.667, 0.75, 0.8, 0.833, 0.875][k - 1]);
-        const q = tq(u, 0.92);
-        g.fillStyle = '#8d877c'; g.beginPath(); g.ellipse(q[0], q[1], k === 7 ? 1.8 : 1.3, 0.8, 0, 0, TAU); g.fill();
+      for (let k = 0; k < 13; k++) {
+        const q = tq(HUI[k], 0.92);
+        g.fillStyle = '#8d877c'; g.beginPath(); g.ellipse(q[0], q[1], k === 6 ? 1.8 : 1.3, 0.8, 0, 0, TAU); g.fill();
       }
-      // 雁足下的琴轸穗子（右端垂下）
+      // 琴轸下的穗子（琴头底下垂到几面）
       g.strokeStyle = 'rgba(120,40,36,0.85)'; g.lineWidth = 1;
-      for (let k = 0; k < 7; k++) { const q = tq(0.985, 0.15 + k * 0.11, -0.05); g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(q[0] + 2, q[1] + 10 + (k % 2) * 3); g.stroke(); }
-      // 倒下的酒杯：侧躺在几面右侧，杯口朝左前，洒出一小片酒
-      const cp = P(0.36, TBL_Y, 2.04);
+      for (let k = 0; k < 7; k++) { const q = tq(0.975, 0.15 + k * 0.11, -0.045); g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(q[0] + 1.5, q[1] + 6 + (k % 2) * 2); g.stroke(); }
+      // 倒下的酒杯：侧躺在几面右端，杯口朝左前，洒出一小片酒
+      const cp = P(CUP.X, TBL_Y, CUP.D);
       g.fillStyle = 'rgba(70,40,34,0.55)';
-      g.beginPath(); g.ellipse(cp[0] - 26, cp[1] + 3, 22, 3.5, 0, 0, TAU); g.fill();
+      g.beginPath(); g.ellipse(cp[0] - 24, cp[1] + 3, 20, 3.2, 0.12, 0, TAU); g.fill();
       g.save(); g.translate(cp[0], cp[1] - 5); g.rotate(-0.1);
       const cg = g.createLinearGradient(0, -7, 0, 7);
       cg.addColorStop(0, '#c9d4cc'); cg.addColorStop(0.5, '#a9b8ae'); cg.addColorStop(1, '#5d6862');
@@ -2017,74 +2082,115 @@
       g.fillStyle = '#7d8a82'; g.fillRect(7.5, -2.6, 2, 5.2);
       g.restore();
     }
+    // 漆面映着对面水榭灯光的暖光、琴面远沿迎着灯光的一线暖边：这是灯笼的光，月出后不变银（单独一层，画在银白交叉淡入之后）
+    function buildSheen(g) {
+      g.save(); qinBody(g, 0); g.clip();
+      const sh = tq(0.62, 0.65);
+      const sgr = g.createRadialGradient(sh[0], sh[1], 1, sh[0], sh[1], 260);
+      sgr.addColorStop(0, rgba('#e0a060', 0.26)); sgr.addColorStop(0.5, rgba('#e0a060', 0.1)); sgr.addColorStop(1, rgba('#e0a060', 0));
+      g.fillStyle = sgr; g.fillRect(sh[0] - 270, sh[1] - 70, 540, 140);
+      g.restore();
+      g.strokeStyle = rgba('#e8b070', 0.42); g.lineWidth = 0.9; g.lineCap = 'round';
+      g.beginPath();
+      for (let i = 2; i <= 58; i++) { const p = tq(i / 60, 1); i > 2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }
+      g.stroke();
+    }
     // 坐垫顶面、底面的投影椭圆（由近、远两点的投影定中心与半轴）
     const CUSH = { X: 1.12, D: 2.65, r: 0.25, Y0: DECK_Y, Y1: DECK_Y + 0.09 };
     const cushEll = (Y) => { const n = P(CUSH.X, Y, CUSH.D - CUSH.r), f = P(CUSH.X, Y, CUSH.D + CUSH.r); return { x: P(CUSH.X, Y, CUSH.D)[0], y: (n[1] + f[1]) / 2, rx: (F * CUSH.r) / CUSH.D, ry: (n[1] - f[1]) / 2 }; };
     const cushionTop = () => cushEll(CUSH.Y1), cushionBase = () => cushEll(CUSH.Y0);
-    // 月光落在近处：琴面与弦的银光、徽的反光、几沿、杯沿、坐垫右后沿
+    // 月光落在近处：几面近沿与右端的上沿、琴面右前方的漆光、徽的反光、杯沿、坐垫右后沿
     function buildNearMoon(g) {
       { const ct = cushionTop(); g.strokeStyle = rgba(MOON, 0.45); g.lineWidth = 1.2; g.beginPath(); g.ellipse(ct.x, ct.y, ct.rx - 1, ct.ry - 1, 0, Math.PI * 1.55, Math.PI * 1.98); g.stroke(); }
       g.strokeStyle = rgba(MOON, 0.7); g.lineWidth = 1;
-      const a = P(TBL_X0, TBL_Y, TBL_D0), b = P(TBL_X1, TBL_Y, TBL_D0);
-      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
-      // 琴面右前方的一抹漆光
-      const q = tq(0.75, 0.3);
-      const gr = g.createRadialGradient(q[0], q[1], 1, q[0], q[1], 120);
+      const a = tblPt(-TBL.hs, -TBL.hw, TBL_Y), b = tblPt(TBL.hs, -TBL.hw, TBL_Y), c = tblPt(TBL.hs, TBL.hw, TBL_Y);
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.stroke();
+      // 琴面右前方的一抹漆光（沿琴身方向压扁）
+      const q = tq(0.75, 0.3), q2 = tq(0.85, 0.3), ang = Math.atan2(q2[1] - q[1], q2[0] - q[0]);
+      const gr = g.createRadialGradient(0, 0, 1, 0, 0, 120);
       gr.addColorStop(0, rgba(MOON, 0.28)); gr.addColorStop(1, rgba(MOON, 0));
-      g.save(); g.translate(q[0], q[1]); g.scale(1, 0.12); g.translate(-q[0], -q[1]);
-      g.fillStyle = gr; g.fillRect(q[0] - 130, q[1] - 130, 260, 260);
+      g.save(); g.translate(q[0], q[1]); g.rotate(ang); g.scale(1, 0.12);
+      g.fillStyle = gr; g.fillRect(-130, -130, 260, 260);
       g.restore();
-      for (let k = 1; k <= 13; k++) {
-        const u = 0.955 - (0.92 * [0.125, 0.167, 0.2, 0.25, 0.333, 0.4, 0.5, 0.6, 0.667, 0.75, 0.8, 0.833, 0.875][k - 1]);
+      for (const u of HUI) {
         const p = tq(u, 0.92);
         g.fillStyle = rgba('#eef4ff', 0.9); g.beginPath(); g.ellipse(p[0], p[1], 1.2, 0.7, 0, 0, TAU); g.fill();
       }
-      const cp = P(0.36, TBL_Y, 2.04);
+      const cp = P(CUP.X, TBL_Y, CUP.D);
       g.strokeStyle = rgba('#f2f6ff', 0.8); g.beginPath(); g.moveTo(cp[0] - 10, cp[1] - 14); g.lineTo(cp[0] + 9, cp[1] - 11.5); g.stroke();
-      g.fillStyle = rgba(MOON, 0.45); g.beginPath(); g.ellipse(cp[0] - 20, cp[1] + 2.5, 8, 1.4, 0, 0, TAU); g.fill();
+      g.fillStyle = rgba(MOON, 0.45); g.beginPath(); g.ellipse(cp[0] - 18, cp[1] + 2.5, 8, 1.4, 0.12, 0, TAU); g.fill();
     }
-    // 弦：七根，从岳山到龙龈；ve = 每根的振动虚带宽度（像素）
-    function strings(g, vib, moon) {
+    // 弦：七根，从岳山到龙龈
+    // vib = 每根的振动虚带半宽（像素）；warm = 灯笼暖光在弦上的细高光强度；振动的弦上有一点高光沿弦缓缓滑动
+    const strEnds = (k) => [tq(0.955, 0.2 + k * 0.1, 0.005), tq(0.035, 0.3 + k * 0.067, 0.0012)];
+    function strings(g, lt, vib, moon, warm) {
+      const base = mix('#a89a84', '#dfe7f2', moon);
       for (let k = 0; k < 7; k++) {
-        const v = 0.2 + k * 0.1;
-        // 弦在岳山处高出琴面约 5 毫米，到龙龈几乎贴面
-        const p0 = tq(0.955, v, 0.005), p1 = tq(0.035, 0.3 + k * 0.067, 0.0012);
+        const [p0, p1] = strEnds(k);
         const w = vib[k] || 0;
-        const base = mix('#a59a86', '#dfe7f2', moon);
         if (w > 0.05) {
-          // 两端固定、中间最宽的虚带（纺锤形），半透明
-          g.fillStyle = rgba(mix(base, '#fff6e8', 0.55), 0.45);
-          g.beginPath();
-          const n = 16;
-          for (let i = 0; i <= n; i++) { const u = i / n, x = lerp(p0[0], p1[0], u), y = lerp(p0[1], p1[1], u) - w * Math.sin(Math.PI * u); i ? g.lineTo(x, y) : g.moveTo(x, y); }
-          for (let i = n; i >= 0; i--) { const u = i / n, x = lerp(p0[0], p1[0], u), y = lerp(p0[1], p1[1], u) + w * Math.sin(Math.PI * u); g.lineTo(x, y); }
-          g.closePath(); g.fill();
+          const at = (u, off) => [lerp(p0[0], p1[0], u), lerp(p0[1], p1[1], u) + off * Math.sin(Math.PI * u)];
+          const n = 24, edge = (sd, rev) => { for (let i = 0; i <= n; i++) { const q = at(rev ? 1 - i / n : i / n, sd * w); (i || rev) ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); } };
+          // 两端固定、中间最宽的半透明虚带（不做横向位移）
+          g.beginPath(); edge(-1, false); edge(1, true); g.closePath();
+          g.fillStyle = rgba(mix(base, '#fff1d8', 0.6), 0.14 + 0.18 * Math.min(1, w / 2.5)); g.fill();
+          // 弦在振幅两头停留最久：虚带上下沿略亮
+          g.strokeStyle = rgba(mix(base, '#ffeccc', 0.7), 0.45 * Math.min(1, w / 1.2)); g.lineWidth = 0.7;
+          g.beginPath(); edge(-1, false); g.stroke();
+          g.beginPath(); edge(1, false); g.stroke();
         }
-        g.strokeStyle = rgba(base, 0.75 - Math.min(0.35, w * 0.15)); g.lineWidth = 0.7;
+        g.strokeStyle = rgba(base, 0.62 - Math.min(0.3, w * 0.1)); g.lineWidth = 0.8;
         g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke();
       }
+      g.save(); g.globalCompositeOperation = 'lighter';
+      if (warm > 0.003) {
+        // 灯笼的暖光落在弦上：靠琴头一段最亮的一线细光
+        g.lineWidth = 0.8;
+        for (let k = 0; k < 7; k++) {
+          const [p0, p1] = strEnds(k);
+          const gr = g.createLinearGradient(p0[0], p0[1], p1[0], p1[1]);
+          gr.addColorStop(0, rgba('#ffcf8a', 0)); gr.addColorStop(0.16, rgba('#ffcf8a', warm)); gr.addColorStop(0.5, rgba('#ffcf8a', warm * 0.5)); gr.addColorStop(1, rgba('#ffcf8a', 0));
+          g.strokeStyle = gr; g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke();
+        }
+      }
+      const dot = softDot('#fff2d6', 0.5);
+      for (let k = 0; k < 7; k++) {
+        const w = vib[k] || 0;
+        if (w < 0.15) continue;
+        const [p0, p1] = strEnds(k);
+        const u = 0.42 + 0.2 * Math.sin(TAU * 0.4 * lt + k * 1.3);
+        const x = lerp(p0[0], p1[0], u), y = lerp(p0[1], p1[1], u), rx = 10 + 3 * w, ry = 0.8 + 0.6 * w * Math.sin(Math.PI * u);
+        g.globalAlpha = 0.55 * Math.min(1, w / 2.2);
+        g.drawImage(dot, x - rx, y - ry, rx * 2, ry * 2);
+      }
+      g.restore();
     }
-    // 灯笼：纸面暖光（节拍上轻轻明暗）
-    function lantern(g, lx, glow, moon) {
-      const sv = (c) => mix(c, '#c9ccd4', 0.45 * moon);
+    // 灯笼：纸面暖光。月出后色相不变、只暗约 15%（月光压过它，但它不变冷）；glow 里含各自的 ±4% 摇曳
+    function lantern(g, lx, glow, moon, lt, i) {
+      const dim = 1 - 0.15 * moon, dk = (c) => mix(c, '#000000', 0.15 * moon);
       const t0 = P(lx, LANT_Y1, D0 - 0.2), b0 = P(lx, LANT_Y0, D0 - 0.2);
       const cx = t0[0], cy = (t0[1] + b0[1]) / 2, ry = (b0[1] - t0[1]) / 2, rx = ry * 0.82;
       // 光晕
       g.save(); g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = 0.5 * glow;
+      g.globalAlpha = 0.5 * glow * dim;
       g.drawImage(softDot('#ffb860', 0.1), cx - rx * 6, cy - ry * 5.5, rx * 12, ry * 11);
-      if (moon > 0.002) { g.globalAlpha = 0.12 * glow * moon; g.drawImage(softDot('#c8d0de', 0.1), cx - rx * 6, cy - ry * 5.5, rx * 12, ry * 11); }
       g.restore();
       const gr = g.createRadialGradient(cx - rx * 0.2, cy - ry * 0.1, 1, cx, cy, rx * 1.05);
-      gr.addColorStop(0, sv(mix('#fff0c8', '#ffe2a8', 1 - glow))); gr.addColorStop(0.6, sv('#f0b260')); gr.addColorStop(1, sv('#a8582e'));
+      gr.addColorStop(0, dk(mix('#fff0c8', '#ffe2a8', clamp(1 - glow)))); gr.addColorStop(0.6, dk('#f0b260')); gr.addColorStop(1, dk('#a8582e'));
       g.fillStyle = gr;
       g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.fill();
       g.strokeStyle = 'rgba(120,60,30,0.5)'; g.lineWidth = 0.7;
       for (let k = -2; k <= 2; k++) { g.beginPath(); g.ellipse(cx, cy, rx * Math.abs(k) / 2.6, ry, 0, 0, TAU); g.stroke(); }
       g.fillStyle = '#2a1c16';
       g.fillRect(cx - rx * 0.45, t0[1] - 2, rx * 0.9, 3); g.fillRect(cx - rx * 0.45, b0[1] - 1, rx * 0.9, 3);
+      // 穗子：挂在灯底的固定点上，±1.5° 平滑轻摆（无风，只是余动）
+      const ang = 0.026 * (0.7 * Math.sin(TAU * 0.42 * lt + i * 1.9) + 0.3 * Math.sin(TAU * 0.67 * lt + i * 0.7));
+      g.save(); g.translate(cx, b0[1] + 2); g.rotate(ang);
       g.strokeStyle = 'rgba(150,40,30,0.8)'; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(cx, b0[1] + 2); g.lineTo(cx, b0[1] + 9); g.stroke();
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 7); g.stroke();
+      g.fillStyle = 'rgba(150,40,30,0.85)';
+      g.beginPath(); g.moveTo(-1.3, 7); g.lineTo(1.3, 7); g.lineTo(2, 13); g.lineTo(-2, 13); g.closePath(); g.fill();
+      g.restore();
     }
     // 银白版本：建缓存时把暖色压成银白、偏冷（饱和度降低 + 冷色相），再叠上月光照亮的边；每帧只按月光强度交叉淡入
     function silverOf(key, w, h, src, extra) {
@@ -2098,6 +2204,9 @@
         if (extra) extra(g);
       });
     }
+    // 四盏灯笼各自的摇曳：亮度 ±4%，0.7–1.1 Hz，相位各不相同
+    const FL1 = [0.73, 0.97, 0.84, 1.08], FL2 = [1.02, 0.77, 1.1, 0.71];
+    const flick = (i, lt) => 1 + 0.04 * (0.65 * Math.sin(TAU * FL1[i] * lt + i * 2.1) + 0.35 * Math.sin(TAU * FL2[i] * lt + i * 4.3 + 1));
     function draw(g, c) {
       const lt = c.lt;
       const tMoon = charAt(c, 4, 0, FB), tFade = charAt(c, 8, 0, FB), tGone = charAt(c, 10, 0, FB);
@@ -2107,7 +2216,11 @@
       const beat = softBeat(c, 0.5);
       // 交叉淡入的透明度封顶在 0.996：到 1 时浏览器改走不混合的直拷，整幅会有一档取整差
       const fade = (a, b) => { g.drawImage(a, 0, 0, a.lw, a.lh); if (moon > 0.002) { g.globalAlpha = Math.min(moon, 0.996); g.drawImage(b, 0, 0, b.lw, b.lh); g.globalAlpha = 1; } };
-      // 镜头静止（分镜允许最多 1.00→1.02；静止时缓存层按整像素贴）
+      // 镜头：整镜 1.00→1.02 缓推（分镜允许的上限；smoothstep，峰值约 0.45%/s），以水榭与古琴之间为中心
+      const z = 1 + 0.02 * smooth(clamp(lt / c.dur));
+      const ZX = 640, ZY = 450;
+      g.save();
+      g.translate(ZX - ZX * z, ZY - ZY * z); g.scale(z, z);
       const sky = K.cache('fg4guqin-sky', W, YH + 130, 1, buildSky);
       const sky0 = K.cache('fg4guqin-sky0', W, YH + 130, 1, (sg) => { sg.drawImage(sky, 0, 0, W, YH + 130); skyGlow(sg, 0.12); });
       const sky1 = silverOf('fg4guqin-sky1', W, YH + 130, sky, (sg) => skyGlow(sg, 0.62));
@@ -2122,9 +2235,9 @@
       const wg = g.createLinearGradient(0, WL - 100, 0, H);
       wg.addColorStop(0, '#1a1f30'); wg.addColorStop(1, '#0d1019');
       g.fillStyle = wg; g.fillRect(0, WL - 2, W, H - WL + 2);
-      // 倒影：先合成当前月光下的倒影，再按横向细波切片贴上
+      // 倒影：先合成当前月光下的倒影，再按横向细波切片贴上（倒影里檐下那块也保持灯笼的暖色）
       const refl = K.cache('fg4guqin-refl', W, H, 1, buildReflect);
-      const reflS = silverOf('fg4guqin-reflS', W, H, refl);
+      const reflS = silverWarm('fg4guqin-reflS2', W, H, refl, true);
       const sc = scratch('fg4guqin-reflnow', W, H - WL + 2);
       sc.g.drawImage(refl, 0, WL * SS(), refl.width, (H - WL + 2) * SS(), 0, 0, W, H - WL + 2);
       if (moon > 0.002) { sc.g.globalAlpha = Math.min(moon, 0.996); sc.g.drawImage(reflS, 0, WL * SS(), reflS.width, (H - WL + 2) * SS(), 0, 0, W, H - WL + 2); sc.g.globalAlpha = 1; }
@@ -2145,32 +2258,34 @@
         sc.g.drawImage(hs.c, 0, 0, bw, bh);
         sc.g.restore();
       }
+      // 细波：逐 2 像素行横向错开 1–2 像素。波在水面上的真实波长约 0.8 米（近处在画面上约 40–80 像素、远处变密），缓缓向镜头推来
       const S = sc.S;
-      for (let y = WL; y < H; y += 4) {
-        const k = (y - WL) / (H - WL);
-        const dx = (0.4 + 3.0 * k) * Math.sin(y * 0.23 + lt * 1.3) + (0.3 + 0.8 * k) * Math.sin(y * 0.61 - lt * 0.9);
-        g.drawImage(sc.c, 0, (y - WL) * S, sc.c.width, 4 * S, dx, y, W, 4);
+      for (let y = WL; y < H; y += 2) {
+        const k = (y - WL) / (H - WL), Dw = (F * EY) / Math.max(1, y + 1 - YH);
+        const dx = (0.8 + 1.2 * k) * Math.sin(TAU * (Dw / 0.8 + 0.55 * lt)) + (0.3 + 0.5 * k) * Math.sin(TAU * (Dw / 0.47 + 0.8 * lt) + 1.3);
+        g.drawImage(sc.c, 0, (y - WL) * S, sc.c.width, 2 * S, dx, y, W, 2);
       }
-      // 灯笼在水里的倒影：竖直拉长、随波抖动
-      const lcol = mix('#ffc070', '#d9dde8', 0.5 * moon);
-      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = lcol;
+      // 灯笼在水里的倒影：竖直拉长、随波抖动；仍是灯笼的暖色（月出后只暗约 15%），随各自的灯火摇曳
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = '#ffc070';
       // 灯笼在檐下 D0-0.2 处，倒影以那里的水线为轴；逐像素行画，亮度被平滑的波纹调成断续的光（不是等距横条）
       const WLL = P(0, 0, D0 - 0.2)[1];
-      for (const lx of LANT) {
+      for (let i = 0; i < LANT.length; i++) {
+        const lx = LANT[i];
         const t0 = P(lx, LANT_Y1, D0 - 0.2), b0 = P(lx, LANT_Y0, D0 - 0.2);
         const y0 = 2 * WLL - b0[1], y1 = 2 * WLL - t0[1], ym = (y0 + y1) / 2, sig = (y1 - y0) * 0.9 + 6;
+        const lf = flick(i, lt) * (0.9 + 0.12 * beat) * (1 - 0.15 * moon);
         for (let y = Math.floor(y0 - 6); y < y1 + 26; y++) {
           const e = Math.exp(-Math.pow((y - ym) / sig, 2));
           const brk = 0.5 + 0.5 * Math.sin(y * 0.55 + lt * 2.3 + lx * 1.7) * Math.sin(y * 0.19 - lt * 1.1 + lx);
           const dx = 3 * Math.sin(y * 0.4 + lt * 2.1 + lx) + 1.0 * Math.sin(y * 0.8 - lt * 1.4);
-          const a = 0.2 * e * (0.3 + 0.7 * brk) * (0.9 + 0.12 * beat) * (1 - 0.3 * moon);
+          const a = 0.2 * e * (0.3 + 0.7 * brk) * lf;
           g.globalAlpha = a; g.fillRect(t0[0] - 4 + dx, y, 8, 1);
           g.globalAlpha = a * 0.45; g.fillRect(t0[0] - 7 + dx, y, 14, 1);
         }
       }
       g.restore();
-      // 水面细波（月出后带银光）
-      ripples(g, lt, moon, beat);
+      // 水面细波（月出后带银光、几处缓慢的月光闪点）
+      ripples(g, lt, moon, beat, mu);
       // 水汽：水榭脚下贴水的一层薄雾
       const mist = K.cache('fg4guqin-mist', 1600, 120, 0.5, (mg) => {
         blurBox(mg, 0, 0, 1600, 120, 14, (tg) => {
@@ -2184,10 +2299,10 @@
       g.globalAlpha = 1;
       // 远处的荷叶
       g.drawImage(K.cache('fg4guqin-lotus', LOTUS_BOX[2], LOTUS_BOX[3], 1, (lg) => { lg.translate(-LOTUS_BOX[0], -LOTUS_BOX[1]); buildLotus(lg); }), LOTUS_BOX[0], LOTUS_BOX[1], LOTUS_BOX[2], LOTUS_BOX[3]);
-      // 水榭
+      // 水榭：月光只把屋面、檐口、栏杆顶、台基前沿、石柱和台阶压成银白；檐下仍是灯笼的暖色
       const pav = K.cache('fg4guqin-pavc', W, PAV_H, 1, buildPavilion);
-      fade(pav, silverOf('fg4guqin-pavS', W, PAV_H, pav, buildPavMoon));
-      for (const lx of LANT) lantern(g, lx, 0.92 + 0.08 * beat, moon);
+      fade(pav, silverWarm('fg4guqin-pavS2', W, PAV_H, pav, false, buildPavMoon));
+      for (let i = 0; i < LANT.length; i++) lantern(g, LANT[i], (0.92 + 0.08 * beat) * flick(i, lt), moon, lt, i);
       if (fa > 0.003) {
         // 脚下极淡的接触影（地板几乎平视，压得很扁；月在右上，略偏左）
         g.fillStyle = rgba('#0c0b10', 0.4 * fa);
@@ -2198,14 +2313,19 @@
         const rimK = 0.25 + 0.75 * moon;
         if (rimK < 0.999) XYT.sil.draw(g, 'heroine', 'standSide', HER.p[0], HER.p[1], HER.h, lt + 0.8, { facing: 1, wind: 0, body: '#1c1c28', alpha: fa * (1 - rimK) });
       }
-      // 近处：平台、矮几、古琴
-      const near = K.cache('fg4guqin-nearc', W, H - NEAR_Y0, 1, (ng) => { ng.translate(0, -NEAR_Y0); buildNear(ng); });
-      const nearS = silverOf('fg4guqin-nearS', W, H - NEAR_Y0, near, (ng) => { ng.translate(0, -NEAR_Y0); buildNearMoon(ng); });
-      g.save(); g.translate(0, NEAR_Y0); fade(near, nearS); g.restore();
-      // 余颤：最近拨过的两根弦，第22句第1字后 1.5 秒内从约 2 像素的虚带收成细线
+      // 近处：平台、矮几、古琴（月光银白交叉淡入），再叠上漆面映着的灯光暖色（不随月光变银）
+      const near = K.cache('fg4guqin-nearc2', W, H - NEAR_Y0, 1, (ng) => { ng.translate(0, -NEAR_Y0); buildNear(ng); });
+      const nearS = silverOf('fg4guqin-nearS2', W, H - NEAR_Y0, near, (ng) => { ng.translate(0, -NEAR_Y0); buildNearMoon(ng); });
+      const sheen = K.cache('fg4guqin-sheen', W, H - NEAR_Y0, 1, (ng) => { ng.translate(0, -NEAR_Y0); buildSheen(ng); });
+      const lamp = (flick(0, lt) + flick(1, lt) + flick(2, lt) + flick(3, lt)) / 4;
+      g.save(); g.translate(0, NEAR_Y0); fade(near, nearS);
+      g.globalAlpha = (1 - 0.15 * moon) * lamp; g.drawImage(sheen, 0, 0, sheen.lw, sheen.lh); g.globalAlpha = 1;
+      g.restore();
+      // 余颤：最近拨过的两根弦，第22句第1字后 1.5 秒内从约 5 像素宽的半透明虚带收成 1 像素的细线；灯光落在弦上的细高光同时淡下
       const tq0 = charAt(c, 0, 0, FB);
       const decay = 1 - smooth((lt - tq0) / 1.5);
-      strings(g, [0, 0, 1.3 * decay, 0, 1.0 * decay, 0, 0], moon);
+      strings(g, lt, [0, 0, 2.8 * decay, 0, 2.2 * decay, 0, 0], moon, (0.07 + 0.45 * decay) * (1 - 0.15 * moon) * lamp);
+      g.restore();
     }
     // 右上画外的月亮在天上的光晕（烘进天空缓存）
     function skyGlow(g, a) {
@@ -2214,7 +2334,7 @@
       g.restore();
     }
     // 水面：横向细纹，缓慢漂移；月出后右侧一条碎银
-    function ripples(g, lt, moon, beat) {
+    function ripples(g, lt, moon, beat, mu) {
       g.save();
       g.globalCompositeOperation = 'lighter';
       const R = rng(91);
@@ -2236,6 +2356,19 @@
           g.globalAlpha = moon * (0.35 + 0.45 * fl) * (0.92 + 0.12 * beat);
           const w = 4 + k * 14 * (0.5 + h2(i, 4));
           g.drawImage(dot, x - w, y - 1.2, w * 2, 2.4);
+        }
+        // 三处缓慢的月光闪点：水波转到合适的角度时慢慢亮起、再慢慢暗下（每次约 1.6 秒，起落都平滑），随波轻轻漂移
+        const star = softDot('#f6f9ff', 0.75);
+        for (const [x0, y0, off, per] of [[1112, 548, 0.2, 2.9], [1228, 622, 1.3, 3.4], [1158, 688, 2.2, 3.1]]) {
+          const ph = ((lt + off) % per + per) % per, life = 1.6;
+          if (ph > life) continue;
+          const e = Math.pow(Math.sin(Math.PI * ph / life), 2) * mu;
+          if (e < 0.004) continue;
+          const k = (y0 - WL) / (H - WL), x = x0 + 4 * Math.sin(lt * 0.9 + off), y = y0 + 1.2 * Math.sin(lt * 1.3 + off);
+          g.globalAlpha = 0.85 * e;
+          g.drawImage(star, x - 4 - 3 * k, y - 2.2, 8 + 6 * k, 4.4);
+          g.globalAlpha = 0.45 * e;
+          g.drawImage(star, x - 16 - 12 * k, y - 0.9, 32 + 24 * k, 1.8);
         }
       }
       g.restore();
