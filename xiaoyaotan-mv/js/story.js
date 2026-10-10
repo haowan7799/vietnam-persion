@@ -352,7 +352,7 @@
       const so = st && typeof st === 'object' ? st : null;
       if (st) type = so ? so.type : st;
       const d = type === 'cut' ? 0.001 : type === 'slash' ? Math.max(0.35, per * 0.6) : Math.min(1.4, Math.max(0.5, per));
-      s.trans = { type, dur: so && so.dur != null ? so.dur : type === 'flash' ? 0.001 : d, x: so && so.x, y: so && so.y, color: so && so.color };
+      s.trans = { type, dur: so && so.dur != null ? so.dur : type === 'flash' ? 0.001 : d, x: so && so.x, y: so && so.y, color: so && so.color, peak: so && so.peak, dir: so && so.dir };
     });
 
     // 5) 歌词逐字时间（落在十六分音符网格上）

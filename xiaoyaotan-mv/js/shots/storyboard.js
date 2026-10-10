@@ -228,7 +228,8 @@
       "e1_stormpeak": {
         "type": "flash",
         "dur": 0.001,
-        "color": "#ffffff"
+        "color": "#c8d2e6",
+        "peak": 0.7
       },
       "e2_ropebridge": "cut",
       "e3_temple": {
@@ -254,12 +255,13 @@
       },
       "f1_snowhut": {
         "type": "fog",
-        "dur": 0.8
+        "dur": 0.5
       },
       "f2_icicle": "cut",
       "f3_pines": {
         "type": "wipe:snow",
-        "dur": 0.8
+        "dur": 0.8,
+        "dir": -1
       },
       "f4_window": {
         "type": "fade",

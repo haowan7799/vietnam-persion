@@ -185,7 +185,8 @@
         // 圆形渐开：转场结束时实心部分（内圈 0.75r）必须盖到最远的画角，否则上一镜的四角会在最后一帧突然消失
         const cx = trans && trans.x != null ? trans.x : 640, cy = trans && trans.y != null ? trans.y : 360;
         const R = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) / 0.75 + 4;
-        const r = easeInOut(p) * R + 1;
+        // 半径按 √ 增长，圆的面积随进度均匀扩大：不会先慢后猛地一下铺满
+        const r = Math.sqrt(smooth(p)) * R + 1;
         const gr = gb.createRadialGradient(cx, cy, r * 0.75, cx, cy, r);
         gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
         gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
@@ -196,7 +197,8 @@
       } else if (type === 'fade') {
         gb.globalCompositeOperation = 'source-over';
       } else if (type && type.startsWith('wipe')) {
-        // 软边横扫：前缘匀速推进（两端略缓），边缘 380px 渐隐，走满整个转场时长
+        // 软边横扫：前缘匀速推进（两端略缓），边缘 380px 渐隐，走满整个转场时长；trans.dir = -1 时从右往左（顺着画面里的风向）
+        if (trans && trans.dir === -1) { gb.translate(W, 0); gb.scale(-1, 1); }
         const pos = lerp(-420, W + 420, 0.5 - 0.5 * Math.cos(Math.PI * p));
         const gr = gb.createLinearGradient(pos - 380, 0, pos + 380, 0);
         gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -210,7 +212,8 @@
       gb.restore();
       if (type === 'fade') g.globalAlpha = smooth(p);
       if (type === 'fog') {
-        g.fillStyle = rgba(night ? '#c8cde0' : '#f5efe2', 0.7 * Math.sin(Math.PI * p));
+        // 夜景的雾用暗灰、较薄：亮雾盖在夜景上会像闪了一下白
+        g.fillStyle = rgba(night ? '#7a808c' : '#f5efe2', (night ? 0.28 : 0.7) * Math.sin(Math.PI * p));
         g.fillRect(0, 0, W, H);
         g.globalAlpha = smooth(p);
       }
@@ -243,6 +246,7 @@
         const pos = lerp(-420, W + 420, 0.5 - 0.5 * Math.cos(Math.PI * p));
         const a = Math.sin(Math.PI * p);
         g.save();
+        if (trans && trans.dir === -1) { g.translate(W, 0); g.scale(-1, 1); }
         const gr = g.createLinearGradient(pos - 420, 0, pos + 260, 0);
         gr.addColorStop(0, rgba(col, 0)); gr.addColorStop(0.65, rgba(col, (kind === 'mist' || kind === 'cloud' ? 0.32 : 0.16) * a)); gr.addColorStop(1, rgba(col, 0));
         g.fillStyle = gr; g.fillRect(pos - 420, 0, 680, H);
@@ -302,7 +306,7 @@
       if (seg.trans && seg.trans.type === 'flash' && t - seg.start < 0.24) {
         // 切点后的第一帧（1/30 s 内）保持峰值，然后 0.2 s 回落
         const u = clamp((t - seg.start - 0.034) / 0.2);
-        g.fillStyle = rgba(seg.trans.color || '#ffffff', 0.9 * (1 - u) * (1 - u));
+        g.fillStyle = rgba(seg.trans.color || '#ffffff', (seg.trans.peak ?? 0.9) * (1 - u) * (1 - u));
         g.fillRect(0, 0, W, H);
       }
       const sc = XYT.scenes[curScene.scene] || XYT.scenes.mist;
