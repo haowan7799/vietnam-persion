@@ -225,7 +225,7 @@
         g.drawImage(this.buf.c, 0, 0, W, H);
         // 水痕：只在新画面一侧，贴着洇开的边积一圈极淡的墨色（外缘最深、向内渐无），与遮罩同形同柔，不落到上一镜上
         // 小墨团时最清楚，p = 0.8 前淡尽（之后不再画）
-        const ta = 0.18 * (1 - smooth(p / 0.8));
+        const ta = 0.06 * (1 - smooth(p / 0.8));
         if (ta > 0.002) {
           const gr = smooth(p / 0.12), tb = this.inkLayer(1);
           tb.fillStyle = night ? '#06070b' : '#15120f'; tb.fill(inkPath(seed, p, 4 * gr, 3 * gr));

@@ -598,7 +598,7 @@
         const grp = groupCanvas(lt);
         // 倒影：沿水面线翻转，条带错动，半透明。先在临时层里画篙的倒影（一根连续的细线，随各行的错动轻轻弯），
         // 再把船与人的倒影条带不透明地盖上去（船身照样挡住篙），最后整层按深度渐淡贴回
-        const pr = scratch('fg1_i2_refl', GW, GY);
+        const pr = scratch('fg1_i2_grprefl', GW, GY);
         const rg = pr.g;
         rg.translate(-grp.ox, 0);
         const rdx = (y) => { const k = y / GY; return (0.25 + 1.5 * k) * Math.sin(y * 0.16 + lt * 2.1) + (0.15 + 0.7 * k) * Math.sin(y * 0.07 - lt * 1.4 + 1.1); };
@@ -1262,6 +1262,16 @@
       gr.addColorStop(0, 'rgba(92,108,122,0.34)'); gr.addColorStop(0.42, 'rgba(110,122,134,0.08)');
       gr.addColorStop(0.6, 'rgba(255,222,176,0)'); gr.addColorStop(1, 'rgba(255,214,160,0.34)');
       g.fillStyle = gr; g.fillRect(cx - 8 * u, cy - 10 * u, 16 * u, 20 * u);
+      // 梳向发髻的几缕发丝：从后颈顺着头形向上收到发带下，左侧（背光）偏冷偏暗，右侧（迎光）偏暖偏亮
+      g.lineCap = 'round'; g.lineWidth = 0.42 * u;
+      for (let i = 0; i < 6; i++) {
+        const a = -0.78 + (i / 5) * 1.56 + (i % 2 ? 0.05 : -0.04), lit = a > 0.1;
+        g.strokeStyle = lit ? `rgba(255,236,204,${(0.18 + 0.14 * a).toFixed(3)})` : `rgba(74,88,102,${(0.14 + 0.12 * -a).toFixed(3)})`;
+        g.beginPath();
+        g.moveTo(cx + a * 5.4 * u, cy + 7.0 * u);
+        g.quadraticCurveTo(cx + a * 7.4 * u, cy + 1.2 * u, cx + a * 3.6 * u, cy - 5.6 * u);
+        g.stroke();
+      }
       g.restore();
     }
     const MP = 1600;
