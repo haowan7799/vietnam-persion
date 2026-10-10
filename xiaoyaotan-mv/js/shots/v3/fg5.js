@@ -950,61 +950,144 @@
         }
         return [0, 0];
       };
-      const p = new Path2D(), up = [], dn = [];
-      for (let x = -0.262; x <= 0.084; x += 0.004) {
+      const p = new Path2D(), topL = new Path2D(), up = [], dn = [];
+      for (let x = -0.264; x <= 0.086; x += 0.003) {
         const [y, sl] = top(x);
-        const th = 0.028 * Math.pow(Math.max(0, 1 - Math.abs(sl) / 1.3), 1.4) * (1 + 0.1 * Math.sin(x * 90) + 0.07 * Math.sin(x * 233 + 1.3));
-        up.push([x, y - th]); dn.push([x, y + 0.0015]);
+        const th = 0.026 * Math.pow(Math.max(0, 1 - Math.abs(sl) / 1.3), 1.3) * (1 + 0.12 * Math.sin(x * 90) + 0.08 * Math.sin(x * 233 + 1.3)) + 0.002;
+        up.push([x, y - th]); dn.push([x, y + 0.0018]);
       }
-      p.moveTo(up[0][0], up[0][1]);
-      for (const q of up) p.lineTo(q[0], q[1]);
-      for (let i = dn.length - 1; i >= 0; i--) p.lineTo(dn[i][0], dn[i][1]);
-      p.closePath();
-      // 船舷上沿的薄雪（露在篷外的两段）
+      // 篷顶两端的雪沿篷面往下挂一点，圆收
+      smoothPath(p, up.concat(dn.slice().reverse()), true);
+      smoothPath(topL, up, false);
+      // 船舷上沿的积雪（露在篷外的两段，船头一段沿上翘的船舷收薄到船头）：4–5 px 厚，起伏
       const gun = [[-0.5, -0.066], [-0.44, -0.042], [-0.36, -0.03], [-0.2, -0.023], [0, -0.022], [0.2, -0.024], [0.34, -0.034], [0.43, -0.054], [0.5, -0.088]];
       const gy = (x) => { for (let i = 0; i < gun.length - 1; i++) { const a = gun[i], b = gun[i + 1]; if (x >= a[0] && x <= b[0]) return a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]); } return 0; };
-      for (const [x0, x1] of [[-0.47, -0.3], [0.12, 0.45]]) {
-        const pts = [];
-        for (let x = x0; x <= x1 + 1e-9; x += 0.01) pts.push([x, gy(x)]);
-        p.moveTo(pts[0][0], pts[0][1] + 0.001);
-        for (const q of pts) p.lineTo(q[0], q[1] - 0.0055 * Math.sin(Math.PI * (q[0] - x0) / (x1 - x0)) - 0.001);
-        for (let i = pts.length - 1; i >= 0; i--) p.lineTo(pts[i][0], pts[i][1] + 0.0015);
-        p.closePath();
+      for (const [x0, x1, k] of [[-0.48, -0.296, 0.8], [0.106, 0.488, 1]]) {
+        const tp = [], bt = [];
+        for (let x = x0; x <= x1 + 1e-9; x += 0.006) {
+          const u = (x - x0) / (x1 - x0);
+          const sl = Math.abs((gy(x + 0.004) - gy(x - 0.004)) / 0.008);
+          const th = k * 0.0145 * Math.pow(Math.sin(Math.PI * clamp(u * 1.08 - 0.04)), 0.45) * Math.max(0.25, 1 - sl * 1.1) * (1 + 0.16 * Math.sin(x * 140 + k) + 0.1 * Math.sin(x * 310));
+          tp.push([x, gy(x) - th - 0.0008]); bt.push([x, gy(x) + 0.0018]);
+        }
+        smoothPath(p, tp.concat(bt.reverse()), true);
+        smoothPath(topL, tp, false);
       }
-      return p;
+      return { body: p, top: topL };
+    })();
+    // 斗笠上的雪（人物坐标，坐面为原点，单位 = 身高/100，朝右）：顺着笠面，笠顶两侧厚约 3.5、到笠沿收薄
+    const HAT_CAP = (() => {
+      const crown = [[-15.0, -43.8], [-8.4, -46.8], [-1.0, -49.0], [2.0, -52.4], [3.45, -55.1], [5.2, -52.2], [8.0, -49.0], [14.0, -45.8], [19.4, -42.8]];
+      const n = crown.length, tp = [], bt = [];
+      for (let i = 0; i < n; i++) {
+        const a = crown[Math.max(0, i - 1)], b = crown[Math.min(n - 1, i + 1)];
+        let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+        let nx = ty, ny = -tx; if (ny > 0) { nx = -nx; ny = -ny; }
+        const s = i / (n - 1), th = 0.5 + 3.2 * Math.pow(Math.sin(Math.PI * (0.04 + 0.92 * s)), 0.75) * (i === 4 ? 0.8 : 1) * (1 + 0.08 * Math.sin(i * 2.3));
+        tp.push([crown[i][0] + nx * th, crown[i][1] + ny * th]); bt.push([crown[i][0] - nx * 0.5, crown[i][1] - ny * 0.5]);
+      }
+      return { body: smoothPath(new Path2D(), tp.concat(bt.reverse()), true), top: smoothPath(new Path2D(), tp, false) };
     })();
 
-    // 雪：远细慢、中、近大快，再加几片虚化的前景大雪；风向右，略斜；到各自的“地面”前淡出，从画面上方以外重新落下
+    // 大雪三层，风向右（约 11° 斜落，阵风让横向速度缓慢起伏）：
+    //   远层：细小的灰色雪点——在亮的阴天里，远处的雪片逆着天光看是比天暗的灰点；落到远处江面前淡出
+    //   中层：白色雪片带一圈很淡的灰边，亮天、白山、深色江面上都看得见
+    //   近层：少量虚化的前景大雪片（白芯、淡灰晕），避开小舟与歌词带
+    // 每片都从画面上方以外落入，到各自的“地面”前用约 0.5 秒淡出；同屏小粒子共 264 片
     const SNOW = [
-      { n: 118, s0: 0.9, s1: 1.7, v0: 20, v1: 28, par: 0.4, a0: 0.5, a1: 0.85, land0: 432, land1: 470, seed: 1 },
-      { n: 112, s0: 1.8, s1: 2.8, v0: 38, v1: 52, par: 0.75, a0: 0.75, a1: 0.95, land0: 482, land1: 600, seed: 2 },
-      { n: 40, s0: 3.2, s1: 5.0, v0: 70, v1: 92, par: 1.25, a0: 0.85, a1: 1, land0: 760, land1: 780, seed: 3 },
-      { n: 8, s0: 12, s1: 20, v0: 115, v1: 150, par: 1.9, a0: 0.28, a1: 0.42, land0: 800, land1: 820, seed: 4, soft: 1 },
+      { n: 150, s0: 1.5, s1: 2.3, v0: 24, v1: 34, par: 0.35, a0: 0.42, a1: 0.66, land0: 430, land1: 478, seed: 1, kind: 'far' },
+      { n: 96, s0: 2.6, s1: 4.2, v0: 46, v1: 64, par: 0.75, a0: 0.82, a1: 1, land0: 486, land1: 612, seed: 2, kind: 'mid' },
+      { n: 18, s0: 6, s1: 9.5, v0: 86, v1: 112, par: 1.6, a0: 0.34, a1: 0.48, land0: 560, land1: 600, seed: 4, kind: 'near' },
     ];
+    const DRIFT = 0.2;
     for (const L of SNOW) {
       const r = rng(L.seed * 4241);
       L.f = [];
       for (let i = 0; i < L.n; i++) L.f.push({ x: r(), y: r(), s: lerp(L.s0, L.s1, r()), v: lerp(L.v0, L.v1, r()), a: lerp(L.a0, L.a1, r()), land: lerp(L.land0, L.land1, r()), sw: 2 + 6 * r(), sf: 0.18 + 0.35 * r(), ph: r() * TAU });
     }
+    // 前景虚化雪片：白芯、软边，外圈一道很淡的灰晕（亮天上读作淡灰的光斑，深色江面上读作白斑）
+    const bokehTex = () => K.cache('fg5_x3_bokeh', 64, 64, 0.5, (g) => {
+      const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.45, 'rgba(250,251,251,0.75)'); gr.addColorStop(0.68, 'rgba(176,184,190,0.42)');
+      gr.addColorStop(0.86, 'rgba(150,158,165,0.16)'); gr.addColorStop(1, 'rgba(150,158,165,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    });
     function drawSnow(g, L, t, camX) {
       const span = W + 80;
-      const soft = L.soft ? softTex('#ffffff') : null;
-      g.fillStyle = '#ffffff';
+      const far = L.kind === 'far', near = L.kind === 'near';
+      const bk = near ? bokehTex() : null;
+      // 小舟所在的椭圆（画面坐标）：近层雪片在这里淡出，不糊在船和人上
+      const bx = BX + 60 - camX, by = 440;
       for (const f of L.f) {
         const top = -24, range = f.land - top + 10;
         const yy = ((f.y * range + f.v * t) % range + range) % range + top;
         const dy = yy - top;
-        // 风：斜向右，阵风让横向速度缓慢起伏
-        const xw = f.x * span + 0.3 * f.v * t + f.sw * Math.sin(TAU * f.sf * t + f.ph) - camX * L.par;
+        const xw = f.x * span + DRIFT * f.v * t + f.sw * Math.sin(TAU * f.sf * t + f.ph) - camX * L.par;
         const x = ((xw % span) + span) % span - 40;
-        let a = f.a * smooth(dy / 26) * (1 - smooth((yy - (f.land - 26)) / 26));
+        let a = f.a * smooth(dy / 26) * (1 - smooth((yy - (f.land - 30)) / 30));
+        if (near) {
+          const e = Math.hypot((x - bx) / 250, (yy - by) / 85);
+          a *= smooth((e - 1) / 0.45) * (1 - smooth((yy - 520) / 50));
+        }
         if (a < 0.02) continue;
         g.globalAlpha = a;
-        if (soft) g.drawImage(soft, x - f.s, yy - f.s, f.s * 2, f.s * 2);
-        else if (f.s < 1.6) g.fillRect(x - f.s / 2, yy - f.s / 2, f.s, f.s);
-        else { g.beginPath(); g.arc(x, yy, f.s / 2, 0, TAU); g.fill(); }
+        if (near) { g.drawImage(bk, x - f.s, yy - f.s, f.s * 2, f.s * 2); continue; }
+        if (far) {
+          // 远层：灰点；落进江口雾带、江面时渐渐转白（背景变暗，雪片相对变亮）
+          const w = smooth((yy - 405) / 30);
+          if (w < 0.98) { g.globalAlpha = a * (1 - w); g.fillStyle = '#8a949e'; g.beginPath(); g.arc(x, yy, f.s / 2, 0, TAU); g.fill(); }
+          if (w > 0.02) { g.globalAlpha = a * w; g.fillStyle = '#e9edef'; g.beginPath(); g.arc(x, yy, f.s / 2, 0, TAU); g.fill(); }
+          continue;
+        }
+        // 中层：先画淡灰外圈，再画白芯
+        g.fillStyle = 'rgba(128,138,146,0.55)';
+        g.beginPath(); g.arc(x, yy, f.s / 2 + 0.6, 0, TAU); g.fill();
+        g.fillStyle = '#ffffff';
+        g.beginPath(); g.arc(x, yy, f.s / 2, 0, TAU); g.fill();
       }
       g.globalAlpha = 1;
+    }
+    // 雪幕：远处更密的落雪，画成一张可无缝平铺的斜向细雪纹理，随风斜着往下滚动；只罩在远山与天上，很淡
+    const VT = 256;
+    const veilTex = () => K.cache('fg5_x3_veil', VT, VT, 1, (g) => {
+      const r = rng(9393);
+      g.lineCap = 'round';
+      for (let i = 0; i < 300; i++) {
+        const x = r() * VT, y = r() * VT, L = 2.5 + 4.5 * r(), w = 0.7 + 0.7 * r();
+        const grey = r() < 0.62;
+        g.strokeStyle = grey ? `rgba(126,136,144,${0.3 + 0.35 * r()})` : `rgba(255,255,255,${0.5 + 0.4 * r()})`;
+        g.lineWidth = w;
+        for (const ox of [-VT, 0, VT]) for (const oy of [-VT, 0, VT]) {
+          const px = x + ox, py = y + oy;
+          if (px < -10 || px > VT + 10 || py < -10 || py > VT + 10) continue;
+          g.beginPath(); g.moveTo(px - DRIFT * L * 0.5, py - L * 0.5); g.lineTo(px + DRIFT * L * 0.5, py + L * 0.5); g.stroke();
+        }
+      }
+    });
+    function drawVeil(g, t, camX) {
+      const S = SS(), q = 0.5, x0 = -20, y0 = 96, w = W + 40, h = 352;
+      const pw = Math.ceil(w * S * q), ph = Math.ceil(h * S * q);
+      const R = rawCanvas('fg5_x3_veilL', pw, ph);
+      const vg = R.g;
+      vg.setTransform(S * q, 0, 0, S * q, -x0 * S * q, -y0 * S * q);
+      const tile = veilTex();
+      // 两层：一层慢而淡、一层略快，错开平铺的接缝
+      for (const [v, sc, al, ox0] of [[38, 1, 0.75, 0], [58, 1.35, 0.6, 97]]) {
+        const T = VT * sc;
+        const ox = ((ox0 + DRIFT * v * t - camX * 0.3) % T + T) % T, oy = ((v * t) % T + T) % T;
+        vg.globalAlpha = al;
+        for (let yy = y0 - T + oy; yy < y0 + h; yy += T) for (let xx = x0 - T + ox; xx < x0 + w; xx += T) vg.drawImage(tile, xx, yy, T, T);
+      }
+      vg.globalAlpha = 1;
+      // 上（天上）淡、远山处最浓、到江口雾带收掉
+      vg.globalCompositeOperation = 'destination-in';
+      const m = vg.createLinearGradient(0, y0, 0, y0 + h);
+      m.addColorStop(0, 'rgba(0,0,0,0)'); m.addColorStop(0.22, 'rgba(0,0,0,0.55)'); m.addColorStop(0.6, 'rgba(0,0,0,1)'); m.addColorStop(0.86, 'rgba(0,0,0,0.8)'); m.addColorStop(1, 'rgba(0,0,0,0)');
+      vg.fillStyle = m; vg.fillRect(x0, y0, w, h);
+      vg.globalCompositeOperation = 'source-over';
+      g.save(); g.globalAlpha = 0.5;
+      g.drawImage(R.c, 0, 0, pw, ph, x0, y0, w, h);
+      g.restore();
     }
 
     // 涟漪：江面上的椭圆环，从中心扩散、变淡
@@ -1030,16 +1113,18 @@
         const t = c.lt;
         // 镜头：极缓右移，全程（含淡入）约 68 px，缓入缓出，峰值约 15 px/s
         const camX = 68 * smooth((t + 1) / (c.dur + 1));
-        // 天：阴天雪光，上略暗下略亮
+        // 天：阴天雪光，像一层极淡的灰墨渲染，上略暗下略亮（白山与白雪片衬在上面才看得出）
         const sky = g.createLinearGradient(0, 0, 0, RIV0);
-        sky.addColorStop(0, '#dfe3e5'); sky.addColorStop(0.6, '#eceeee'); sky.addColorStop(1, '#f2f3f2');
+        sky.addColorStop(0, '#d2d7da'); sky.addColorStop(0.55, '#e2e5e6'); sky.addColorStop(1, '#eff1f0');
         g.fillStyle = sky; g.fillRect(-20, -20, W + 40, RIV0 + 24);
         g.drawImage(farTex(), -camX * 0.22 - 20, 140, W + PADX, 330);
         g.drawImage(midTex(), -camX * 0.5 - 30, 160, W + PADX, 300);
-        // 江口雾带
-        const fog = g.createLinearGradient(0, 380, 0, 445);
-        fog.addColorStop(0, 'rgba(242,243,242,0)'); fog.addColorStop(0.6, 'rgba(242,243,242,0.75)'); fog.addColorStop(1, 'rgba(242,243,242,0.4)');
-        g.fillStyle = fog; g.fillRect(-20, 380, W + 40, 66);
+        // 远处更密的雪幕
+        drawVeil(g, t, camX);
+        // 江口雾带：山脚与水线之间一条柔白的雾，乌篷的深色剪影衬在雾前
+        const fog = g.createLinearGradient(0, 356, 0, 446);
+        fog.addColorStop(0, 'rgba(243,244,243,0)'); fog.addColorStop(0.45, 'rgba(243,244,243,0.6)'); fog.addColorStop(0.78, 'rgba(243,244,243,0.94)'); fog.addColorStop(1, 'rgba(243,244,243,0.7)');
+        g.fillStyle = fog; g.fillRect(-20, 356, W + 40, 90);
 
         // ---- 江面 ----
         const rv = g.createLinearGradient(0, RIV0, 0, 680);
@@ -1062,6 +1147,19 @@
           g.fillRect(x, y, len, 0.8 + u * 0.8);
         }
         g.restore();
+        // 远岸下的江面上沿还留一线薄雾
+        const fog2 = g.createLinearGradient(0, RIV0, 0, RIV0 + 18);
+        fog2.addColorStop(0, 'rgba(236,238,238,0.45)'); fog2.addColorStop(1, 'rgba(236,238,238,0)');
+        g.fillStyle = fog2; g.fillRect(-20, RIV0, W + 40, 18);
+        // 小舟四周的江水略深一些（约 8%），船的剪影更醒目
+        {
+          const cx = BX + 50 - camX, cy = YWL + 14;
+          g.save(); g.translate(cx, cy); g.scale(1, 0.24);
+          const dk = g.createRadialGradient(0, 0, 0, 0, 0, 330);
+          dk.addColorStop(0, 'rgba(18,22,26,0.1)'); dk.addColorStop(0.55, 'rgba(18,22,26,0.06)'); dk.addColorStop(1, 'rgba(18,22,26,0)');
+          g.fillStyle = dk; g.fillRect(-330, -330, 660, 660);
+          g.restore();
+        }
         // 远处的雪落进江面前淡出
         drawSnow(g, SNOW[0], t, camX);
 
@@ -1077,16 +1175,25 @@
         lg.translate(0, -bm.dy * 0.5);
         const body = '#2f2e2b';
         const mb = XYT.sil.boat(lg, BX, BY, BL, t, { awning: true, facing: -1, layer: 'back', body });
-        const fo = { facing: 1, wind: WIND, windDir: 1, snow: 0.7, body: '#2a2d31', boat: mb, rim: null };
+        const fo = { facing: 1, wind: WIND, windDir: 1, snow: 1, body: '#2a2d31', boat: mb, rim: null };
         XYT.sil.draw(lg, 'old', 'fishSit', MX, BY, MH, t, Object.assign({ line: 'skip' }, fo));
         XYT.sil.boat(lg, BX, BY, BL, t, { awning: true, facing: -1, layer: 'front', body });
-        // 篷顶与船舷的积雪（随船起伏）
+        // 篷顶、船舷、船头与斗笠上的积雪（随船起伏）：厚而起伏的雪帽，底下一道淡灰的阴面，上沿一线淡墨勾边，衬在白雾前也读得出
         lg.save();
         lg.translate(mb.px, mb.py + mb.dy); lg.rotate(mb.rot); lg.translate(-mb.px, -mb.py);
+        lg.save();
         lg.translate(BX, BY); lg.scale(-BL, BL);
-        lg.fillStyle = '#c9cfd3'; lg.fill(SNOW_CAP);
-        lg.translate(0, -0.0016);
-        lg.fillStyle = '#f5f6f6'; lg.fill(SNOW_CAP);
+        lg.fillStyle = '#aeb6bc'; lg.fill(SNOW_CAP.body);
+        lg.translate(0, -0.0022);
+        lg.fillStyle = '#f6f7f7'; lg.fill(SNOW_CAP.body);
+        lg.strokeStyle = 'rgba(112,122,130,0.75)'; lg.lineWidth = 0.9 / BL; lg.lineJoin = 'round'; lg.stroke(SNOW_CAP.top);
+        lg.restore();
+        // 斗笠：沿笠面加一层 3–4 px 的雪（人物坐标：坐面为原点，单位 = 身高/100）
+        lg.translate(MX, BY); lg.scale(MH / 100, MH / 100);
+        lg.fillStyle = '#b8c0c5'; lg.fill(HAT_CAP.body);
+        lg.translate(0, -0.35);
+        lg.fillStyle = '#f6f7f7'; lg.fill(HAT_CAP.body);
+        lg.strokeStyle = 'rgba(112,122,130,0.7)'; lg.lineWidth = 0.8; lg.lineJoin = 'round'; lg.stroke(HAT_CAP.top);
         lg.restore();
         XYT.sil.draw(lg, 'old', 'fishSit', MX, BY, MH, t, Object.assign({ line: 'only' }, fo));
         // 倒影：水线以上的部分按水线翻转，淡、偏冷、横向波纹

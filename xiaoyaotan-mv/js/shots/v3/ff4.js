@@ -1130,9 +1130,12 @@
     const LANDERS = makeLanders(7311, (t) => 5 + 40 * smooth((t - FB2[0] + 0.3) / 0.7), -1.2);
     // 第28句雪下密的那几秒另加一批（整盘转白要有相称的雪量），第8字后渐稀
     const LANDERS2 = makeLanders(7377, (t) => 0.4 + 75 * smooth((t - FB2[0]) / 0.8) * (1 - smooth((t - FB2[7] - 0.2) / 0.8)), FB2[0] - 0.6);
+    // 第28句第1字起雪明显变大：再加一批（同屏小雪片仍在 300 以内）
+    const LANDERS3 = makeLanders(7393, (t) => 0.2 + 34 * smooth((t - FB2[0]) / 0.8) * (1 - smooth((t - FB2[7] - 0.2) / 0.8)), FB2[0] - 0.6);
     // 远景雪片（桌后虚处）与近景虚化雪片
-    const FAR = (() => { const r = rng(808), o = []; for (let i = 0; i < 270; i++) o.push({ x0: r() * (W + 60), y0: r() * (H + 40), v: 50 + r() * 40, rad: 0.9 + r() * 1.3, ph: r() * TAU, f: 0.4 + r() * 0.5, act: i < 60 ? -99 : i < 150 ? FB2[0] - 1.4 + r() * 1.4 : FB2[0] - 0.6 + r() * 1.0 }); return o; })();
-    const NEAR = (() => { const r = rng(909), o = []; for (let i = 0; i < 70; i++) o.push({ x0: r() * (W + 120), y0: r() * (H + 160), v: 300 + r() * 220, rad: 6 + r() * 10, ph: r() * TAU, f: 0.3 + r() * 0.4, a: 0.26 + r() * 0.18, act: i < 14 ? -99 : FB2[0] - 0.5 + r() * 1.4 }); return o; })();
+    const FAR = (() => { const r = rng(808), o = []; for (let i = 0; i < 330; i++) o.push({ x0: r() * (W + 60), y0: r() * (H + 40), v: 50 + r() * 40, rad: 0.9 + r() * 1.3, ph: r() * TAU, f: 0.4 + r() * 0.5, act: i < 60 ? -99 : i < 150 ? FB2[0] - 1.4 + r() * 1.4 : i < 270 ? FB2[0] - 0.6 + r() * 1.0 : FB2[0] - 0.3 + r() * 0.9 }); return o; })();
+    // 近景虚化大雪片：第28句第1字起多出一批（从画外落入）
+    const NEAR = (() => { const r = rng(909), o = []; for (let i = 0; i < 112; i++) o.push({ x0: r() * (W + 120), y0: r() * (H + 160), v: 300 + r() * 220, rad: 6 + r() * 10, ph: r() * TAU, f: 0.3 + r() * 0.4, a: 0.26 + r() * 0.18, act: i < 14 ? -99 : i < 70 ? FB2[0] - 0.5 + r() * 1.4 : FB2[0] - 0.2 + r() * 1.1 }); return o; })();
 
     // ---------- 浅景深：清晰与模糊两遍按屏幕高度线性混合（远处与画面下沿虚） ----------
     function dofMask(tg, keepSharp) {
@@ -1379,7 +1382,8 @@
     }
     // 积雪的薄膜：一张均匀的雪面，乘上细颗粒遮罩逐级变厚（颗粒远小于棋格，像越落越密的雪粉，不成片、不成岛）
     // 第 k 级的平均覆盖约为 k/NL；雪沿与接触暗影另成两层
-    const NL = 7, FILM_B = 0.82, FILM_E = 0.35;
+    // 终态不是一块白板：第 NL 级约盖住 85%（细格线、黑子与盘边木色仍隐约可见）
+    const NL = 7, FILM_B = 0.6, FILM_E = 0.35, A_END = 0.7;
     // 屏幕点反投到高度 Y0 的水平面
     function unproj(x, y, Y0) {
       const v = CY - y, Z = (F * Y0 * CA - v * (R - Y0 * SA)) / (v * CA - F * SA);
@@ -1420,7 +1424,7 @@
     // 第 s 级遮罩：一层随厚度变浓的雪纱（FILM_B），加上颗粒按名次逐渐填满（软边 FILM_E）
     function filmMask(s) {
       const { n, w, h } = filmField(), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-      const cg = cv.getContext('2d'), img = cg.createImageData(w, h), A = s / NL, base = FILM_B * A;
+      const cg = cv.getContext('2d'), img = cg.createImageData(w, h), A = s / NL * A_END, base = FILM_B * A;
       for (let i = 0; i < w * h; i++) {
         const gr = clamp((A * (1 + FILM_E) - n[i]) / FILM_E);
         img.data[i * 4 + 3] = Math.round((base + (1 - base) * gr) * 255);
@@ -1563,10 +1567,10 @@
         tg.fillStyle = 'rgba(255,255,255,0.6)'; tg.beginPath(); tg.ellipse(ex - rx * 0.1, ey - ry * 0.35 - 1.5, rx * 0.55, ry * 0.4, 0, 0, TAU); tg.fill();
       });
     }
-    // s = 1..NL-1：颗粒遮罩下的雪面；s = NL：整片
+    // s = 1..NL：颗粒遮罩下的雪面（第 NL 级为终态）
     function filmTex(s) {
-      return K.cache('ff4_d2_film4_' + s, TB[2], TB[3], 1, (g) => {
-        const mask = s < NL ? filmMask(s) : null;
+      return K.cache('ff4_d2_film5_' + s, TB[2], TB[3], 1, (g) => {
+        const mask = filmMask(s);
         dofInto(g, TB, 3.2, (tg) => {
           snowSurface(tg);
           if (mask) {
@@ -1643,10 +1647,11 @@
         g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(contactTex(), 0, 0); g.drawImage(rimTex(), 0, 0); g.restore();
       });
     }
-    // 积雪落满之后：雪面、接触暗影、雪沿合成一张
+    // 积雪到终态之后：雪面、薄屑与雪屑、接触暗影与雪沿合成一张（与逐层叠画的终值相同）
     function surfFinalTex() {
-      return K.cache('ff4_d2_surf', TB[2], TB[3], 1, (g) => {
-        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(filmTex(NL), 0, 0); g.drawImage(edgesTex(), 0, 0); g.restore();
+      return K.cache('ff4_d2_surf3', TB[2], TB[3], 1, (g) => {
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(filmTex(NL), 0, 0); g.drawImage(dustSpkAll(), 0, 0); g.drawImage(edgesTex(), 0, 0);
+        g.globalAlpha = GHOST_END; g.drawImage(gridGhostTex(), 0, 0); g.restore();
       });
     }
     // 一颗棋子（含接触阴影）
@@ -1802,7 +1807,7 @@
       });
     }
     // skirt：周围雪面漫上棋子下沿的程度；bury：整颗化成雪包的程度
-    function drawCap(g, geo, k, land, skirt, bury) {
+    function drawCap(g, geo, k, land, skirt, bury, black) {
       const { x, cy, rx, ry } = geo;
       if (skirt > 0.01) { // 周围雪面积厚，从下往上漫过棋子近侧的下沿（边界是棋子轮廓上移后的弧，带一像素软边）
         g.save();
@@ -1825,7 +1830,7 @@
       // 周围积雪漫上来时，圆丘也顺着棋子侧面往下铺，两边的雪很快接上（中间只短暂留一线黑）
       const sk = skirt * m, mw = smooth(Math.min(1, k * 1.6));
       const erx = lerp(s0, rx * 1.1, mw);
-      const ery = lerp(s0 * hr0, ry * 1.07, m) + sk * 0.18 * ry;
+      const ery = lerp(s0 * hr0, ry * (black ? 0.84 : 1.07), m) + sk * 0.18 * ry; // 黑子的雪丘只盖住朝上的顶面，近侧下沿留一弯黑
       const ex = lerp(sx0, x, g0), ey = lerp(sy0, cy - ry * (1 + 0.55 * m) + ery, g0);
       if (erx > 0.3 && bury < 0.999) {
         const f = 1.12; // 贴图的软边在单位椭圆外，略放大使实心部分等于圆丘
@@ -1837,17 +1842,34 @@
         g.globalAlpha = 1;
       }
     }
-    // 全部埋好的终态（雪包、脚边淡影、棋子与雪屑），与逐帧画法的终值相同
+    // 终态（棋子、雪屑、圆顶雪丘；黑子下沿留一线本色），与逐帧画法的终值相同
+    const SKIRT_END = 0.45, SKIRT_B = 0.22;
     function stonesFinalTex() {
-      return K.cache('ff4_d2_sfin', W, H, 1, (g) => {
-        const geos = [...BLACK, ...WHITE].map(([cc, rr]) => { const [u, v] = PT(cc, rr); return stoneGeo(u, v); });
-        geos.forEach((geo) => moundHalo(g, geo, 0.12));
+      return K.cache('ff4_d2_sfin3', W, H, 1, (g) => {
+        const geos = [...BLACK.map((s) => [s, 1]), ...WHITE.map((s) => [s, 0])].map(([[cc, rr], bl]) => { const [u, v] = PT(cc, rr); return { geo: stoneGeo(u, v), bl }; });
         g.drawImage(stonesTex(false), 0, 0, W, H);
-        g.drawImage(stonesTex(false, true), 0, 0, W, H);
+        g.globalAlpha = SKIRT_END; g.drawImage(stonesTex(false, true), 0, 0, W, H);
         g.globalAlpha = 0.85; g.drawImage(stoneDustTex(), 0, 0, W, H); g.globalAlpha = 1;
-        geos.slice().sort((a, b) => a.y - b.y).forEach((geo) => drawCap(g, geo, 1, null, 1, 1));
+        geos.slice().sort((a, b) => a.geo.y - b.geo.y).forEach((o) => drawCap(g, o.geo, 1, null, o.bl ? SKIRT_B : SKIRT_END, 0, o.bl));
       });
     }
+    // 积雪落进网格的刻线：雪面上隐约一层灰线（雪厚之后才显出来，与透出来的墨线相互补足）
+    function gridGhostTex() {
+      return K.cache('ff4_d2_gridg', TB[2], TB[3], 1, (g) => dofInto(g, TB, 3.2, (tg) => {
+        tg.strokeStyle = 'rgb(126,134,144)'; tg.lineCap = 'round';
+        for (let i = 0; i < 19; i++) {
+          const a = -GRID + i * STEP;
+          let [x0, y0, d0] = PB(a, -GRID, BT + 0.006), [x1, y1] = PB(a, GRID, BT + 0.006);
+          tg.lineWidth = i === 0 || i === 18 ? 2 : 1.3;
+          tg.beginPath(); tg.moveTo(x0, y0); tg.lineTo(x1, y1); tg.stroke();
+          [x0, y0, d0] = PB(-GRID, a, BT + 0.006); [x1, y1] = PB(GRID, a, BT + 0.006);
+          tg.lineWidth = (i === 0 || i === 18 ? 2 : 1.35) * 4.5 / d0;
+          tg.beginPath(); tg.moveTo(x0, y0); tg.lineTo(x1, y1); tg.stroke();
+        }
+      }));
+    }
+    const GHOST_END = 0.2;
+    const ghostA = (A) => GHOST_END * smooth((A - 0.45) / 0.55);
     // 雪包脚下近侧雪面上的一抹淡影（让雪包像实心的雪，而不是玻璃珠）
     function moundHalo(g, geo, a) {
       const { x, cy, rx, ry } = geo;
@@ -1861,9 +1883,19 @@
       name: '雪落棋局', zone: 'top', night: false, text: '#26292d', shadow: 'rgba(244,246,248,0.92)', accent: '#7a5a34', bloom: 0.16,
       draw(g, c) {
         const t = c.lt;
+        // 上一镜「门合上」之后要留出至少 0.5 s 的静止空镜：本镜在转场里的不透明度压到「后 0.5 s 才淡入」
+        // （转场时长由引擎定，这里只在本镜自己的画面里补一个系数；引擎、分镜表不改）
+        const trD = c.seg && c.seg.trans && c.seg.trans.type === 'fade' ? c.seg.trans.dur : 0;
+        let keep = 1;
+        if (t < 0 && trD > 0.5) {
+          const want = smooth((t + 0.5) / 0.5), eng = smooth((t + trD) / trD);
+          if (want <= 0.001) return; // 什么都不画：上一镜原样保留
+          keep = clamp(want / Math.max(1e-3, eng));
+        }
         const tKey = [charLT(c, 0, 0, FB1[0]), charLT(c, 2, 0, FB1[2]), charLT(c, 4, 0, FB1[4])];
         const tXiang = charLT(c, 0, 1, FB2[0]), tDuo = charLT(c, 3, 1, FB2[3]), tWo = charLT(c, 7, 1, FB2[7]);
         const capT = [charLT(c, 3, 1, FB2[3]), charLT(c, 4, 1, FB2[4]), charLT(c, 5, 1, FB2[5])];
+        const CAP_GROW = 0.75; // 每颗雪丘长成的时间：最后一颗正好在第28句第8字长满
         // 镜头：整镜 1.00→1.03
         const z = 1 + 0.03 * smooth(c.p);
         g.save();
@@ -1885,23 +1917,20 @@
         }
         g.globalAlpha = 1;
         g.restore();
-        // 积雪（桌面、盘面、罐盖同一场雪）：第27句薄屑；第28句第1字起雪屑逐级加密，其下一层细颗粒雪膜渐厚，第8字前整片皆白
+        // 积雪（桌面、盘面、罐盖同一场雪、同一条积累曲线）：开镜就落上一层极薄的雪，第27句末约到终态的 12%；
+        // 第28句第1字雪下密，按 smooth^1.5 积厚，第8字到终态（约盖住 85%，细格线、黑子、盘边木色仍隐约可见）
         const tBu = charLT(c, 5, 1, FB2[5]);
         const d0 = 0.25 + 0.55 * smooth((t - 0.1) / 2.6);
         const d1 = smooth((t - tXiang) / 1.5);
-        // 雪膜厚度：第28句第1字起，第4字约 0.17，第6字约 0.44，第7字约 0.66，第8字前 0.1 秒满
-        const tDe = charLT(c, 6, 1, FB2[6]);
-        const Aof = (tt) => (tt < tDuo ? 0.17 * Math.pow(clamp((tt - tXiang) / Math.max(0.3, tDuo - tXiang)), 1.5)
-          : tt < tBu ? lerp(0.17, 0.44, (tt - tDuo) / Math.max(0.2, tBu - tDuo))
-            : tt < tDe ? lerp(0.44, 0.66, (tt - tBu) / Math.max(0.1, tDe - tBu))
-              : lerp(0.66, 1, clamp((tt - tDe) / Math.max(0.1, tWo - 0.1 - tDe))));
+        const Aof = (tt) => (tt <= 0 ? 0 : tt < tXiang ? 0.12 * Math.pow(tt / tXiang, 1.3)
+          : 0.12 + 0.88 * Math.pow(smooth((tt - tXiang) / Math.max(0.5, tWo - tXiang)), 1.5));
         const A = Aof(t);
-        // 落定的雪片被后来的雪埋住：要等落定后又积了一层、且四周已近全白，才与雪面融为一体
+        // 落定的雪片被后来的雪埋住：要等落定后又积了一层、且四周已积得较厚，才与雪面融为一体
         const buried = (T) => smooth((A - Aof(T)) / 0.3) * smooth((A - 0.55) / 0.45);
-        const P = 4 * smooth((t - tXiang - 0.2) / Math.max(0.6, tDe - tXiang - 0.2));
-        const fin = smooth((t - tWo + 0.1) / 0.3); // 雪屑淡去，只剩平整的雪面（只换质感，不换形状）
-        if (fin >= 1) blitTB(g, surfFinalTex()); else {
-          const q = A * NL, s0 = Math.min(NL, Math.floor(q)), fq = q - s0;
+        const P = 4 * smooth((t - tXiang - 0.1) / Math.max(0.6, tWo - tXiang - 0.1));
+        const fin = smooth((t - tWo + 0.1) / 0.3); // 棋子接触阴影在终态前淡去（被雪盖住）
+        if (t >= tWo) blitTB(g, surfFinalTex()); else {
+        const q = A * NL, s0 = Math.min(NL, Math.floor(q)), fq = q - s0;
           if (s0 < NL && fq > 0.002) {
             // 相邻两级按透明度线性插值（加色合成两张同色的雪面），避免两级叠加时在换级处跳变
             const hi = filmTex(s0 + 1), [sc, sg] = scratch('d2film', hi.width, hi.height);
@@ -1910,7 +1939,7 @@
             sg.globalCompositeOperation = 'source-over'; sg.globalAlpha = 1;
             blitTB(g, sc);
           } else if (s0 >= 1) blitTB(g, filmTex(s0));
-          const ka = 1 - fin;
+          const ka = 1;
           const pi = Math.min(4, Math.floor(P)), pf = P - pi;
           if (pi === 4 && d1 >= 1 && d0 >= 0.8) { g.globalAlpha = ka; blitTB(g, dustSpkAll()); } else {
             if (d1 >= 1 && d0 >= 0.8) { g.globalAlpha = ka; blitTB(g, dustBoth()); } else {
@@ -1926,13 +1955,15 @@
             if (cA > 0.003) { g.globalAlpha = cA; blitTB(g, contactTex()); }
             if (rA > 0.003) { g.globalAlpha = rA; blitTB(g, rimTex()); }
           }
+          const ga = ghostA(A);
+          if (ga > 0.002) { g.globalAlpha = ga; blitTB(g, gridGhostTex()); }
           g.globalAlpha = 1;
         }
         // 棋子：接触阴影随雪厚变淡；雪埋到棋子脚下后，雪丘脚边一圈淡影
-        const skirt = smooth((A - 0.62) / 0.28), bury = smooth((A - 0.85) / 0.15);
+        const skirt = SKIRT_END * smooth((A - 0.6) / 0.4), skirtB = SKIRT_B * smooth((A - 0.6) / 0.4), bury = 0; // 不把棋子整颗埋成雪包：黑子始终是圆顶雪丘下的一圈深色
         const shA = (1 - 0.8 * smooth(A / 0.75)) * (1 - fin);
         if (shA > 0.003) { g.globalAlpha = shA; blitBox(g, stonesTex(true)); g.globalAlpha = 1; }
-        const done = t > tBu + 0.92 && fin >= 1 && bury >= 1 && skirt >= 1 && t > 3.6; // 全部埋好后不再变化：贴缓存
+        const done = t >= tWo + 0.25; // 雪丘全部长满、接触阴影淡尽后不再变化：贴缓存
         if (done) blitBox(g, stonesFinalTex());
         const geos = done ? [] : [...BLACK.map(([cc, rr], j) => ({ bl: 1, j, cc, rr })), ...WHITE.map(([cc, rr], j) => ({ bl: 0, j, cc, rr }))];
         geos.forEach((o) => { const [u, v] = PT(o.cc, o.rr); o.u = u; o.v = v; o.geo = stoneGeo(u, v); });
@@ -1949,19 +1980,19 @@
         geos.forEach((o) => {
           if (o.bl) {
             const j = capOf.get(o.cc * 19 + o.rr);
-            const T = j < capT.length ? capT[j] : lerp(tDuo + 0.1, tBu - 0.05, (j - capT.length + 0.5) / (CAPS.length - capT.length));
+            const T = j < capT.length ? Math.min(capT[j], tWo - CAP_GROW) : lerp(tDuo + 0.1, tWo - CAP_GROW - 0.02, (j - capT.length + 0.5) / (CAPS.length - capT.length));
             const [X, Z] = B2W(o.u, o.v);
             const f = flakeAt({ T, X, Z, rad: 0.03, sw: 0.02, f: 0.6, ph: j }, t, BT + STONE_H);
             if (f.air) { if (f.y > -20) airs.push(f); if (skirt > 0.01) caps.push({ o, k: 0, land: null }); return; }
-            const kx = clamp((t - T) / 0.9), k = 1 - (1 - kx) * (1 - kx); // 约 0.9 s 长成圆丘
+            const kx = clamp((t - T) / CAP_GROW), k = 1 - (1 - kx) * (1 - kx); // 约 0.75 s 长成圆丘
             caps.push({ o, k, land: { x: f.x, y: f.y, s: f.s * 1.3, settle: smooth(f.age / 0.18) } });
           } else {
-            const T0 = lerp(tDuo - 0.1, tBu, h2(o.j, 404));
-            const kx = clamp((t - T0) / 0.9), k = 1 - (1 - kx) * (1 - kx);
+            const T0 = lerp(tDuo - 0.1, tWo - CAP_GROW - 0.02, h2(o.j, 404));
+            const kx = clamp((t - T0) / CAP_GROW), k = 1 - (1 - kx) * (1 - kx);
             if (k > 0 || skirt > 0.01) caps.push({ o, k, land: null });
           }
         });
-        caps.sort((a, b) => a.o.geo.y - b.o.geo.y).forEach((cp) => drawCap(g, cp.o.geo, cp.k, cp.land, skirt, bury));
+        caps.sort((a, b) => a.o.geo.y - b.o.geo.y).forEach((cp) => drawCap(g, cp.o.geo, cp.k, cp.land, cp.o.bl ? skirtB : skirt, bury, cp.o.bl));
         airs.forEach((f) => airFlake(g, f.x, f.y, f.s * 1.3, 0.95, clamp(f.dt / 0.15)));
         }
         const fs = flakeSprite();
@@ -1981,7 +2012,7 @@
           } else airFlake(g, f.x, f.y, s, 1, clamp(f.dt / 0.15));
         });
         // 中层着陆雪片（落定后不动）
-        for (const Ls of [LANDERS, LANDERS2]) for (const L of Ls) {
+        for (const Ls of [LANDERS, LANDERS2, LANDERS3]) for (const L of Ls) {
           if (t < L.T - 1.1) continue;
           const f = flakeAt(L, t, L.onBoard ? BT : 0.006);
           if (f.air) {
@@ -2018,6 +2049,9 @@
           gr.addColorStop(0, `rgba(242,244,246,${veil * 0.7})`); gr.addColorStop(0.5, `rgba(242,244,246,${veil})`); gr.addColorStop(1, `rgba(242,244,246,${veil * 0.8})`);
           g.fillStyle = gr; g.fillRect(0, 0, W, H);
         }
+        if (keep < 0.999) { // 转场中：按上面的系数压低本镜不透明度
+          g.save(); g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 1 - keep; g.fillStyle = '#000'; g.fillRect(-20, -20, W + 40, H + 40); g.restore();
+        }
       },
     });
     // 积雪各级缓存较重，首次实时播放时现建会卡顿：页面空闲时按需要的先后预先建好（只改建缓存的时机，画面不变）
@@ -2025,7 +2059,7 @@
     for (let s = 1; s <= NL; s++) WARM.push(() => filmTex(s));
     SPK_D.forEach((_, k) => WARM.push(() => speckTex(k)));
     for (let k = 2; k <= SPK_D.length; k++) WARM.push(() => speckCum(k));
-    WARM.push(dustBoth, dustSpkAll, contactTex, rimTex, edgesTex, surfFinalTex, () => stonesTex(true), () => stonesTex(false), () => stonesTex(false, true), stoneDustTex, stonesFinalTex);
+    WARM.push(dustBoth, dustSpkAll, contactTex, rimTex, edgesTex, gridGhostTex, surfFinalTex, () => stonesTex(true), () => stonesTex(false), () => stonesTex(false, true), stoneDustTex, stonesFinalTex);
     if (typeof requestIdleCallback === 'function') {
       let wi = 0, wS = 0;
       const step = (dl) => {
@@ -2087,75 +2121,90 @@
     };
     const LH = ARC.L; // 半边长度
 
-    // ---------- 全断后的一半：锚点固定的链，按重力下坠、甩向崖壁、贴壁垂挂（加载后首次用到时数值积分成表） ----------
-    const NN = 48, SEG = LH / NN, SIM_HZ = 120, SIM_T = 3.8, NF = Math.ceil(SIM_T * SIM_HZ) + 1;
+    // ---------- 全断后的一半：从崖端锚点出发的二次贝塞尔（弧长守恒，木板沿弧长等距排列） ----------
+    // 弦角 θ 自竖直量起、偏向峡谷为正。自由端从静止起近乎自由下坠（初始约 950 px/s²），随后越甩越快抽向崖壁，
+    // 撞壁后小幅回弹，再贴壁垂挂、随风轻摆。控制点鼓向弦下方（崖壁一侧）：甩动中半边弯成鞭形；
+    // 鼓度受壁面限制（锚点处切线不越过壁面），靠近崖壁时收直，曲线始终不进岩石。
+    // 断开瞬间绳索失去张力先回缩约 4%，两半在断开的同一帧分开。
+    const NN = 48, SEG = LH / NN;
     const NODE_U = Array.from({ length: NN + 1 }, (_, i) => uAtArc(i * SEG));
-    let SIMS = null;
-    function runChain(drag) {
-      const dt = 1 / 480, sub = 480 / SIM_HZ;
-      const X = new Float64Array(NN + 1), Y = new Float64Array(NN + 1), OX = new Float64Array(NN + 1), OY = new Float64Array(NN + 1);
-      for (let i = 0; i <= NN; i++) { const u = NODE_U[i]; X[i] = OX[i] = AL[0] + SPAN * u; Y[i] = OY[i] = parY(u) + JOLT * SU(u); }
-      const out = new Float32Array(NF * (NN + 1) * 2);
-      const put = (f) => { for (let i = 0; i <= NN; i++) { out[(f * (NN + 1) + i) * 2] = X[i]; out[(f * (NN + 1) + i) * 2 + 1] = Y[i]; } };
-      put(0);
-      const wx = (y) => AL[0] + Math.max(0, y - 330) * WALL + 4;
-      const nl = Math.hypot(1, WALL), nx = 1 / nl, ny = -WALL / nl;
-      for (let step = 1, f = 0; f < NF - 1; step++) {
-        for (let i = 1; i <= NN; i++) { // Verlet + 空气阻力
-          const vx = (X[i] - OX[i]) * (1 - drag * dt), vy = (Y[i] - OY[i]) * (1 - drag * dt);
-          OX[i] = X[i]; OY[i] = Y[i]; X[i] += vx; Y[i] += vy + GPX * dt * dt;
-        }
-        for (let it = 0; it < 40; it++) {
-          for (let i = 0; i < NN; i++) { // 不可伸长
-            const dx = X[i + 1] - X[i], dy = Y[i + 1] - Y[i], d = Math.hypot(dx, dy) || 1e-9, df = (d - SEG) / d;
-            if (i === 0) { X[1] -= dx * df; Y[1] -= dy * df; } else { X[i] += dx * df * 0.5; Y[i] += dy * df * 0.5; X[i + 1] -= dx * df * 0.5; Y[i + 1] -= dy * df * 0.5; }
-          }
-          for (let i = 0; i < NN - 1; i++) { // 不折死角
-            const dx = X[i + 2] - X[i], dy = Y[i + 2] - Y[i], d = Math.hypot(dx, dy) || 1e-9, mn = SEG * 1.75;
-            if (d < mn) { const k = (d - mn) / d * 0.25; if (i > 0) { X[i] += dx * k; Y[i] += dy * k; } X[i + 2] -= dx * k; Y[i + 2] -= dy * k; }
-          }
-          for (let i = 1; i <= NN; i++) if (Y[i] > 330 && X[i] < wx(Y[i])) X[i] = wx(Y[i]); // 崖壁
-        }
-        for (let i = 1; i <= NN; i++) { // 撞壁：法向小回弹，切向摩擦
-          if (Y[i] > 330 && X[i] <= wx(Y[i]) + 0.01) {
-            let vx = X[i] - OX[i], vy = Y[i] - OY[i];
-            const vn = vx * nx + vy * ny; if (vn < 0) { vx -= 1.15 * vn * nx; vy -= 1.15 * vn * ny; }
-            const vt = -vx * ny + vy * nx, vn2 = vx * nx + vy * ny;
-            vx = vn2 * nx - vt * 0.9 * ny; vy = vn2 * ny + vt * 0.9 * nx;
-            OX[i] = X[i] - vx; OY[i] = Y[i] - vy;
-          }
-        }
-        if (step % sub === 0) put(++f);
+    const TH_R = Math.atan(WALL) + 3 / LH; // 贴壁垂挂时的弦角
+    // 左右两半甩动略有差别；风向右：左半被吹离崖壁轻摆，右半被压在壁上
+    const SWING = { '-1': { th: 1.05, reb: 0.05, sway: 0.016, ph: 0.3 }, '1': { th: 1.13, reb: 0.034, sway: 0.004, ph: 1.9 } };
+    // 单位弦、控制点 (0.5+al, b) 的二次贝塞尔的弧长
+    const bezLen = (al, b) => {
+      let L = 0, px = 0, py = 0;
+      for (let i = 1; i <= 24; i++) { const s = i / 24, m = 1 - s, x = 2 * m * s * (0.5 + al) + s * s, y = 2 * m * s * b; L += Math.hypot(x - px, y - py); px = x; py = y; }
+      return L;
+    };
+    // 左半在 τ 时的曲线（左半坐标）：返回按弧长比例 q 取点、切角的函数
+    function bezShape(Hh, side, tau) {
+      const p = SWING[side], th0 = Hh.th0;
+      let th;
+      if (tau <= p.th) { const x = Math.max(0, tau) / p.th; th = th0 - (th0 - TH_R) * (0.8 * x * x + 0.2 * x * x * x); }
+      else {
+        const v = tau - p.th, t = Hh.tYi + tau;
+        th = TH_R + p.reb * Math.exp(-v / 0.28) * Math.abs(Math.sin(Math.PI * v / 0.4)) + p.sway * 0.5 * (1 - Math.cos(TAU * t / 2.4 + p.ph)) * smooth(v / 0.8);
       }
-      return out;
+      const ta = Math.max(0, tau);
+      const al = Hh.al0 + (-0.12 - Hh.al0) * smooth(ta / 0.4) * (1 - smooth((ta - 0.7 * p.th) / (0.5 * p.th)));
+      const bT = Hh.b0 + (0.2 - Hh.b0) * smooth(ta / 0.4);
+      const cap = 0.9 * (0.5 + al) * Math.tan(Math.max(0, th - TH_R));
+      const b = cap > 1e-6 ? bT * cap / Math.pow(Math.pow(bT, 4) + Math.pow(cap, 4), 0.25) : 0; // 平滑取小
+      const Leff = Hh.Lb * (1 - 0.04 * (1 - Math.exp(-ta / 0.035)) * Math.exp(-ta / 0.45));
+      const r = Leff / bezLen(al, b);
+      const ux = Math.sin(th), uy = Math.cos(th), nx = -uy, ny = ux;
+      const [ax, ay] = Hh.A0;
+      const p1x = ax + r * ((0.5 + al) * ux + b * nx), p1y = ay + r * ((0.5 + al) * uy + b * ny);
+      const ex = ax + r * ux, ey = ay + r * uy;
+      const n = 48, S = new Float64Array(n + 1);
+      let px = ax, py = ay;
+      for (let i = 1; i <= n; i++) {
+        const s = i / n, m = 1 - s, x = m * m * ax + 2 * m * s * p1x + s * s * ex, y = m * m * ay + 2 * m * s * p1y + s * s * ey;
+        S[i] = S[i - 1] + Math.hypot(x - px, y - py); px = x; py = y;
+      }
+      const atQ = (q) => {
+        const v = clamp(q) * S[n];
+        let lo = 0, hi = n;
+        while (hi - lo > 1) { const mI = (lo + hi) >> 1; if (S[mI] < v) lo = mI; else hi = mI; }
+        const s = (lo + (v - S[lo]) / Math.max(1e-9, S[hi] - S[lo])) / n, m = 1 - s;
+        const x = m * m * ax + 2 * m * s * p1x + s * s * ex, y = m * m * ay + 2 * m * s * p1y + s * s * ey;
+        const dx = 2 * m * (p1x - ax) + 2 * s * (ex - p1x), dy = 2 * m * (p1y - ay) + 2 * s * (ey - p1y);
+        return { x, y, ang: Math.atan2(dy, dx) };
+      };
+      return { atQ };
     }
-    function sims() {
-      if (SIMS) return SIMS;
-      SIMS = [runChain(0.25), runChain(0.33)].map((out, k) => { // k=0 左半，k=1 右半（左右镜像，阻尼略不同）
-        const th0 = new Float64Array(NN + 1), xs = (i) => (k ? W - out[i * 2] : out[i * 2]);
-        for (let i = 0; i <= NN; i++) { const a = Math.max(0, i - 1), b = Math.min(NN, i + 1); th0[i] = Math.atan2(out[b * 2 + 1] - out[a * 2 + 1], xs(b) - xs(a)); }
-        return { out, th0, mir: k === 1 };
-      });
-      return SIMS;
+    // 断开瞬间的初值（随第34句第6、7字的时间而定，按这两个值缓存；只由这两个值决定）
+    let H0 = null;
+    function half0(tDuan, tYi) {
+      const key = tDuan.toFixed(5) + '|' + tYi.toFixed(5);
+      if (H0 && H0.key === key) return H0;
+      const tp = tipAt(tYi - tDuan), K0 = { tDuan, tipA: tp, tipF: tp / 1.05 };
+      const yc = (u) => cross(u, tYi, K0).yc;
+      const A0 = [AL[0], yc(0)], E0 = [AL[0] + SPAN * 0.5, yc(0.5)];
+      const du = 0.002, m0 = (yc(du) - yc(0)) / (SPAN * du);
+      const P1 = [A0[0] + (E0[1] - A0[1]) / m0, E0[1]];
+      const cx = E0[0] - A0[0], cy = E0[1] - A0[1], r0 = Math.hypot(cx, cy), ux = cx / r0, uy = cy / r0;
+      const al0 = ((P1[0] - A0[0]) * ux + (P1[1] - A0[1]) * uy) / r0 - 0.5, b0 = ((P1[0] - A0[0]) * -uy + (P1[1] - A0[1]) * ux) / r0;
+      const Hh = { key, tDuan, tYi, K0, A0, al0, b0, th0: Math.atan2(cx, cy), Lb: r0 * bezLen(al0, b0), loose: {}, lamp: null };
+      const sh = bezShape(Hh, -1, 0);
+      Hh.ang0 = new Float64Array(NN + 1); Hh.cx = new Float64Array(NN + 1); Hh.cy = new Float64Array(NN + 1);
+      for (let i = 0; i <= NN; i++) { // 实际桥形（各节点）与贝塞尔初值之差：断开后 0.3 s 内淡去（不足一像素）
+        const pq = sh.atQ(i / NN), u = NODE_U[i];
+        Hh.ang0[i] = pq.ang; Hh.cx[i] = AL[0] + SPAN * u - pq.x; Hh.cy[i] = yc(u) - pq.y;
+      }
+      H0 = Hh;
+      return Hh;
     }
-    // 某一半在 τ 时的节点、各节点相对断开瞬间的转角；corr[i]：断开瞬间实际桥形与积分初值在各节点的差（只有几百分之一像素）
-    function halfState(side, tau, corr) {
-      const S = sims()[side < 0 ? 0 : 1], q = clamp(tau * SIM_HZ, 0, NF - 1.001), f0 = Math.floor(q), fr = q - f0;
-      const X = new Float64Array(NN + 1), Y = new Float64Array(NN + 1), A = new Float64Array(NN + 1);
-      for (let i = 0; i <= NN; i++) {
-        const o0 = (f0 * (NN + 1) + i) * 2, o1 = o0 + (NN + 1) * 2;
-        const x = lerp(S.out[o0], S.out[o1], fr), y = lerp(S.out[o0 + 1], S.out[o1 + 1], fr);
-        X[i] = S.mir ? W - x : x; Y[i] = y + corr[i];
-      }
-      for (let i = 0; i <= NN; i++) {
-        const a = Math.max(0, i - 1), b = Math.min(NN, i + 1);
-        let d = Math.atan2(Y[b] - Y[a], X[b] - X[a]) - S.th0[i];
-        while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
-        A[i] = d;
-      }
+    // 某一半在 τ 时：at(s) 给弧长 s（按断前桥形的弧长计）处的点与相对断开瞬间的转角
+    function halfState(Hh, side, tau) {
+      const sh = bezShape(Hh, side, tau), kc = 1 - smooth(Math.max(0, tau) / 0.3);
       const at = (s) => {
-        const q2 = clamp(s / SEG, 0, NN - 1e-6), i = Math.floor(q2), f = q2 - i;
-        return { x: lerp(X[i], X[i + 1], f), y: lerp(Y[i], Y[i + 1], f), a: lerp(A[i], A[i + 1], f) };
+        const q = clamp(s / LH), p = sh.atQ(q), qi = q * NN, i = Math.min(NN - 1, Math.floor(qi)), f = qi - i;
+        const x = p.x + kc * lerp(Hh.cx[i], Hh.cx[i + 1], f), y = p.y + kc * lerp(Hh.cy[i], Hh.cy[i + 1], f);
+        let a = p.ang - lerp(Hh.ang0[i], Hh.ang0[i + 1], f);
+        while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU;
+        return side < 0 ? { x, y, a } : { x: W - x, y, a: -a };
       };
       return { at };
     }
@@ -2177,6 +2226,90 @@
     })();
     const looseAt = (ts) => { const q = clamp(ts * 120, 0, LPATH.length / 2 - 2.001), i = Math.floor(q), f = q - i; return [lerp(LPATH[i * 2], LPATH[i * 2 + 2], f), lerp(LPATH[i * 2 + 1], LPATH[i * 2 + 3], f)]; };
     const wallX = (side, y) => (side < 0 ? AL[0] + Math.max(0, y - 330) * WALL + 4 : AR[0] - Math.max(0, y - 330) * WALL - 4);
+    // 全断后，近侧底绳松头（系在断口内侧绑点上）：绑点随半边甩动，松头作为受重力、空气阻力的质点，
+    // 与绑点的距离不超过绳长（可松可紧），碰到崖壁不穿入。从断开瞬间的状态接着积分成表（只由第6、7字的时间决定）
+    function looseBob(Hh, side) {
+      if (Hh.loose[side]) return Hh.loose[side];
+      const HZ = 240, T = 3.9, n = Math.ceil(T * HZ) + 1, out = new Float32Array(n * 2), sub = 2, dt = 1 / (HZ * sub);
+      const sA = arcAtU(0.5 - GAPU);
+      const pivAt = (tau) => halfCross(halfState(Hh, side, tau), side, sA, tau, 1, Hh.K0).bn;
+      const PV = new Float32Array(n * 2); // 绑点轨迹先按 240 Hz 取样，子步之间线性插值
+      for (let f = 0; f < n; f++) { const q = pivAt(f / HZ); PV[f * 2] = q[0]; PV[f * 2 + 1] = q[1]; }
+      const piv = (tau) => { const q = Math.min(n - 1.001, tau * HZ), i = Math.floor(q), fr = q - i; return [lerp(PV[i * 2], PV[i * 2 + 2], fr), lerp(PV[i * 2 + 1], PV[i * 2 + 3], fr)]; };
+      const ts0 = Hh.tYi - Hh.tDuan;
+      const rel = (ts) => { const r = looseAt(ts); return [side < 0 ? r[0] : -r[0], r[1]]; };
+      const p0 = pivAt(0), r0 = rel(ts0), rA = rel(ts0 - dt);
+      let x = p0[0] + r0[0], y = p0[1] + r0[1], ox = x - (r0[0] - rA[0]), oy = y - (r0[1] - rA[1]);
+      out[0] = x; out[1] = y;
+      for (let f = 1; f < n; f++) {
+        for (let k = 1; k <= sub; k++) {
+          const tau = ((f - 1) * sub + k) * dt, dr = 1 - 1.4 * dt;
+          const nx = x + (x - ox) * dr, ny = y + (y - oy) * dr + GPX * dt * dt;
+          ox = x; oy = y; x = nx; y = ny;
+          const P = piv(tau), dx = x - P[0], dy = y - P[1], d = Math.hypot(dx, dy);
+          if (d > LOOSE) { x = P[0] + dx * LOOSE / d; y = P[1] + dy * LOOSE / d; }
+          const wx = wallX(side, y) + (side < 0 ? 1 : -1);
+          if (side < 0 ? x < wx : x > wx) { x = wx; ox = x; oy = lerp(oy, y, 0.3); }
+        }
+        out[f * 2] = x; out[f * 2 + 1] = y;
+      }
+      return (Hh.loose[side] = (tau) => { const q = clamp(tau * HZ, 0, n - 1.001), i = Math.floor(q), fr = q - i; return [lerp(out[i * 2], out[i * 2 + 2], fr), lerp(out[i * 2 + 1], out[i * 2 + 3], fr)]; });
+    }
+
+    // ---------- 冷青灰的基调：静态层建好后按像素换色（保持明度，色相移到青灰）；逐帧画的冷色用同一公式 ----------
+    const TU = [-0.889, 0.41, 0.205]; // 明度为 0 的青色方向
+    const tealRGB = (r, g, b) => {
+      const Y = 0.299 * r + 0.587 * g + 0.114 * b, cr = r - Y, cg = g - Y, cb = b - Y, m = 0.62 * Math.sqrt(cr * cr + cg * cg + cb * cb) + 2;
+      return [Y + 0.15 * cr + m * TU[0], Y + 0.15 * cg + m * TU[1], Y + 0.15 * cb + m * TU[2]].map((v) => Math.max(0, Math.min(255, Math.round(v))));
+    };
+    const tealHex = (hex) => { const v = parseInt(hex.slice(1), 16), c = tealRGB((v >> 16) & 255, (v >> 8) & 255, v & 255); return '#' + c.map((x) => x.toString(16).padStart(2, '0')).join(''); };
+    const tealCss = (r, g, b, a) => { const c = tealRGB(r, g, b); return a == null ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+    function tealGrade(g) {
+      const cv = g.canvas, img = g.getImageData(0, 0, cv.width, cv.height), d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const r = d[i], gg = d[i + 1], b = d[i + 2], Y = 0.299 * r + 0.587 * gg + 0.114 * b, cr = r - Y, cg = gg - Y, cb = b - Y;
+        const m = 0.62 * Math.sqrt(cr * cr + cg * cg + cb * cb) + 2;
+        d[i] = Y + 0.15 * cr + m * TU[0]; d[i + 1] = Y + 0.15 * cg + m * TU[1]; d[i + 2] = Y + 0.15 * cb + m * TU[2];
+      }
+      g.putImageData(img, 0, 0);
+    }
+    const RAIN_RGB = tealRGB(200, 210, 224);
+
+    // ---------- 桥中点挂着的一盏小风灯（全镜唯一的暖色）：挂在近侧扶手绳上随风摆，第7字绳断时脱钩，翻滚着坠入云雾，光在雾里晕开渐隐 ----------
+    const LAMP_CORD = 9, LAMP_W = 10, LAMP_H = 12;
+    function lampSwing(Hh) {
+      if (Hh.lamp) return Hh.lamp;
+      const tD = Hh.tDuan;
+      // 平衡角：风把灯吹向右，阵风起伏；近侧底绳断时扶手一沉一抖，灯被甩起
+      const eq = (t) => 0.12 + 0.045 * Math.sin(TAU * t / 1.9 + 0.4) + 0.025 * Math.sin(TAU * t / 0.83 + 1)
+        + (t > tD ? 0.42 * Math.exp(-(t - tD) / 0.22) * (1 - Math.exp(-(t - tD) / 0.03)) : 0);
+      return (Hh.lamp = pendulumTable(eq, 1.25, 0.12, -1, 8));
+    }
+    // 灯笼本体（局部坐标：挂钩在原点，向下为 +y，已按摆角旋转）
+    function drawLampBody(g, I) {
+      g.strokeStyle = '#1c1712'; g.lineWidth = 0.9;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, LAMP_CORD); g.stroke();
+      const y0 = LAMP_CORD, hw = LAMP_W / 2;
+      // 灯身：上下略收的鼓形，内透暖光
+      const gr = g.createRadialGradient(0, y0 + LAMP_H * 0.5, 0.5, 0, y0 + LAMP_H * 0.5, hw * 1.15);
+      gr.addColorStop(0, mix('#8a5a2c', '#fff0c0', I)); gr.addColorStop(0.55, mix('#6a4020', '#f6b45a', I)); gr.addColorStop(1, mix('#3a2414', '#b8642a', I));
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(-hw * 0.62, y0 + 1.6);
+      g.bezierCurveTo(-hw * 1.08, y0 + LAMP_H * 0.3, -hw * 1.08, y0 + LAMP_H * 0.7, -hw * 0.62, y0 + LAMP_H - 1.6);
+      g.lineTo(hw * 0.62, y0 + LAMP_H - 1.6);
+      g.bezierCurveTo(hw * 1.08, y0 + LAMP_H * 0.7, hw * 1.08, y0 + LAMP_H * 0.3, hw * 0.62, y0 + 1.6);
+      g.closePath(); g.fill();
+      // 竹骨两道
+      g.strokeStyle = `rgba(90,52,24,${0.35 + 0.2 * I})`; g.lineWidth = 0.6;
+      g.beginPath(); g.moveTo(-hw * 0.9, y0 + LAMP_H * 0.38); g.lineTo(hw * 0.9, y0 + LAMP_H * 0.38); g.moveTo(-hw * 0.9, y0 + LAMP_H * 0.64); g.lineTo(hw * 0.9, y0 + LAMP_H * 0.64); g.stroke();
+      // 上下木盖、底下的穗
+      g.fillStyle = '#211913';
+      g.fillRect(-hw * 0.7, y0, hw * 1.4, 2); g.fillRect(-hw * 0.7, y0 + LAMP_H - 2, hw * 1.4, 2);
+      g.strokeStyle = '#5a2a1c'; g.lineWidth = 1.1;
+      g.beginPath(); g.moveTo(0, y0 + LAMP_H); g.lineTo(0, y0 + LAMP_H + 4); g.stroke();
+    }
 
     // ---------- 静态层 ----------
     function skyTex() {
@@ -2305,11 +2438,11 @@
       return 328 - 70 * Math.pow(u, 1.8) + 5 * fbm(x / 22, side + 9, 2) - 10 * Math.max(0, fbm(x / 9, side + 3, 2)) * u;
     }
     function backTex() {
-      return K.cache('ff4_e2_back', W, H, 1, (g) => { g.drawImage(skyTex(), 0, 0, W, H); g.drawImage(gorgeTex(), 0, 0, W, H); });
+      return K.cache('ff4_e2_back_t', W, H, 1, (g) => { g.drawImage(skyTex(), 0, 0, W, H); g.drawImage(gorgeTex(), 0, 0, W, H); tealGrade(g); });
     }
     // 吊桥所在的两侧近崖（锚点在崖顶，崖壁向峡谷略倾）
     function cliffTex() {
-      return K.cache('ff4_e2_cliff', W, H, 1, (g) => {
+      return K.cache('ff4_e2_cliff_t', W, H, 1, (g) => {
         const cliff = (side) => {
           const ax = side < 0 ? AL[0] : AR[0], outer = side < 0 ? -40 : W + 40, r = rng(side < 0 ? 71 : 73);
           const wallX = (y) => ax - side * (y - 330) * WALL + 2.5 * fbm(y / 18, side + 4, 2);
@@ -2354,13 +2487,14 @@
           g.restore();
         };
         cliff(-1); cliff(1);
+        tealGrade(g);
       });
     }
     // 雾：带状（上下都软）与谷底云海（团雾顶面受天光、底部暗，下方实）
     // 雾：带状（上下都软）与谷底云海（团雾顶面受天光、底部暗，下方实）。
     // 先在三倍宽的画布上画（每团雾左右各复制一份），模糊后取中间一段，左右边缘就能无缝平铺
     function fogTex(k) {
-      return K.cache('ff4_e2_fog2_' + k, W, 300, 0.5, (g) => {
+      return K.cache('ff4_e2_fog3_' + k, W, 300, 0.5, (g) => {
         const r = rng(9300 + k);
         const floor = k === 0;
         const sc = g.getTransform().a;
@@ -2397,6 +2531,7 @@
           gr.addColorStop(0, 'rgba(84,96,112,0)'); gr.addColorStop(0.6, 'rgba(84,96,112,1)'); gr.addColorStop(1, 'rgba(84,96,112,1)');
           g.fillStyle = gr; g.fillRect(0, 220, W, 80);
         }
+        tealGrade(g);
       });
     }
     const RAIN = (() => {
@@ -2410,7 +2545,7 @@
     const RA = 0.28, RS = Math.sin(RA), RC = Math.cos(RA);
     // 雨幕：成片的斜向浅色带，随风雨扫过峡谷（可平铺：先在大画布上画好再取中间一块，边缘不被模糊淡掉）
     function sheetTex() {
-      return K.cache('ff4_e2_sheet', 640, 640, 0.5, (g) => {
+      return K.cache('ff4_e2_sheet_t', 640, 640, 0.5, (g) => {
         const r = rng(1212);
         const big = document.createElement('canvas'), sc = g.getTransform().a;
         big.width = Math.round(1280 * sc); big.height = Math.round(1280 * sc);
@@ -2430,10 +2565,11 @@
           }
         });
         g.drawImage(big, 320 * sc, 320 * sc, 640 * sc, 640 * sc, 0, 0, 640, 640);
+        tealGrade(g);
       });
     }
     function sheetTopTex() {
-      return K.cache('ff4_e2_sheetTop', 640, 640, 0.5, (g) => {
+      return K.cache('ff4_e2_sheetTop_t', 640, 640, 0.5, (g) => {
         g.drawImage(sheetTex(), 0, 0, 640, 640);
         g.globalCompositeOperation = 'destination-in';
         const m = g.createLinearGradient(0, 0, 0, 120);
@@ -2470,7 +2606,7 @@
       }
       g.lineWidth = w;
       for (let i = 0; i < NB; i++) {
-        g.strokeStyle = `rgba(200,210,224,${clamp((i + 0.5) / NB * 0.34 * (1 + boost))})`;
+        g.strokeStyle = `rgba(${RAIN_RGB[0]},${RAIN_RGB[1]},${RAIN_RGB[2]},${clamp((i + 0.5) / NB * 0.34 * (1 + boost))})`;
         g.stroke(paths[i]);
       }
     }
@@ -2530,14 +2666,14 @@
       return [[n[0] - hx, n[1] - hy], [n[0] + hx, n[1] + hy], [f[0] + hx, f[1] + hy], [f[0] - hx, f[1] - hy]];
     }
     function fillQuad(g, q, col) { g.fillStyle = col; g.beginPath(); g.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) g.lineTo(q[i][0], q[i][1]); g.closePath(); g.fill(); }
-    const plankCol = (lit) => mix('#2e261f', '#6e5842', clamp(lit));
+    const plankCol = (lit) => mix('#2c2119', '#8d6a45', clamp(lit)); // 木板偏暖，在冷青灰的风雨里压得住
     // 桥面上的木板颜色：断前断后同一公式（翻得越陡越暗）
     const deckCol = (P, tip) => plankCol((0.62 + 0.25 * h2(P.k, 9)) - 0.65 * clamp(-tip));
-    function deckPlank(g, p, P) {
+    function deckPlank(g, p, P, warm) {
       const ca = Math.cos(p.a), sa = Math.sin(p.a), th = P.big ? 3.4 : 2.2;
       const q = plankQuad(p.bn, p.bf, ca, sa, P.wid);
       fillQuad(g, q.map(([x, y]) => [x - th * sa, y + th * ca]), '#211a14'); // 厚度：朝下一侧
-      fillQuad(g, q, deckCol(P, p.tip));
+      fillQuad(g, q, warm > 0.003 ? mix(deckCol(P, p.tip), '#d29a5c', warm) : deckCol(P, p.tip));
     }
     // 坠落的木板：三维小长方体，翻滚、受重力，侧视尺寸不变；blend：离开桥面后 0.15 s 内由桥面颜色过渡到自身明暗
     function drawPlank3D(g, x, y, a1, a2, len, wid, thk, lit, blend) {
@@ -2566,15 +2702,28 @@
       const sgn = facing >= 0 ? 1 : -1;
       const face = P.filter((_, i) => ((i & 1) ? 1 : -1) === sgn);
       const br = 0.5 + 0.5 * clamp(Math.abs(nU));
-      let col = mix('#2e261f', lit || '#6e5842', br * (facing >= 0 ? 1 : 0.7));
+      let col = mix('#2c2119', lit || '#8d6a45', br * (facing >= 0 ? 1 : 0.7));
       if (blend && blend.k < 1) col = mix(blend.col, col, blend.k);
       g.fillStyle = col;
       g.beginPath(); g.moveTo(face[0][0], face[0][1]); g.lineTo(face[1][0], face[1][1]); g.lineTo(face[3][0], face[3][1]); g.lineTo(face[2][0], face[2][1]); g.closePath(); g.fill();
     }
-    // 断开瞬间的实际桥形与积分初值在各节点的差（左右对称，按节点存一张表）
-    const corrAt = (tYi, K0) => NODE_U.map((u) => cross(u, tYi, K0).yc - (parY(u) + JOLT * SU(u)));
     // 中段木板依次脱落的时刻：从断口向两侧剥落（左侧稍快），块与块略有参差
     const relT = (P, tDuan) => tDuan + 0.045 + 0.28 * Math.pow(Math.abs(P.u - 0.5) / GAPU, 0.85) * (P.u < 0.5 ? 1 : 1.12) + 0.03 * (h2(P.k, 41) - 0.5);
+    const PUFF_COL = tealHex('#8c99aa'), FOG_FILL = tealCss(84, 96, 112), POST_RIM = tealCss(150, 160, 176, 0.35);
+    // 全断那一帧从断口迸出的纤维屑：0.3 s 内散开、下落、淡尽（之后断口处不留痕迹，只剩随两半走的毛头）
+    const BURST = (() => {
+      const r = rng(6161), o = [];
+      for (let i = 0; i < 15; i++) { const a = -Math.PI / 2 + (r() - 0.5) * 2.8, v = 110 + r() * 230; o.push({ rope: i % 3, vx: Math.cos(a) * v, vy: Math.sin(a) * v, len: 2 + r() * 3.5, w: 0.6 + r() * 0.5, spin: (r() - 0.5) * 24, a0: r() * TAU }); }
+      return o;
+    })();
+    // 风灯的暖光贴图
+    function glowTex() {
+      return K.cache('ff4_e2_glow', 128, 128, 1, (g) => {
+        const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gr.addColorStop(0, 'rgba(255,214,150,1)'); gr.addColorStop(0.18, 'rgba(255,176,96,0.55)'); gr.addColorStop(0.5, 'rgba(232,132,60,0.16)'); gr.addColorStop(1, 'rgba(200,110,50,0)');
+        g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+      });
+    }
 
     XYT.registerShot('e2_ropebridge', {
       name: '断桥', zone: 'top', night: false, text: '#e8edf4', shadow: 'rgba(10,14,20,0.85)', accent: '#c8d2e0', bloom: 0.22,
@@ -2582,18 +2731,43 @@
         const t = Math.max(0, c.lt);
         const ct = (k) => charLT(c, k, 0, FB[k]);
         const tDuan = ct(5), tYi = ct(6), tPo = ct(10);
-        sims(); // 首帧建表
+        const Hh = half0(tDuan, tYi), K0 = Hh.K0;
+        // 松头的轨迹表在桥还平稳时分两帧建好，免得断开那一帧卡顿
+        if (t > 0.6) looseBob(Hh, -1);
+        if (t > 1.2) looseBob(Hh, 1);
         const stAt = (tt) => { const a = tipAt(tt - tDuan); return { tDuan, tipA: a, tipF: a / 1.05 }; };
-        const st = stAt(t), ts = t - tDuan;
+        const st = stAt(t), ts = t - tDuan, tau = t - tYi;
         const be = c.be ? c.be(0.3) : 0;
-        g.drawImage(backTex(), 0, 0, W, H);
-        // 远雾缓移
-        const fx = (t * 9) % W;
+        // 镜头：断前缓缓推近桥心 1.00→1.05（缓入缓出，最快约 1.9%/s），之后停住；视差：远景推得少，近景推得多
+        const z = 1 + 0.05 * smooth(t / 3.9);
+        const cam = (k) => { const zz = 1 + (z - 1) * k; g.save(); g.translate(640, 400); g.scale(zz, zz); g.translate(-640, -400); };
+        cam(0.4); g.drawImage(backTex(), 0, 0, W, H); g.restore();
+        cam(0.65);
+        const fx = (t * 9) % W; // 远雾缓移
         g.globalAlpha = 0.45; g.drawImage(fogTex(1), fx - W, 300, W, 300); g.drawImage(fogTex(1), fx, 300, W, 300); g.globalAlpha = 1;
         drawRain(g, t, 0, 0.2 * be);
         drawSheets(g, t, 0.3 * be);
+        g.restore();
+        cam(1);
         { const ctx = cliffTex(), S = ctx.width / ctx.lw; g.drawImage(ctx, 0, 0, 300 * S, H * S, 0, 0, 300, H); g.drawImage(ctx, 980 * S, 0, 300 * S, H * S, 980, 0, 300, H); }
         drawShrubs(g, t);
+        // ---- 风灯：位置与亮度（断前挂在近侧扶手绳中点，全断后自由坠落） ----
+        const swing = lampSwing(Hh);
+        const flick = 0.9 + 0.06 * Math.sin(TAU * 3.1 * t) + 0.04 * Math.sin(TAU * 7.3 * t + 1);
+        const LC = LAMP_CORD + LAMP_H / 2;
+        let lamp;
+        if (t < tYi) {
+          const hk = cross(0.5, t, st).hn, ph = swing(t);
+          lamp = { hook: hk, ang: ph, x: hk[0] + Math.sin(ph) * LC, y: hk[1] + Math.cos(ph) * LC, I: flick, free: false };
+        } else {
+          const hk = cross(0.5, tYi, K0).hn, ph0 = swing(tYi), phd = (swing(tYi + 0.005) - swing(tYi - 0.005)) / 0.01;
+          const x0 = hk[0] + Math.sin(ph0) * LC, y0 = hk[1] + Math.cos(ph0) * LC, kd = 1.1, ek = (1 - Math.exp(-kd * tau)) / kd;
+          // 线性空气阻力下的落体：终速约 420 px/s，风把它往右带；脱钩时被崩断的绳一甩，翻滚起来
+          const x = x0 + 60 * tau + (35 - 60) * ek, y = y0 + 420 * tau + (-40 - 420) * ek;
+          const flare = 1 + 0.3 * Math.exp(-tau / 0.12) * (1 - Math.exp(-tau / 0.02));
+          lamp = { x, y, ang: ph0 + (phd + 2.2) * tau + 0.8 * tau * tau, I: flick * flare * (1 - 0.4 * smooth(tau / 1.4)), free: true };
+        }
+        const warmOf = (x, y) => { const d = Math.hypot(x - lamp.x, y - lamp.y); return d < 115 ? 0.6 * lamp.I * (1 - d / 115) * (1 - d / 115) : 0; };
         // ---- 桥 ----
         const ROPE = '#2a251f', ROPE_F = '#3a3630';
         const strokePts = (pts, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.lineJoin = 'round'; g.lineCap = 'round'; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); };
@@ -2605,9 +2779,9 @@
             g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * len * 0.6, y + Math.sin(a) * len * 0.6 + 2, x + Math.cos(a) * len, y + Math.sin(a) * len + 3); g.stroke();
           }
         };
-        // 近侧底绳松掉的一段：绑点 pa 到断头；没绷直时，先是弹回的 S 形波，随后在重力下成为下垂的弧
-        const looseRope = (pa, side) => {
-          const rel = looseAt(ts), E = [pa[0] + (side < 0 ? rel[0] : -rel[0]), pa[1] + rel[1]];
+        // 近侧底绳松掉的一段：绑点 pa 到断头 E；没绷直时，先是弹回的 S 形波，随后在重力下成为下垂的弧
+        const looseRope = (pa, side, Ein) => {
+          const rel = looseAt(ts), E = Ein || [pa[0] + (side < 0 ? rel[0] : -rel[0]), pa[1] + rel[1]];
           const dx = E[0] - pa[0], dy = E[1] - pa[1], ch = Math.hypot(dx, dy) || 1, sl = Math.max(0, LOOSE - ch);
           let px = -dy / ch, py = dx / ch; if (py < 0) { px = -px; py = -py; }
           // 余出来的绳长：先变成向下的弧（下垂不快于自由落体），剩下的在断头一侧皱成小波
@@ -2629,8 +2803,12 @@
           [AL[0], AR[0]].forEach((x) => {
             g.fillStyle = '#1e1b17'; g.fillRect(x - 3, AL[1] - 9.6 - HR - 6, 6, HR + 14);
             g.fillStyle = '#2a251f'; g.fillRect(x - 3.5, AL[1] - HR - 6, 7, HR + 10);
-            g.fillStyle = 'rgba(150,160,176,0.35)'; g.fillRect(x - 3.5, AL[1] - HR - 6, 1.5, HR + 10);
+            g.fillStyle = POST_RIM; g.fillRect(x - 3.5, AL[1] - HR - 6, 1.5, HR + 10);
           });
+        };
+        const plankAt = (p, P) => { // 木板（近风灯处被灯照暖）
+          const w = warmOf((p.bn[0] + p.bf[0]) / 2, (p.bn[1] + p.bf[1]) / 2);
+          deckPlank(g, p, P, w);
         };
         const N = 64;
         if (t < tYi) {
@@ -2643,7 +2821,7 @@
           for (const P of PL) { // 木板
             if (P.miss) continue;
             if (P.mid && ts > 0 && t >= relT(P, tDuan)) continue; // 已滑落（另画）
-            deckPlank(g, cross(P.u, t, st, tipMulOf(P)), P);
+            plankAt(cross(P.u, t, st, tipMulOf(P)), P);
           }
           // 近侧底绳：未断时整根；断后两段，内侧松头弹回、垂下
           if (ts <= 0) strokePts(C.map((p) => p.bn), ROPE, 2.2);
@@ -2667,44 +2845,70 @@
             g.stroke();
           }
         } else {
-          // ---- 全断：两半先自由下坠，再甩向各自的崖壁，贴壁垂挂 ----
-          const tau = t - tYi, K0 = stAt(tYi), corr = corrAt(tYi, K0);
+          // ---- 全断：两半在同一帧分开，自由端先坠，再甩向各自的崖壁，贴壁垂挂 ----
           for (const side of [-1, 1]) {
-            const Hs = halfState(side, tau, corr), C = [];
+            const Hs = halfState(Hh, side, tau), C = [];
             for (let j = 0; j <= N / 2; j++) C.push(halfCross(Hs, side, arcAtU(j / N), tau, 1, K0));
             strokePts(C.map((p) => p.hf), ROPE_F, 1.5);
             strokePts(C.map((p) => p.bf), ROPE_F, 1.8);
             g.strokeStyle = 'rgba(42,37,31,0.7)'; g.lineWidth = 0.9;
             for (let j = 1; j < N / 2; j += 2) { const p = C[j]; g.beginPath(); g.moveTo(p.hf[0], p.hf[1]); g.lineTo(p.bf[0], p.bf[1]); g.stroke(); }
-            for (const P of PL) { // 半边上剩下的木板
+            for (const P of PL) { // 半边上剩下的木板：沿曲线按弧长等距，随局部切线转
               if (P.miss || P.mid || (side < 0) !== (P.u < 0.5)) continue;
               const fl = FLUNG.find((f) => f.k === P.k);
               if (fl && t >= fl.t0(c)) continue;
-              deckPlank(g, halfCross(Hs, side, arcAtU(P.u), tau, tipMulOf(P), K0), P);
+              plankAt(halfCross(Hs, side, arcAtU(P.u), tau, tipMulOf(P), K0), P);
             }
-            // 近侧底绳：只剩锚点到断口内侧绑点这一段，松头仍系在绑点上
+            // 近侧底绳：只剩锚点到断口内侧绑点这一段，松头仍系在绑点上，随甩动拖在后面
             const ja = Math.floor(N * (0.5 - GAPU)), pts = C.slice(0, ja + 1).map((p) => p.bn);
             const pa = halfCross(Hs, side, arcAtU(0.5 - GAPU), tau, 1, K0).bn;
             pts.push(pa);
             strokePts(pts, ROPE, 2.2);
-            looseRope(pa, side);
+            looseRope(pa, side, looseBob(Hh, side)(tau));
             strokePts(C.map((p) => p.hn), ROPE, 1.9);
+            // 近侧吊索：有底绳的一段连着底绳；断口一段只剩吊索垂着，甩动时被空气拖向后方
+            const Hp = halfState(Hh, side, Math.max(0, tau - 0.1)), lagT = Math.max(0, tau) - Math.max(0, tau - 0.1);
             g.strokeStyle = 'rgba(30,26,22,0.85)'; g.lineWidth = 1;
             for (let j = 1; j < N / 2; j += 2) {
               const p = C[j], u = j / N;
               g.beginPath(); g.moveTo(p.hn[0], p.hn[1]);
-              if (Math.abs(u - 0.5) < GAPU) g.lineTo(p.hn[0] + 1.5, p.hn[1] + 18);
-              else g.lineTo(p.bn[0], p.bn[1]);
+              if (Math.abs(u - 0.5) < GAPU) {
+                const q = halfCross(Hp, side, arcAtU(u), Math.max(0, tau - 0.1), 1, K0).hn;
+                const vx = lagT > 1e-4 ? (p.hn[0] - q[0]) / 0.1 : 0, vy = lagT > 1e-4 ? (p.hn[1] - q[1]) / 0.1 : 0;
+                const dir = (k) => { const dx = 1.5 / 18 - vx * k, dy = 1 - vy * k, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+                const d0 = dir(1 / 3000), d1 = dir(1 / 1500), L0 = Math.hypot(1.5, 18);
+                g.quadraticCurveTo(p.hn[0] + d0[0] * L0 * 0.5, p.hn[1] + d0[1] * L0 * 0.5, p.hn[0] + d1[0] * L0, p.hn[1] + d1[1] * L0);
+              } else g.lineTo(p.bn[0], p.bn[1]);
               g.stroke();
             }
-            // 断头纤维
+            // 断头毛刺（随自由端走）
             const e = C[N / 2], e2 = C[N / 2 - 1];
-            fibers(e.bf[0], e.bf[1], e.bf[0] - e2.bf[0], e.bf[1] - e2.bf[1], side < 0 ? 31 : 37, 1.2);
-            fibers(e.hf[0], e.hf[1], e.hf[0] - e2.hf[0], e.hf[1] - e2.hf[1], side < 0 ? 41 : 47, 1);
-            fibers(e.hn[0], e.hn[1], e.hn[0] - e2.hn[0], e.hn[1] - e2.hn[1], side < 0 ? 51 : 57, 1);
+            fibers(e.bf[0], e.bf[1], e.bf[0] - e2.bf[0], e.bf[1] - e2.bf[1], side < 0 ? 31 : 37, 0.8);
+            fibers(e.hf[0], e.hf[1], e.hf[0] - e2.hf[0], e.hf[1] - e2.hf[1], side < 0 ? 41 : 47, 0.7);
+            fibers(e.hn[0], e.hn[1], e.hn[0] - e2.hn[0], e.hn[1] - e2.hn[1], side < 0 ? 51 : 57, 0.7);
+          }
+          // 断开那一帧迸出的纤维屑
+          if (tau < 0.32) {
+            const c0 = cross(0.5, tYi, K0), src = [c0.bf, c0.hf, c0.hn], al = 0.9 * (1 - smooth(tau / 0.32));
+            g.strokeStyle = `rgba(78,66,50,${al})`; g.lineCap = 'round';
+            for (const b of BURST) {
+              const [bx, by] = src[b.rope], x = bx + b.vx * tau, y = by + b.vy * tau + 0.5 * GPX * tau * tau, a = b.a0 + b.spin * tau;
+              g.lineWidth = b.w; g.beginPath(); g.moveTo(x - Math.cos(a) * b.len / 2, y - Math.sin(a) * b.len / 2); g.lineTo(x + Math.cos(a) * b.len / 2, y + Math.sin(a) * b.len / 2); g.stroke();
+            }
           }
         }
         posts();
+        // ---- 风灯本体与近处的暖光（画在云雾之前，坠进雾里就被雾吞没） ----
+        if (lamp.y < 780) {
+          g.save(); g.translate(lamp.x, lamp.y); g.rotate(-lamp.ang); g.translate(0, -LC);
+          drawLampBody(g, clamp(lamp.I));
+          g.restore();
+          const gr = 56 + 18 * lamp.I, gw = 150 + 20 * lamp.I;
+          g.save(); g.globalCompositeOperation = 'screen';
+          g.globalAlpha = clamp(0.2 * lamp.I); g.drawImage(glowTex(), lamp.x - gw, lamp.y - gw * 0.85, gw * 2, gw * 1.7); // 雨雾里的一大团暖晕
+          g.globalAlpha = clamp(0.85 * lamp.I); g.drawImage(glowTex(), lamp.x - gr, lamp.y - gr, gr * 2, gr * 2);
+          g.restore();
+        }
         // ---- 坠落的木板 ----
         if (ts > 0) {
           for (const P of PL) { // 中段：从倾斜的桥面上顺坡滑下，接着自由下落（起点、角度、颜色都接上桥面上那一块）
@@ -2720,16 +2924,16 @@
             const w1 = 0.5 * (pB.tip - pA.tip) / (2 * dtq) + (h2(P.k, 71) - 0.5) * 2.4, w2 = (h2(P.k, 72) - 0.5) * 3.2;
             const x = x0 + vx * tf + 15 * tf * tf, y = y0 + vy * tf + 0.5 * GPX * tf * tf;
             if (y > 780) continue;
-            drawPlank3D(g, x, y, p0.tip + w1 * tf, w2 * tf, WD, P.wid, 2.25, null, { col: deckCol(P, p0.tip), k: smooth(tf / 0.15) });
+            const w0 = warmOf(x0, y0);
+            drawPlank3D(g, x, y, p0.tip + w1 * tf, w2 * tf, WD, P.wid, 2.25, null, { col: mix(deckCol(P, p0.tip), '#d29a5c', w0), k: smooth(tf / 0.15) });
           }
         }
         if (t >= tYi) {
-          const K0 = stAt(tYi), corr = corrAt(tYi, K0);
-          for (const fl of FLUNG) { // 甩动中脱落的几块与最后一块大木板
+          for (const fl of FLUNG) { // 甩动中脱落的几块、最后一块大木板，以及贴壁后被震松的两块
             const t0 = fl.t0(c);
             if (t < t0) continue;
             const side = fl.side, P = PL[fl.k], s = arcAtU(P.u), tau0 = t0 - tYi, dtq = 1 / 240, tm = tipMulOf(P);
-            const at = (tt) => halfCross(halfState(side, Math.max(0, tt), corr), side, s, Math.max(0, tt), tm, K0);
+            const at = (tt) => halfCross(halfState(Hh, side, Math.max(0, tt)), side, s, Math.max(0, tt), tm, K0);
             const p0 = at(tau0), pA = at(tau0 - dtq), pB = at(tau0 + dtq);
             const mid = (p) => [(p.bn[0] + p.bf[0]) / 2, (p.bn[1] + p.bf[1]) / 2];
             const [mx, my] = mid(p0), [ax, ay] = mid(pA), [bx, by] = mid(pB);
@@ -2745,7 +2949,7 @@
                 if (ux * side > 0) { ux = -ux * 0.3 - side * 20; uy *= 0.85; if (tb < 0) { tb = q * dt; kick = -side * 4; } }
               }
             }
-            if (y < 780) drawPlank3D(g, x, y, p0.tip + fl.w1 * tf + (tb >= 0 ? kick * (tf - tb) : 0), -p0.a + fl.w2 * tf, WD, P.wid, P.big ? 3.6 : 2.25, P.big ? '#86684a' : null, { col: deckCol(P, p0.tip), k: smooth(tf / 0.15) });
+            if (y < 780) drawPlank3D(g, x, y, p0.tip + fl.w1 * tf + (tb >= 0 ? kick * (tf - tb) : 0), -p0.a + fl.w2 * tf, WD, P.wid, P.big ? 3.6 : 2.25, P.big ? '#9a7450' : null, { col: deckCol(P, p0.tip), k: smooth(tf / 0.15) });
           }
         }
         // ---- 谷底云雾，第34句第11字时翻涌上来 ----
@@ -2755,10 +2959,20 @@
         g.globalAlpha = 0.4; g.drawImage(fogTex(1), fo2 - W, fy - 170 + up * 0.3, W, 300); g.drawImage(fogTex(1), fo2, fy - 170 + up * 0.3, W, 300);
         const fo = (t * 14) % W;
         g.globalAlpha = 1; g.drawImage(fogTex(0), fo - W, fy - 110, W, 300); g.drawImage(fogTex(0), fo, fy - 110, W, 300);
-        if (fy + 189 < H) { g.fillStyle = 'rgb(84,96,112)'; g.fillRect(0, fy + 189, W, H); }
+        if (fy + 189 < H) { g.fillStyle = FOG_FILL; g.fillRect(0, fy + 189, W, H); }
+        // 坠进雾里的风灯：光在雾中晕开，越沉越暗，雾涌上来时吞没
+        if (lamp.free && lamp.y > 520) {
+          const inF = smooth((lamp.y - 520) / 90), deep = 1 - smooth((lamp.y - 600) / 420), sw = 1 - smooth((t - tPo - 0.2) / 1.3);
+          const a = 0.62 * lamp.I * inF * deep * sw;
+          if (a > 0.004) {
+            const rr = 100 + 80 * inF;
+            g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = a;
+            g.drawImage(glowTex(), lamp.x - rr, Math.min(lamp.y, fy - 20 + (lamp.y - fy) * 0.35) - rr * 0.8, rr * 2, rr * 1.6); g.restore();
+          }
+        }
         // 翻涌的团雾：从下方涌起，淡入
         if (t > tPo - 0.1) {
-          const puff = tinted('e2fog', dotSprite('soft3', 0.25), '#8c99aa');
+          const puff = tinted('e2fog', dotSprite('soft3', 0.25), PUFF_COL);
           for (let i = 0; i < 12; i++) {
             const t0 = tPo + h2(i, 501) * 0.35, tf = t - t0;
             if (tf <= 0) continue;
@@ -2770,19 +2984,37 @@
           }
           g.globalAlpha = 1;
         }
+        g.restore();
         // ---- 近处的雨 ----
+        cam(1.08);
         drawRain(g, t, 1, 0.25 * be);
         drawRain(g, t, 2, 0.3 * be);
+        g.restore();
       },
     });
-    // 甩动中脱落的几块木板（都在第34句第9字之前）；最后一块大木板在第9字脱落
+    // 甩动中脱落的几块木板（都在第34句第9字之前）；最后一块大木板在第9字脱落；两半贴壁后，第11字之后又震松两块
     const FLUNG = [
       { k: 22, side: -1, w1: 5.5, w2: 1.2, t0: (c) => charLT(c, 6, 0, FB[6]) + 0.28 },
       { k: 70, side: 1, w1: -6.2, w2: -0.8, t0: (c) => charLT(c, 6, 0, FB[6]) + 0.36 },
       { k: 26, side: -1, w1: -4.8, w2: 1.6, t0: (c) => charLT(c, 7, 0, FB[7]) },
       { k: 64, side: 1, w1: 6.8, w2: -1.4, t0: (c) => charLT(c, 7, 0, FB[7]) + 0.12 },
       { k: 10, side: -1, w1: 3.6, w2: 0.8, t0: (c) => charLT(c, 8, 0, FB[8]) },
+      { k: 80, side: 1, w1: -3.2, w2: -0.9, t0: (c) => charLT(c, 10, 0, FB[10]) + 0.35 },
+      { k: 13, side: -1, w1: 2.8, w2: 0.7, t0: (c) => charLT(c, 10, 0, FB[10]) + 0.95 },
     ];
     FLUNG.forEach((f) => { PL[f.k].miss = false; });
+    // 静态层较重（建好后还要逐像素换色），首次实时播放时现建会卡顿：页面空闲时预先建好（只改建缓存的时机，画面不变）
+    if (typeof requestIdleCallback === 'function') {
+      const WARM_E2 = [backTex, cliffTex, () => fogTex(0), () => fogTex(1), sheetTopTex, glowTex, () => tinted('e2fog', dotSprite('soft3', 0.25), PUFF_COL)];
+      let wi = 0, wS = 0;
+      const step = (dl) => {
+        const S = XYT.sprites && XYT.sprites.S;
+        if (!S) { setTimeout(() => requestIdleCallback(step), 1500); return; }
+        if (S !== wS) { wS = S; wi = 0; } // 换了分辨率就按新倍率重来（已建的缓存直接命中）
+        while (wi < WARM_E2.length && (dl.didTimeout || dl.timeRemaining() > 6)) WARM_E2[wi++]();
+        if (wi < WARM_E2.length) requestIdleCallback(step);
+      };
+      setTimeout(() => requestIdleCallback(step), 2500);
+    }
   })();
 })();

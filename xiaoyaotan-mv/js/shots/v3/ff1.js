@@ -288,14 +288,18 @@
         } else if (mode === 1) {
           blurInto(g, 512, 512, 2.4, (tg) => { tg.strokeStyle = '#2a3038'; tg.lineWidth = 6; diskPath(tg, 0.96); tg.stroke(); });
         } else {
-          blurInto(g, 512, 512, 2.2, (tg) => {
+          blurInto(g, 512, 512, 3.2, (tg) => {
+            // 墨心浓、向外渐淡，边缘一圈水痕略深（不是一块平涂的浅色圆盘）
             const gr = tg.createRadialGradient(256, 256, 0, 256, 256, DISK_R * 1.04);
-            gr.addColorStop(0, rgba('#323b44', 0.72));
-            gr.addColorStop(0.07, rgba('#45515c', 0.56));
-            gr.addColorStop(0.18, rgba('#5a6875', 0.38));
-            gr.addColorStop(0.36, rgba('#66788a', 0.27));
-            gr.addColorStop(0.85, rgba('#6f8190', 0.2));
-            gr.addColorStop(1, rgba('#6f8190', 0.17));
+            gr.addColorStop(0, rgba('#2c343d', 0.7));
+            gr.addColorStop(0.06, rgba('#3b4651', 0.5));
+            gr.addColorStop(0.17, rgba('#52606c', 0.3));
+            gr.addColorStop(0.34, rgba('#64768a', 0.16));
+            gr.addColorStop(0.6, rgba('#6f8190', 0.085));
+            gr.addColorStop(0.8, rgba('#6f8190', 0.075));
+            gr.addColorStop(0.9, rgba('#677a89', 0.1));
+            gr.addColorStop(0.96, rgba('#5d6f7d', 0.15));
+            gr.addColorStop(1, rgba('#5d6f7d', 0.12));
             tg.fillStyle = gr; diskPath(tg, 1); tg.fill();
             // 盘内深浅不匀：几团略浓、几团略淡的墨气，像水把墨推得不均
             tg.save(); diskPath(tg, 0.985); tg.clip();
@@ -323,9 +327,9 @@
               tg.stroke();
             }
           });
-          // 水痕边：墨被水推到边缘积成一圈略深的边，外侧柔开
-          blurInto(g, 512, 512, 3.5, (tg) => {
-            tg.strokeStyle = rgba('#3e4b56', 0.12); tg.lineWidth = 5; diskPath(tg, 0.982); tg.stroke();
+          // 水痕边：墨被水推到边缘积成一圈略深的边，内侧柔开、外缘随噪声起伏
+          blurInto(g, 512, 512, 4, (tg) => {
+            tg.strokeStyle = rgba('#3e4b56', 0.1); tg.lineWidth = 7; diskPath(tg, 0.972); tg.stroke();
           });
         }
       });
@@ -365,6 +369,54 @@
           if (mode === 0) { tg.lineTo(W + 200, 230); tg.lineTo(0, 230); tg.closePath(); tg.fillStyle = '#fff'; tg.fill(); }
           else { tg.strokeStyle = '#2a3038'; tg.lineWidth = 5; tg.stroke(); }
         });
+      });
+    }
+    // 近山用的宽羽化湿边（羽化约 ±38px）：贴图更高，模糊在底边造成的透明行远在实心区以下
+    const NE_H = 360;
+    function nearEdgeTex() {
+      return K.cache('ff1_i1_nedge', W + 200, NE_H, 0.5, (g) => {
+        blurInto(g, W + 200, NE_H, 19, (tg) => {
+          tg.beginPath(); tg.moveTo(0, edgeY(0));
+          for (let x = 0; x <= W + 200; x += 4) tg.lineTo(x, edgeY(x));
+          tg.lineTo(W + 200, NE_H + 40); tg.lineTo(0, NE_H + 40); tg.closePath(); tg.fillStyle = '#fff'; tg.fill();
+        });
+      });
+    }
+    // 墨晕沉进近山与山脚雾带：墨晕只留在近山剪影（按该层已显出的 alpha）与雾带里，其余慢慢收干
+    const ST_X = 120, ST_Y = 176, ST_W = 600, ST_H = 470;
+    const bloomR = (td) => 260 * (1 - Math.exp(-td / 0.9));
+    function mistBand(g, a) {
+      const mg = g.createLinearGradient(0, 548, 0, WATER);
+      mg.addColorStop(0, 'rgba(0,0,0,0)'); mg.addColorStop(0.55, `rgba(0,0,0,${a.toFixed(3)})`); mg.addColorStop(1, `rgba(0,0,0,${(a * 0.8).toFixed(3)})`);
+      g.fillStyle = mg; g.fillRect(ST_X, 548, ST_W, WATER - 548);
+    }
+    // 把墨晕（半径 R）画进 sg（已平移到画面坐标），s 为“沉进山里”的进度，near 为近山已显出的图层
+    function stainInto(sg, R, s, near) {
+      const k = R / DISK_R;
+      sg.drawImage(diskTex(2), DROP[0] - 256 * k, DROP[1] - 256 * k, 512 * k, 512 * k);
+      sg.globalCompositeOperation = 'destination-in';
+      // 湿墨不过岸线：在岸线上方 36px 内柔和收住
+      const mg = sg.createLinearGradient(0, WATER - 36, 0, WATER + 6);
+      mg.addColorStop(0, '#000'); mg.addColorStop(1, 'rgba(0,0,0,0)');
+      sg.fillStyle = mg; sg.fillRect(ST_X, ST_Y, ST_W, ST_H);
+      if (s > 0.001) {
+        const m = scratch('ff1_i1_smask', ST_W, ST_H), mg2 = m.g;
+        mg2.translate(-ST_X, -ST_Y);
+        if (s < 0.999) { mg2.fillStyle = `rgba(0,0,0,${(1 - s).toFixed(3)})`; mg2.fillRect(ST_X, ST_Y, ST_W, ST_H); }
+        mg2.globalAlpha = s;
+        if (near) mg2.drawImage(near, 0, BY0, W, BH);
+        mistBand(mg2, 0.55);
+        mg2.globalAlpha = 1;
+        sg.drawImage(m.c, ST_X, ST_Y, ST_W, ST_H);
+      }
+      sg.globalCompositeOperation = 'source-over';
+    }
+    // 4.5s 以后墨晕已定（半径几乎不再变、近山早已全显）：缓存成一张
+    const ST_T = 4.5;
+    function stainFinal() {
+      return K.cache('ff1_i1_stainF', ST_W, ST_H, 1, (g) => {
+        g.translate(-ST_X, -ST_Y);
+        stainInto(g, bloomR(ST_T - 0.5), 1, buildLayer(LAYERS[3], 3));
       });
     }
     // 两头尖的横笔（起笔略重、收笔细）
@@ -491,50 +543,34 @@
           g.save(); g.translate(760, 470); g.scale(1.3, 0.6); g.translate(-760, -470);
           g.fillStyle = gr; g.fillRect(300, 10, 920, 920); g.restore();
         }
-        // 淡墨晕：r = 260·(1−e^(−t/0.9))，之后慢慢收干变淡
         const td = t - 0.5;
-        const wa = clamp(td / 0.12) * (1 - smooth((t - 1.9) / 1.4));
-        if (td > 0 && wa > 0.002) {
-          const R = 260 * (1 - Math.exp(-td / 0.9));
-          const s = R / DISK_R;
-          if (DROP[1] + R * 1.08 < WATER - 30) {
-            g.globalAlpha = wa;
-            g.drawImage(diskTex(2), DROP[0] - 256 * s, DROP[1] - 256 * s, 512 * s, 512 * s);
-          } else {
-            // 湿墨不过岸线：在岸线上方 36px 内柔和收住
-            const sc = scratch('ff1_i1_wash', W, H), sg = sc.g;
-            sg.drawImage(diskTex(2), DROP[0] - 256 * s, DROP[1] - 256 * s, 512 * s, 512 * s);
-            sg.globalCompositeOperation = 'destination-in';
-            const mg = sg.createLinearGradient(0, WATER - 36, 0, WATER + 6);
-            mg.addColorStop(0, '#000'); mg.addColorStop(1, 'rgba(0,0,0,0)');
-            sg.fillStyle = mg; sg.fillRect(0, 0, W, WATER + 6);
-            sg.globalCompositeOperation = 'source-over';
-            g.globalAlpha = wa;
-            g.drawImage(sc.c, 0, 0, W, H);
-          }
-          g.globalAlpha = 1;
-        }
         // 四层山：远层先画；显现中的层用遮罩合成
+        let near = null;
         for (let li = 0; li < 4; li++) {
           const L = LAYERS[li];
           const q = (t - L.start) / 1.2;
           if (q <= 0) continue;
           const lay = buildLayer(L, li);
-          if (q >= 1.12) { g.drawImage(lay, 0, BY0, W, BH); continue; }
-          const sc = scratch('ff1_i1_mask', W, BH);
+          if (q >= 1.12) { g.drawImage(lay, 0, BY0, W, BH); if (li === 3) near = lay; continue; }
+          const sc = scratch(li === 3 ? 'ff1_i1_mask3' : 'ff1_i1_mask', W, BH);
           const sg = sc.g;
           sg.translate(0, -BY0);
-          const lineA = 0.3 * (1 - smooth((q - 0.7) / 0.42)) * L.a;
+          const lineA = 0.3 * (1 - smooth((q - 0.7) / 0.42)) * L.a * smooth(q / 0.3);
           if (li === 3) {
-            // 近山从墨晕边缘长出：圆形湿边向外扩
-            const rr = lerp(30, 620, easeOut(clamp(q)));
-            const s = rr / DISK_R;
-            sg.drawImage(diskTex(0), DROP[0] - 256 * s, DROP[1] - 256 * s, 512 * s, 512 * s);
+            // 近山：自下而上的宽羽化湿边擦显（p = smoothstep，1.5–2.7s），山脚先出、峰顶最后；
+            // 第一帧只露出山脚雾里极淡的一线，没有整块突现
+            const p = smooth(clamp(q));
+            const yf = lerp(WATER + 80, 340, p);
+            const nt = nearEdgeTex();
+            sg.drawImage(nt, -37, yf - 100, W + 200, NE_H);
+            sg.fillStyle = '#fff';
+            sg.fillRect(0, yf + 200, W, BY0 + BH - (yf + 200));
             sg.globalCompositeOperation = 'source-in';
             sg.drawImage(lay, 0, BY0, W, BH);
             sg.globalCompositeOperation = 'source-atop';
             sg.globalAlpha = lineA;
-            sg.drawImage(diskTex(1), DROP[0] - 256 * s, DROP[1] - 256 * s, 512 * s, 512 * s);
+            sg.drawImage(edgeTex(1), -37, yf - 100, W + 200, 200);
+            near = sc.c;
           } else {
             // 自下而上的湿边擦显
             const top = Math.min(...L.peaks.map((p) => p[1]));
@@ -552,21 +588,39 @@
           sg.globalAlpha = 1; sg.globalCompositeOperation = 'source-over';
           g.drawImage(sc.c, 0, BY0, W, BH);
         }
-        // 浓墨墨心：0.5s 触纸，0.25s 由虚变实，随近山显现而融进山头
+        // 淡墨晕：r = 260·(1−e^(−t/0.9))；1.5–2.7s 随近山擦显沉进近山剪影与山脚雾带（不整块消失），
+        // 2.7–4.5s 墨色再收干到六成，之后作为山上的墨痕一直留着
         if (td > 0) {
+          const wa = clamp(td / 0.12);
+          const s = smooth((t - 1.5) / 1.2);
+          const strength = 1 - 0.4 * smooth((t - 2.7) / (ST_T - 2.7));
+          g.globalAlpha = wa * strength;
+          if (t >= ST_T) g.drawImage(stainFinal(), ST_X, ST_Y, ST_W, ST_H);
+          else {
+            const sc = scratch('ff1_i1_stain', ST_W, ST_H), sg = sc.g;
+            sg.translate(-ST_X, -ST_Y);
+            stainInto(sg, bloomR(td), s, near);
+            g.drawImage(sc.c, ST_X, ST_Y, ST_W, ST_H);
+          }
+          g.globalAlpha = 1;
+        }
+        // 浓墨墨心：0.5s 触纸，0.25s 由虚变实、长到约 13px；1.3–1.7s 化进墨晕：半径 13→40、浓度 1→0（smoothstep）
+        if (td > 0 && t < 1.72) {
           const q = clamp(td / 0.25);
-          const rc = 7 * easeOut(q) + 12 * (1 - Math.exp(-Math.max(0, td - 0.25) / 1.1));
-          const bleed = smooth((t - 1.15) / 0.6);
-          const fade = 1 - bleed;
-          if (fade > 0.002 && rc > 0.3) {
-            const soft = 1 - q;
-            const rr = rc * (1 + 0.7 * soft) * (1 + 0.8 * bleed);
-            // 实心墨点逐渐换成化开的柔边墨晕
-            g.globalAlpha = (0.2 + 0.8 * q) * fade * (1 - 0.7 * bleed);
-            g.drawImage(coreTex(), DROP[0] - rr * 1.6, DROP[1] - rr * 1.6, rr * 3.2, rr * 3.2);
-            if (bleed > 0) {
-              g.globalAlpha = fade * Math.min(1, bleed * 3) * 0.8;
-              const r2 = rr * 2.2;
+          const rc0 = 8 * easeOut(q) + 6 * (1 - Math.exp(-Math.max(0, td - 0.25) / 0.35));
+          const v = clamp((t - 1.3) / 0.4), u = smooth(v);
+          const rc = rc0 + (40 - rc0) * u;
+          const A = (0.2 + 0.8 * q) * (1 - u);
+          if (A > 0.002 && rc > 0.3) {
+            const rr = rc * (1 + 0.7 * (1 - q));
+            const b = smooth((t - 1.3) / 0.3); // 实心墨点渐换成柔边墨团
+            if (b < 1) {
+              g.globalAlpha = A * (1 - b);
+              g.drawImage(coreTex(), DROP[0] - rr * 1.6, DROP[1] - rr * 1.6, rr * 3.2, rr * 3.2);
+            }
+            if (b > 0) {
+              g.globalAlpha = A * b * 0.9;
+              const r2 = rr * 1.9;
               g.drawImage(softInk(), DROP[0] - r2, DROP[1] - r2, r2 * 2, r2 * 2);
             }
             g.globalAlpha = 1;
@@ -647,6 +701,7 @@
     const PW = 26;         // 柱径
     const IN = { x0: PX[0] + PW / 2, x1: PX[1] - PW / 2, y0: 250, y1: 600 }; // 柱间通透区
     const RIM = '#f2c47c', BODY = '#3b342e';
+    const STONE = { x0: 768, x1: 826, yb: 664, h: 20 }; // 亭右前方的低条石（亭子坐标）
     const WIND_V = 320;    // 风前锋速度 px/s（自左向右）
     const BELL = [121, 146]; // 风铃悬挂点（左檐角下沿）
 
@@ -841,19 +896,46 @@
           }
         };
         tallClump(1010, 724, 44); tallClump(1088, 730, 58); tallClump(1166, 720, 36); tallClump(1236, 734, 62);
-        // 亭前受光与柱影：太阳在右后方低处，影子向左拉长
+        // 亭前受光与柱影：太阳在右后方低处，影子向左拉长（地面贴图比亭子贴图在画面上偏左 20px，这里按亭子坐标 +20 对齐）
+        const AX = 20;
         blurInto(g, W + 60, H, 2.5, (tg) => {
-          tg.translate(0, -y0);
+          tg.translate(AX, -y0);
           tg.fillStyle = 'rgba(34,27,22,0.55)';
           for (const px of PX) {
             tg.beginPath();
             tg.moveTo(px - PW / 2 - 2, GROUND); tg.lineTo(px + PW / 2 + 2, GROUND);
             tg.lineTo(px + PW / 2 - 330, H + 6); tg.lineTo(px - PW / 2 - 352, H + 6); tg.closePath(); tg.fill();
           }
-          // 台基与石凳投下的短影
-          tg.fillStyle = 'rgba(34,27,22,0.3)';
-          tg.beginPath(); tg.moveTo(150, GROUND); tg.lineTo(730, GROUND); tg.lineTo(648, GROUND + 24); tg.lineTo(68, GROUND + 24); tg.closePath(); tg.fill();
+          // 台基（高 30）与台阶的影子：夕阳低，向左前方拉得很长
+          tg.fillStyle = 'rgba(34,27,22,0.34)';
+          tg.beginPath(); tg.moveTo(150, GROUND); tg.lineTo(730, GROUND); tg.lineTo(626, GROUND + 30); tg.lineTo(46, GROUND + 30); tg.closePath(); tg.fill();
+          tg.beginPath(); tg.moveTo(372, GROUND + 12); tg.lineTo(508, GROUND + 12); tg.lineTo(462, GROUND + 25); tg.lineTo(326, GROUND + 25); tg.closePath(); tg.fill();
+          // 亭右前方一块低矮的条石（拴马石）：影子向左拉长约四倍于石高
+          tg.fillStyle = 'rgba(34,27,22,0.42)';
+          tg.beginPath(); tg.moveTo(STONE.x0, STONE.yb); tg.lineTo(STONE.x1, STONE.yb); tg.lineTo(STONE.x1 - 84, STONE.yb + 22); tg.lineTo(STONE.x0 - 96, STONE.yb + 22); tg.closePath(); tg.fill();
         });
+        // 一块低矮的卧石：顶面受光略亮、朝向镜头的一面背光暗，右上缘一线金边
+        {
+          g.save(); g.translate(AX, 0);
+          const { x0, x1, yb, h } = STONE, w = x1 - x0, top = yb - h;
+          const rock = new Path2D();
+          rock.moveTo(x0, yb);
+          rock.bezierCurveTo(x0 - 3, yb - h * 0.5, x0 + w * 0.12, top + 1, x0 + w * 0.38, top);
+          rock.bezierCurveTo(x0 + w * 0.6, top - 2, x0 + w * 0.88, top + 2, x1 - 2, yb - h * 0.45);
+          rock.bezierCurveTo(x1 + 2, yb - h * 0.2, x1, yb, x1 - 4, yb);
+          rock.closePath();
+          g.fillStyle = '#4a3e33'; g.fill(rock);
+          g.save(); g.clip(rock);
+          const tg2 = g.createLinearGradient(0, top, 0, top + h * 0.55);
+          tg2.addColorStop(0, 'rgba(150,126,96,0.9)'); tg2.addColorStop(1, 'rgba(150,126,96,0)');
+          g.fillStyle = tg2; g.fillRect(x0 - 4, top - 4, w + 8, h * 0.6);
+          g.strokeStyle = 'rgba(40,32,26,0.45)'; g.lineWidth = 0.8;
+          g.beginPath(); g.moveTo(x0 + w * 0.3, top + 5); g.quadraticCurveTo(x0 + w * 0.36, yb - 6, x0 + w * 0.3, yb); g.stroke();
+          g.restore();
+          g.strokeStyle = 'rgba(242,196,124,0.85)'; g.lineWidth = 1.2;
+          g.beginPath(); g.moveTo(x0 + w * 0.45, top - 0.5); g.bezierCurveTo(x0 + w * 0.65, top - 1.5, x0 + w * 0.88, top + 2.5, x1 - 2.5, yb - h * 0.45); g.stroke();
+          g.restore();
+        }
       });
     }
     // 亭子正立面剪影（含逆光金边）
@@ -876,9 +958,9 @@
       // 雀替（柱头两侧的三角托）
       p.moveTo(IN.x0, 249); p.lineTo(IN.x0 + 38, 249); p.quadraticCurveTo(IN.x0 + 12, 254, IN.x0, 276); p.closePath();
       p.moveTo(IN.x1, 276); p.quadraticCurveTo(IN.x1 - 12, 254, IN.x1 - 38, 249); p.lineTo(IN.x1, 249); p.closePath();
-      // 石凳
-      p.rect(300, 538, 280, 13);
-      p.rect(322, 551, 24, 49); p.rect(534, 551, 24, 49);
+      // 石凳：放在亭内略靠后（进深 0.9），凳脚立在亭内地面上
+      p.rect(BENCH.x0, BENCH.y0, BENCH.x1 - BENCH.x0, BENCH.th);
+      for (const lx of BENCH.legs) p.rect(lx, BENCH.y0 + BENCH.th, BENCH.lw, BENCH.yb - BENCH.y0 - BENCH.th);
       // 檐口：两端起翘
       // 屋面：自檐角内凹上收到正脊（与矩形同为顺时针，非零填充不留洞）
       p.moveTo(104, 124);
@@ -893,15 +975,75 @@
       p.moveTo(602, 60); p.quadraticCurveTo(614, 48, 628, 40); p.quadraticCurveTo(630, 66, 612, 76); p.closePath();
       return p;
     }
+    // 一点透视：视平线在对岸水线 HZ，灭点在亭中轴 x=440；k 为进深缩放（1 = 前檐柱所在的立面）
+    const VPX = 440;
+    const persp = (x, y, k) => [VPX + (x - VPX) * k, HZ + (y - HZ) * k];
+    const BK = 0.7;        // 后檐柱所在立面的缩放
+    const BENCH = (() => {
+      const k = 0.9, P = (x, y) => persp(x, y, k);
+      const [x0, y0] = P(300, 538), [x1] = P(580, 538), [, yb] = P(300, 600);
+      return { x0, x1, y0, yb, th: 13 * k, lw: 24 * k, legs: [P(322, 0)[0], P(534, 0)[0]] };
+    })();
+    // 亭内进深：天花（屋面下侧）、后檐柱与后额枋、亭内地面；都在前立面剪影之后，逆光里偏亮偏淡
+    function interiorTex(g) {
+      const BKC = '#5c5148';
+      const [bx0, by0] = persp(PX[0], 230, BK), [bx1] = persp(PX[1], 230, BK), [, byb] = persp(PX[0], 600, BK);
+      const bpw = PW * BK;
+      // 亭内地面：前沿就是台基上沿，后沿在后檐柱脚；逆光下石面带一层暖光
+      const [fx0, fy0] = persp(150, 600, BK), [fx1] = persp(730, 600, BK);
+      const fg = g.createLinearGradient(0, fy0, 0, 600);
+      fg.addColorStop(0, '#9a8468'); fg.addColorStop(1, '#6e5c49');
+      g.fillStyle = fg;
+      g.beginPath(); g.moveTo(150, 600); g.lineTo(fx0, fy0); g.lineTo(fx1, fy0); g.lineTo(730, 600); g.closePath(); g.fill();
+      // 铺地石缝：横缝渐密、竖缝指向灭点
+      g.save(); g.clip();
+      g.strokeStyle = 'rgba(60,50,40,0.28)'; g.lineWidth = 0.8;
+      g.beginPath();
+      for (const yy of [fy0 + 6, fy0 + 14, fy0 + 24]) { g.moveTo(100, yy); g.lineTo(780, yy); }
+      for (let x = 150; x <= 730; x += 48) { const [ex, ey] = persp(x, 600, BK); g.moveTo(x, 600); g.lineTo(ex, ey); }
+      g.stroke();
+      // 后檐柱与石凳在地面上的影子：太阳在右后方低处，影子向左前方拉长
+      g.fillStyle = 'rgba(40,32,26,0.32)';
+      for (const xb of [bx0, bx1]) {
+        g.beginPath(); g.moveTo(xb - bpw / 2, byb); g.lineTo(xb + bpw / 2, byb); g.lineTo(xb + bpw / 2 - 118, 600); g.lineTo(xb - bpw / 2 - 128, 600); g.closePath(); g.fill();
+      }
+      g.fillStyle = 'rgba(40,32,26,0.26)';
+      g.beginPath(); g.moveTo(BENCH.x0, BENCH.yb); g.lineTo(BENCH.x1, BENCH.yb); g.lineTo(BENCH.x1 - 40, 600); g.lineTo(BENCH.x0 - 46, 600); g.closePath(); g.fill();
+      g.restore();
+      // 天花：屋面下侧，前额枋下沿到后额枋上沿；暗、向后略亮，椽子指向灭点
+      const [, bly0] = persp(0, 206, BK);
+      const [lx0] = persp(194, 0, BK), [lx1] = persp(686, 0, BK);
+      const cg = g.createLinearGradient(0, 249, 0, bly0);
+      cg.addColorStop(0, '#2a241f'); cg.addColorStop(1, '#3f362e');
+      g.fillStyle = cg;
+      g.beginPath(); g.moveTo(IN.x0 - 4, 249); g.lineTo(IN.x1 + 4, 249); g.lineTo(lx1, bly0 + 0.5); g.lineTo(lx0, bly0 + 0.5); g.closePath(); g.fill();
+      g.save(); g.clip();
+      g.strokeStyle = 'rgba(20,16,13,0.5)'; g.lineWidth = 1;
+      g.beginPath();
+      for (let x = IN.x0 + 10; x < IN.x1; x += 18) { const [ex, ey] = persp(x, 249, BK); g.moveTo(x, 249); g.lineTo(ex, ey); }
+      g.stroke();
+      g.restore();
+      // 后额枋与后挂落（浅一档）
+      g.fillStyle = BKC; g.fillRect(lx0, bly0, lx1 - lx0, by0 - bly0);
+      g.fillStyle = 'rgba(92,81,72,0.85)';
+      const lat = new Path2D();
+      for (let x = bx0; x < bx1 - 3; x += 22 * BK) lat.rect(x, by0, 1.8, 10);
+      lat.rect(bx0, by0 + 9, bx1 - bx0, 1.8);
+      g.fill(lat);
+      // 后檐柱
+      for (const xb of [bx0, bx1]) {
+        g.fillStyle = BKC; g.fillRect(xb - bpw / 2, by0, bpw, byb - by0);
+        g.fillStyle = 'rgba(242,196,124,0.55)'; g.fillRect(xb + bpw / 2 - 1.2, by0 + 4, 1.2, byb - by0 - 4);
+        g.fillStyle = BKC; g.fillRect(xb - 13 * BK, byb - 10 * BK, 26 * BK, 10 * BK);
+      }
+    }
     // 檐口下沿：中段平直，两端起翘到檐角
     const EAVE = (x) => { const d = Math.max(0, Math.abs(x - 440) - 236) / 100; return 182 - 52 * Math.pow(Math.min(1, d), 2.3); };
     function pavilionTex() {
       return K.cache('ff1_a1_pav', 800, 660, 1, (g) => {
         const path = pavilionPath();
-        // 柱间荫凉：屋檐下的空气略暗，光柱才显得出来
-        const sh = g.createLinearGradient(0, IN.y0, 0, IN.y1);
-        sh.addColorStop(0, 'rgba(40,34,30,0.34)'); sh.addColorStop(0.5, 'rgba(46,38,32,0.18)'); sh.addColorStop(1, 'rgba(46,38,32,0.1)');
-        g.fillStyle = sh; g.fillRect(IN.x0, IN.y0, IN.x1 - IN.x0, IN.y1 - IN.y0);
+        // 亭内进深（在前立面之后）；柱间不再蒙一层暗/亮的方框，透过去看到的就是外面的天光水色
+        interiorTex(g);
         // 挂落格心（镂空，透出后面的光）
         g.fillStyle = BODY;
         const lat = new Path2D();
@@ -947,6 +1089,20 @@
         g.fillStyle = '#2c2621'; g.fillRect(400, 186, 80, 32);
         g.strokeStyle = 'rgba(160,128,84,0.45)'; g.lineWidth = 1.5; g.strokeRect(403, 189, 74, 26);
         g.restore();
+        // 屋面与檐角迎光（右）一侧再描一道 1–2px 暖色轮廓光（瓦垄、檐口细节画完后补上，不被盖掉）
+        {
+          const t2 = document.createElement('canvas'), sc = g.getTransform().a;
+          t2.width = Math.round(800 * sc); t2.height = Math.round(200 * sc);
+          const rg = t2.getContext('2d'); rg.scale(sc, sc);
+          rg.fillStyle = '#f6cf8c'; rg.fill(path);
+          rg.globalCompositeOperation = 'destination-out';
+          rg.translate(-1.7, 1.1); rg.fill(path); rg.setTransform(sc, 0, 0, sc, 0, 0);
+          rg.globalCompositeOperation = 'destination-in';
+          const hg = rg.createLinearGradient(430, 0, 700, 0);
+          hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(1, 'rgba(0,0,0,0.95)');
+          rg.fillStyle = hg; rg.fillRect(0, 0, 800, 183);
+          g.drawImage(t2, 0, 0, 800, 200);
+        }
       });
     }
     // 合并的静态层：远景（天、对岸山、水）与近景（地面、亭）各一张，减少大图贴图次数
@@ -963,47 +1119,65 @@
         g.drawImage(pavilionTex(), 20, 0, 800, 660);
       });
     }
-    const BX0 = IN.x0 - 14, BY0b = IN.y0 - 14, BW = IN.x1 - IN.x0 + 28, BHb = IN.y1 - IN.y0 + 28;
-    // 光柱：从亭后檐下斜射入亭内，向左下落到地面
+    // 光柱：低斜阳从亭后右侧檐下射进亭内，穿过前檐的开间，向左下一直落到亭前地面；不裁成方框，两端柔和收住
+    const BX0 = 0, BY0b = 150, BW = 800, BHb = 570;
     const BEAMS = [
-      { x: 640, y: 254, w: 58, a: 0.62 },
-      { x: 562, y: 254, w: 34, a: 0.44 },
-      { x: 488, y: 254, w: 48, a: 0.5 },
+      { x: 604, y: 318, w: 52, a: 0.5 },
+      { x: 540, y: 320, w: 30, a: 0.36 },
+      { x: 640, y: 300, w: 40, a: 0.42 },
     ];
+    const BLEN = 570;
     const BDIR = (() => { const dx = -0.78, dy = 0.63, n = Math.hypot(dx, dy); return [dx / n, dy / n]; })();
+    const beamHalf = (b, along) => b.w * (0.5 + 0.45 * along / BLEN);
     function beamTex() {
-      return K.cache('ff1_a1_beam', BW, BHb, 1, (g) => {
+      return K.cache('ff1_a1_beam2', BW, BHb, 1, (g) => {
         g.translate(-BX0, -BY0b);
-        blurInto(g, BW, BHb, 7, (tg) => {
+        blurInto(g, BW, BHb, 10, (tg) => {
           tg.translate(-BX0, -BY0b);
-          tg.save();
-          tg.beginPath(); tg.rect(IN.x0, IN.y0, IN.x1 - IN.x0, IN.y1 - IN.y0); tg.clip();
-          // 光从后檐下的缝里进来：入口处最亮
-          const sg = tg.createRadialGradient(IN.x1 - 30, IN.y0 + 10, 0, IN.x1 - 30, IN.y0 + 10, 200);
-          sg.addColorStop(0, 'rgba(255,230,170,0.5)'); sg.addColorStop(1, 'rgba(255,230,170,0)');
-          tg.fillStyle = sg; tg.fillRect(IN.x0, IN.y0, IN.x1 - IN.x0, 220);
+          // 光进来的地方（后檐下右侧）空气最亮：压扁的柔光团
+          tg.save(); tg.translate(610, 314); tg.scale(1, 0.55);
+          const sg = tg.createRadialGradient(0, 0, 0, 0, 0, 170);
+          sg.addColorStop(0, 'rgba(255,230,170,0.32)'); sg.addColorStop(1, 'rgba(255,230,170,0)');
+          tg.fillStyle = sg; tg.fillRect(-170, -170, 340, 340); tg.restore();
           for (const b of BEAMS) {
-            const L = 560;
-            const ex = b.x + BDIR[0] * L, ey = b.y + BDIR[1] * L;
+            const ex = b.x + BDIR[0] * BLEN, ey = b.y + BDIR[1] * BLEN;
             const nx = -BDIR[1], ny = BDIR[0];
             const gr = tg.createLinearGradient(b.x, b.y, ex, ey);
-            gr.addColorStop(0, `rgba(255,222,156,${b.a})`); gr.addColorStop(0.5, `rgba(255,214,140,${b.a * 0.6})`); gr.addColorStop(1, 'rgba(255,214,140,0)');
+            gr.addColorStop(0, 'rgba(255,222,156,0)');
+            gr.addColorStop(0.07, `rgba(255,222,156,${b.a})`);
+            gr.addColorStop(0.35, `rgba(255,216,146,${(b.a * 0.8).toFixed(3)})`);
+            gr.addColorStop(0.68, `rgba(255,212,140,${(b.a * 0.5).toFixed(3)})`);
+            gr.addColorStop(0.9, `rgba(255,212,140,${(b.a * 0.22).toFixed(3)})`);
+            gr.addColorStop(1, 'rgba(255,212,140,0)');
             tg.fillStyle = gr;
+            const h0 = beamHalf(b, 0), h1 = beamHalf(b, BLEN);
             tg.beginPath();
-            tg.moveTo(b.x + nx * b.w / 2, b.y + ny * b.w / 2);
-            tg.lineTo(ex + nx * b.w * 0.75, ey + ny * b.w * 0.75);
-            tg.lineTo(ex - nx * b.w * 0.75, ey - ny * b.w * 0.75);
-            tg.lineTo(b.x - nx * b.w / 2, b.y - ny * b.w / 2);
+            tg.moveTo(b.x + nx * h0, b.y + ny * h0);
+            tg.lineTo(ex + nx * h1, ey + ny * h1);
+            tg.lineTo(ex - nx * h1, ey - ny * h1);
+            tg.lineTo(b.x - nx * h0, b.y - ny * h0);
             tg.closePath(); tg.fill();
           }
-          tg.restore();
         });
+        // 光柱落到亭前地面：一片拉长的暖色光斑（在柱影之间，柔边）
+        blurInto(g, BW, BHb, 9, (tg) => {
+          tg.translate(-BX0, -BY0b);
+          tg.save(); tg.translate(150, 668); tg.rotate(-0.16); tg.scale(1, 0.2);
+          const pg = tg.createRadialGradient(0, 0, 0, 0, 0, 120);
+          pg.addColorStop(0, 'rgba(255,214,150,0.26)'); pg.addColorStop(1, 'rgba(255,214,150,0)');
+          tg.fillStyle = pg; tg.fillRect(-120, -120, 240, 240); tg.restore();
+        });
+        // 光柱经过柱、凳、台基前方时只剩一半亮（光在它们前面的空气里，不把实体洗白）
+        g.globalCompositeOperation = 'destination-out';
+        g.fillStyle = 'rgba(0,0,0,0.5)';
+        g.fill(pavilionPath());
+        g.globalCompositeOperation = 'source-over';
       });
     }
     // 光柱强度（用来决定浮尘亮度）
     function beamAt(x, y) {
-      // 柱间通透区四边柔和收住（浮尘靠近柱子与挂落时淡出，不突然消失）
-      const win = clamp((x - IN.x0 - 2) / 16) * clamp((IN.x1 - 2 - x) / 16) * clamp((y - IN.y0 - 2) / 16) * clamp((IN.y1 - y) / 30);
+      // 光柱所在区域四边柔和收住（浮尘靠近边缘时淡出，不突然消失）
+      const win = clamp((x - 30) / 30) * clamp((IN.x1 - 2 - x) / 16) * clamp((y - 296) / 24) * clamp((712 - y) / 40);
       if (win <= 0) return 0;
       let s = 0;
       for (const b of BEAMS) {
@@ -1011,8 +1185,9 @@
         const along = rx * BDIR[0] + ry * BDIR[1];
         if (along < 0) continue;
         const across = Math.abs(rx * -BDIR[1] + ry * BDIR[0]);
-        const half = b.w * (0.5 + 0.25 * along / 560) + 8;
-        s += b.a * clamp(1 - along / 560) * clamp(1 - across / half);
+        const half = beamHalf(b, along) + 8;
+        const lon = clamp(along / 40) * clamp(1 - along / BLEN);
+        s += b.a * lon * clamp(1 - across / half);
       }
       return Math.min(1, s * 2.2) * win;
     }
@@ -1034,7 +1209,7 @@
       for (let i = 0; i < 210; i++) {
         let x, y;
         if (i < 180) {
-          const b = BEAMS[i % 3], along = 30 + Math.pow(r(), 1.2) * 400, half = b.w * (0.5 + 0.25 * along / 560);
+          const b = BEAMS[i % 3], along = 30 + Math.pow(r(), 1.2) * 470, half = beamHalf(b, along);
           const ac = (r() - 0.5) * 2 * half * 0.9;
           x = b.x + BDIR[0] * along - BDIR[1] * ac; y = b.y + BDIR[1] * along + BDIR[0] * ac;
         } else { x = IN.x0 + 10 + r() * (IN.x1 - IN.x0 - 20); y = IN.y0 + 20 + r() * (IN.y1 - IN.y0 - 40); }
@@ -1109,6 +1284,57 @@
         g.beginPath(); g.moveTo(R.x + R.w * 0.45, R.y); g.quadraticCurveTo(cx + R.w * 0.45, cy, tx + R.w * 0.4, ty); g.stroke();
         // 穗：下垂的羽状圆锥花序——穗轴从茎梢顺风弯下，细绒多在下侧与下风侧，向梢渐短
         if (R.plume) drawPlume(g, R, tx, ty, Math.atan2(tx - cx, cy - ty), L, arrive, wave, idle);
+      }
+    }
+    // 芦花种子：风到后从几株近处芦苇的穗上脱落，随风向右飘过光柱（第2句起，共 5 粒）
+    const reedTip = (R, t, front) => {
+      const arrive = smooth((front - R.x) / 160);
+      const wave = 0.6 + 0.4 * Math.sin(TAU * (R.x - WIND_V * (t - 3.48)) / 180);
+      const idle = 0.01 * Math.sin(t * 0.8 + R.ph) + 0.006 * Math.sin(t * 1.9 + R.ph * 2);
+      const bend = R.lean + idle + arrive * (0.16 + 0.16 * wave) * (0.75 + 0.25 * R.near);
+      const tx = R.x + Math.sin(bend + R.curl) * R.h, ty = R.y - Math.cos(bend + R.curl) * R.h * 0.98;
+      const pl = R.h * 0.23;
+      return [tx + pl * 0.45, ty + pl * 0.3];
+    };
+    const SEEDS = (() => {
+      const cand = REEDS.filter((R) => R.near >= 1 && R.plume && R.x > 40 && R.x < 260).sort((a, b) => a.x - b.x);
+      const out = [];
+      for (let k = 0; k < 5 && cand.length; k++) {
+        const R = cand[Math.min(cand.length - 1, Math.floor((k + 0.5) * cand.length / 5))];
+        out.push({ R, d: 0.15 + 0.32 * k + 0.12 * h2(k, 71), vw: 118 + 46 * h2(k, 72), rise: 6 + 12 * h2(k, 73),
+          f: 2.2 + 1.6 * h2(k, 74), ph: TAU * h2(k, 75), sz: 5 + 2 * h2(k, 76), spin: (h2(k, 77) - 0.5) * 2.4 });
+      }
+      return out;
+    })();
+    function drawSeeds(g, t, tQiu, toBeam) {
+      const mt = moteTex();
+      for (const S of SEEDS) {
+        const ts = tQiu + S.R.x / WIND_V + 0.25 + S.d;
+        const tau = t - ts;
+        if (tau <= 0) continue;
+        const [x0, y0] = reedTip(S.R, ts, WIND_V * (ts - tQiu));
+        const k = 0.35, ramp = 1 - Math.exp(-tau / 0.5);
+        const x = x0 + S.vw * (tau - k * (1 - Math.exp(-tau / k))) + 3 * Math.sin(tau * S.f * 0.7 + S.ph * 2) * ramp;
+        const y = y0 - S.rise * tau + 6 * Math.sin(tau * S.f + S.ph) * ramp;
+        const a = smooth(tau / 0.4) * smooth((880 - x) / 90);
+        if (a < 0.01) continue;
+        const lit = toBeam ? toBeam(x, y) : 0;
+        // 冠毛：细梗上一圈放射状细绒
+        g.save(); g.translate(x, y); g.rotate(S.spin * tau + S.ph);
+        g.strokeStyle = `rgba(252,240,214,${(a * (0.72 + 0.28 * lit)).toFixed(3)})`; g.lineWidth = 0.8;
+        g.beginPath();
+        for (let j = 0; j < 7; j++) { const an = -Math.PI * 0.85 + j * Math.PI * 0.28; g.moveTo(0, 0); g.lineTo(Math.cos(an) * S.sz, Math.sin(an) * S.sz); }
+        g.moveTo(0, 0); g.lineTo(0, S.sz * 0.7);
+        g.stroke();
+        g.restore();
+        {
+          // 逆光里冠毛自带一圈淡淡的亮晕，进了光柱更亮
+          const op = g.globalCompositeOperation; g.globalCompositeOperation = 'screen';
+          g.globalAlpha = clamp((0.22 + 0.7 * lit) * a);
+          const r = S.sz * 2.2;
+          g.drawImage(mt, x - r, y - r, r * 2, r * 2);
+          g.globalAlpha = 1; g.globalCompositeOperation = op;
+        }
       }
     }
     const DEG = Math.PI / 180;
@@ -1273,20 +1499,22 @@
         }
         g.globalAlpha = 1;
         g.globalCompositeOperation = op0;
-        // 风铃：第2句第4字起明显摆动，平均偏角 1.5s 内增到向右 7°，绕它 ±5° 摆，周期 1.6s
+        // 风铃：风到时先轻轻一偏；第2句第4字起明显摆动——平均偏角约 1s 内增到向右 7°，绕它 ±12° 摆，周期 1.6s；
+        // 钟舌与风摆比钟身滞后 0.15s
         const DEG = Math.PI / 180;
         const tArr = tQiu + BELL[0] / WIND_V;
-        const mean = 7 * DEG * smooth((t - (tJuan - 0.2)) / 1.5) + 0.8 * DEG * smooth((t - tArr) / 0.5);
-        const amp = 5 * DEG * smooth((t - (tJuan - 0.1)) / 1.2) + 0.6 * DEG * smooth((t - tArr) / 0.5);
-        const osc = amp * Math.sin(TAU * (t - tJuan) / 1.6);
-        const ang = -(mean + osc); // 向右偏：底端朝右
-        const ang2 = ang - (amp * 0.5 * Math.sin(TAU * (t - tJuan - 0.25) / 1.6) + mean * 0.25);
+        const mean = 7 * DEG * smooth((t - (tJuan - 0.1)) / 1.0) + 0.8 * DEG * smooth((t - tArr) / 0.5);
+        const amp = 12 * DEG * smooth((t - (tJuan - 0.05)) / 0.75) + 0.6 * DEG * smooth((t - tArr) / 0.5);
+        const ph = (dt) => Math.sin(TAU * (t - tJuan - dt) / 1.6);
+        const ang = -(mean + amp * ph(0)); // 向右偏：底端朝右
+        const ang2 = -(mean * 1.1 + amp * 1.08 * ph(0.15));
         drawBell(g, ang, ang2);
         g.restore();
         // 前景芦苇（视差最快）
         g.save();
         g.translate(lay(1.3), 0);
         drawReeds(g, t, front - lay(1.3) + lay(1.3));
+        drawSeeds(g, t, tQiu, (x, y) => beamAt(x + lay(1.3) - lay(1), y));
         g.restore();
         // 斜阳的暖色空气：右侧更亮
         const op1 = g.globalCompositeOperation;
@@ -1311,12 +1539,23 @@
     // 桥面：拱顶 y=300，向两岸下到街面
     const deck = (x) => { const u = Math.min(1, Math.abs(x - CX) / 340); return 300 + (BANK - 300) * Math.pow(u, 1.75); };
     const G_PX = 430;               // 有效重力（约 48px/m，略计空气阻力）
-    // 伞的起点：斜靠在桥顶右侧栏杆外侧——伞柄尖立在栏板下伸出的边石沿上，
-    // 伞面靠着栏杆与望柱头（伞在栏杆前方，掉下去就是河）
-    const HL = 34;                  // 伞柄末端到伞面圆心的距离
-    const UEX = 760, UR = 0.2;      // 柄尖 x、伞轴右倾角
-    const U0 = { x: UEX + HL * Math.sin(UR), y: deck(UEX) - HL * Math.cos(UR), rot: UR };
-
+    // 伞：比原先大 12%（伞面直径约 54px，约 1.3 倍栏杆高——再大就和齐腰的栏杆比例不对了）
+    const US = 1.12;
+    const DEG1 = Math.PI / 180;
+    // 局部坐标（伞面圆心为原点、伞轴向上）里的一点，按旋转角与缩放换到画面偏移
+    const rotP = (px, py, th) => [(px * Math.cos(th) - py * Math.sin(th)) * US, (px * Math.sin(th) + py * Math.cos(th)) * US];
+    // 伞的静靠：伞柄尖立在栏板下伸出的边石沿上（扶手下沿以下约 4px），伞向左斜 27°，
+    // 伞柄贴着桥顶右侧那根望柱（x=735）的右棱，伞面压在栏杆与望柱头上；风从左来，正好把它从柱上掀开
+    const POST_X = 735, POST_HW = 3.5;
+    const ROT0 = -27 * DEG1;
+    const U0 = (() => {
+      const [ocx] = rotP(0, 8, ROT0), [otx, oty] = rotP(0, 34, ROT0);
+      const cx = POST_X + POST_HW + 1.2 - ocx;           // 伞柄贴住望柱右棱
+      const tipx = cx + otx, tipy = deck(tipx) + 4;      // 柄尖落在边石沿上
+      const cy = tipy - oty;
+      const [, ocy] = rotP(0, 8, ROT0);
+      return { x: cx, y: cy, rot: ROT0, tipx, tipy, cy8: cy + ocy };
+    })();
     function backTex() {
       return K.cache('ff1_b1_back', W, WL + 4, 1, (g) => {
         const gr = g.createLinearGradient(0, 0, 0, WL);
@@ -1801,7 +2040,7 @@
     // 伞（侧面轮廓）：原点在伞面圆心，轴向上为伞顶；lens 为能看到的伞内面高度
     function drawUmbrella(g, x, y, rot, lens, spin, alpha) {
       g.save();
-      g.translate(x, y); g.rotate(rot);
+      g.translate(x, y); g.rotate(rot); g.scale(US, US);
       g.globalAlpha *= alpha == null ? 1 : alpha;
       const RW = 24, DH = 12;
       // 伞柄（在伞面下方伸出）
@@ -1845,62 +2084,84 @@
       g.restore();
     }
     // 伞的运动：返回 {x, y, rot, lens, spin, phase, wl, tau}
-    // 托起用临界阻尼响应 1−e^(−τ/k)(1+τ/k)：从静止平滑起步；横向被风带向风速 VW（一阶阻力，时间常数 KW）
-    const crit = (tau, k) => 1 - Math.exp(-tau / k) * (1 + tau / k);
-    const VW = 110, KW = 0.35, U_LIFT = 26, U_KL = 0.16, YL = 516;
+    // 飞行：重心先被阵风托起（向上的速度在 0.07s 内建立，0.25s 内升约 15px），随后重力接管成抛物线；
+    // 横向被风带向风速 VW（一阶阻力，时间常数 KW）；伞绕重心在平面内转 160°（从静止起转）。
+    // 重力按落点反解：第2句第4字那一刻，伞最低的一点正好碰到伞所在处的水面 YW。
+    const VW = 110, KW = 0.35, VUP = 170, KU = 0.07, YW = 514, COM = 10;
     const windX = (tau) => VW * (tau - KW * (1 - Math.exp(-tau / KW)));
-    const landX = (fly) => U0.x + windX(fly);
+    const liftY = (tau) => VUP * (tau - KU * (1 - Math.exp(-tau / KU)));
+    const SPINA = 160 * DEG1;
+    const rho = (k) => k * k * (2 - k);
+    const LOWP = [[24, 0], [-24, 0], [0, -16], [13, -11], [-13, -11], [0, 34], [17, -7], [-17, -7]];
+    const lowest = (th) => { let m = -1e9, mx = 0; for (const [px, py] of LOWP) { const [ox, oy] = rotP(px, py, th); if (oy > m) { m = oy; mx = ox; } } return [mx, m]; };
+    const comOff = (th) => rotP(0, COM, th);
+    function flight(fly) {
+      const rotL = ROT0 + SPINA;
+      const [, lo] = lowest(rotL);
+      const c0 = comOff(ROT0), cL = comOff(rotL);
+      const com0 = [U0.x + c0[0], U0.y + c0[1]];
+      const comYL = YW - lo + cL[1];
+      const gg = 2 * (comYL - com0[1] + liftY(fly)) / (fly * fly);
+      return { rotL, com0, gg };
+    }
+    function flyPose(tau, fly, F) {
+      const rot = ROT0 + SPINA * rho(clamp(tau / fly));
+      const co = comOff(rot);
+      const x = F.com0[0] + windX(tau) - co[0];
+      const y = F.com0[1] - liftY(tau) + 0.5 * F.gg * tau * tau - co[1];
+      return { x, y, rot };
+    }
     function umbrellaAt(t, T) {
       const tFly = T.hen, tLand = T.qi, tNuo = T.nuo;
-      const fly = tLand - tFly;
-      const xL = landX(fly);
+      const fly = Math.max(0.3, tLand - tFly);
       if (t < tFly) {
-        // 静靠：伞面随风极轻地颤
+        // 静靠：伞面随风极轻地颤（绕柄尖，幅度极小）
         const q = 0.004 * Math.sin(t * 2.1) * smooth((t - 3.0) / 0.5);
         return { x: U0.x, y: U0.y, rot: U0.rot + q, lens: 3.5, spin: 0, phase: 0, wl: WL, tau: 0 };
       }
+      const F = flight(fly);
       if (t < tLand) {
         const tau = t - tFly, k = tau / fly;
-        const x = U0.x + windX(tau);
-        // 风托起（约 1 秒内衰减），重力 gg 按落点反解，正好在第2句第4字落到水面
-        const lift = U_LIFT * crit(tau, U_KL) * Math.exp(-tau / 0.9);
-        const liftE = U_LIFT * crit(fly, U_KL) * Math.exp(-fly / 0.9);
-        const gg = 2 * (YL - U0.y + liftE) / (fly * fly);
-        const y = U0.y - lift + 0.5 * gg * tau * tau;
-        // 平面内旋转 160°：从静止起转（ρ = u²(2−u)），落水时仍在转
-        const rot = U0.rot + (160 * Math.PI / 180) * k * k * (2 - k);
-        return { x, y, rot, lens: lerp(3.5, 6, k), spin: tau * 2, phase: 1, wl: lerp(WL, YL, k), tau };
+        const P = flyPose(tau, fly, F);
+        return { x: P.x, y: P.y, rot: P.rot, lens: lerp(3.5, 6, k), spin: tau * 2, phase: 1, wl: lerp(WL, YW, k), tau };
       }
-      // 落水后：碗一样漂着，起伏、自转；落水时的横向速度被水的阻力慢慢消去，第2句第6字起随水流右漂
+      // 落水后：伞沿先入水，随即翻成碗口朝上漂着——转角、高度都从落水那一刻的位置与速度连续接上；
+      // 先往下沉约 3px 再浮起、轻轻起伏；横向余速被水慢慢消去，第2句第6字起随水流右漂
       const tau = t - tLand;
-      const vL = VW * (1 - Math.exp(-fly / KW));
-      const glide = vL * 0.4 * (1 - Math.exp(-tau / 0.4));
+      const L = flyPose(fly, fly, F);
+      const dt = 0.01, Lp = flyPose(fly - dt, fly, F);
+      const vx = (L.x - Lp.x) / dt;
+      const w0 = SPINA * (4 - 3) / fly;                  // ρ′(1) = 1
+      const A = F.rotL - Math.PI, kr = 0.22, B = w0 + A / kr;
+      const rot = Math.PI + (A + B * tau) * Math.exp(-tau / kr) + 0.035 * Math.sin(TAU * tau / 3.6) * smooth(tau / 0.8);
+      const yF = YW - 4.5;
+      const Ay = L.y - yF, ky = 0.08, By = 420 + Ay / ky;
+      const bob = 1.3 * Math.sin(TAU * tau / 3.8) * smooth(tau / 0.8) + 1.0 * Math.sin(TAU * tau / 0.6) * Math.exp(-tau / 0.3) * (1 - Math.exp(-tau / 0.05));
       const nq = smooth((t - tNuo) / 0.8);
-      const settle = Math.exp(-tau / 0.4);
-      const rotEnd = Math.PI;
-      const rot0 = U0.rot + 160 * Math.PI / 180;
-      const rot = rotEnd + (rot0 - rotEnd) * settle * Math.cos(TAU * tau / 0.9) + 0.035 * Math.sin(TAU * tau / 3.6);
-      // 落水先往下一沉再浮起，回到吃水 4px 的平衡高度（与落水瞬间的位置连续）
-      const sink = -4 * (1 - Math.exp(-tau / 0.2)) + 7 * Math.exp(-tau / 0.35) * Math.sin(TAU * tau / 0.7);
-      const bob = 1.3 * Math.sin(TAU * tau / 3.8) * smooth(tau / 0.8);
-      return { x: xL + glide + 34 * nq, y: YL + sink + bob + 3 * nq, rot, lens: lerp(6, 9, smooth(tau / 0.6)), spin: 2.4 + tau * 0.5, phase: 2, wl: YL + 3 * nq, tau };
+      const glide = vx * 0.4 * (1 - Math.exp(-tau / 0.4));
+      return { x: L.x + glide + 34 * nq, y: yF + (Ay + By * tau) * Math.exp(-tau / ky) + bob + 3 * nq, rot, lens: lerp(6, 9, smooth(tau / 0.6)), spin: 2.4 + tau * 0.5, phase: 2, wl: YW + 3 * nq, tau };
     }
-    // 落水水冠：以伞沿外 RW+3…RW+12 为底圈；half −1 画远半圈（伞后），1 画近半圈（伞前）
+    // 落水点：飞行结束那一刻伞最低的那一点（伞沿）
+    function touchdown(T) {
+      const fly = Math.max(0.3, T.qi - T.hen), F = flight(fly), L = flyPose(fly, fly, F);
+      const [lx] = lowest(F.rotL);
+      return [L.x + lx, YW];
+    }
+    // 落水水冠：以落水点为中心的一圈小水花，第一帧就立起（高度按 1−e^(−t/0.04) 长出）；half −1 画远半圈，1 画近半圈
     function splashCrown(g, xL, yL, tl, half) {
-      const cw = tl / 0.45;
-      if (cw <= 0 || cw >= 1) return;
-      // 近半圈是挡在伞前的一层薄水幕：更淡、略矮
-      const hh = 24 * Math.sin(Math.PI * cw) * (half > 0 ? 0.8 : 1);
-      g.strokeStyle = `rgba(236,240,242,${(0.75 * (1 - cw) * (half > 0 ? 0.6 : 1)).toFixed(3)})`;
+      if (tl <= 0 || tl >= 0.5) return;
+      const cw = tl / 0.5;
+      const hh = 20 * (1 - Math.exp(-tl / 0.04)) * (1 - smooth(cw)) * (half > 0 ? 0.8 : 1);
+      g.strokeStyle = `rgba(236,240,242,${(0.8 * (1 - cw) * (half > 0 ? 0.6 : 1)).toFixed(3)})`;
       g.lineWidth = 1.2;
       g.beginPath();
-      for (let k = 0; k < 24; k++) {
-        const a = (k / 24) * TAU + 0.13;
+      for (let k = 0; k < 22; k++) {
+        const a = (k / 22) * TAU + 0.13;
         if ((Math.sin(a) < 0) !== (half < 0)) continue;
-        const rb = 27 + 9 * cw;
+        const rb = 8 + 18 * (1 - (1 - cw) * (1 - cw));
         const bx = xL + Math.cos(a) * rb, by = yL + Math.sin(a) * rb * 0.24;
         const lh = hh * (0.6 + 0.4 * h2(k, 44));
-        g.moveTo(bx, by); g.quadraticCurveTo(bx + Math.cos(a) * 4, by - lh * 0.6, bx + Math.cos(a) * (6 + 6 * cw), by - lh);
+        g.moveTo(bx, by); g.quadraticCurveTo(bx + Math.cos(a) * 3, by - lh * 0.6, bx + Math.cos(a) * (5 + 6 * cw), by - lh);
       }
       g.stroke();
     }
@@ -1913,10 +2174,10 @@
         const T = { hen: ct(0), qi: ct(3), nuo: ct(5) };
         // 阵风包络：第2句第1字起快起、慢慢减弱到稍强于原先
         const gust = smooth((t - T.hen) / 0.35) * (1 - 0.55 * smooth((t - T.hen - 1.1) / 1.6));
-        // 镜头：整镜 1.00→1.05 缓推，不平移
-        const z = 1 + 0.05 * smooth(clamp(c.p));
+        // 镜头：整镜 1.00→1.08 缓推（峰值约 1.8%/s），推向伞所在的右半桥（中心约 800,400），不平移
+        const z = 1 + 0.08 * smooth(clamp(c.p));
         g.save();
-        g.translate(800, 420); g.scale(z, z); g.translate(-800, -420);
+        g.translate(800, 400); g.scale(z, z); g.translate(-800, -400);
         g.drawImage(staticTex(), 0, 0, W, H);
         // 柳冠与倒影：平时几乎不动，阵风时以干顶为轴向下风切变（≤0.03）
         for (let k = 0; k < 2; k++) {
@@ -1960,7 +2221,7 @@
         // 雨圈：随机落点，从零扩散后淡出；拍点上多落几滴。内圈稍晚也从落点长出，不在中途冒出
         // 伞漂在水面时，伞身附近的雨圈改画进局部临时层，与伞激起的涟漪一起挖掉伞身占住的水面
         const floating = U.phase === 2;
-        const nearHull = (x, y, rr) => floating && Math.abs(x - U.x) < rr + 32 && Math.abs(y - U.wl) < rr * 0.24 + 14;
+        const nearHull = (x, y, rr) => floating && Math.abs(x - U.x) < rr + 32 * US && Math.abs(y - U.wl) < rr * 0.24 + 14;
         const RB = [[], [], [], [], [], [], [], [], [], []], NB = [];
         const ringQ = (x, y, age, life, rmax, a) => {
           if (age < 0 || age > life) return;
@@ -2003,9 +2264,9 @@
           g.strokeStyle = `rgba(226,232,234,${(q / 10 * 0.6).toFixed(3)})`;
           g.stroke();
         }
-        // 落水与漂浮激起的涟漪：从伞的吃水线（内半径 r0）起向外扩，不从伞心长出；
-        // 落水时的几圈中心取发出那一刻伞所在处（之后随水流一起漂）；漂浮起伏的小圈与伞同心
-        const xL = landX(T.qi - T.hen), yL = YL + 2;
+        // 落水与漂浮激起的涟漪：第一圈在落水那一帧就从伞沿入水点长出；随后几圈从伞的吃水线（内半径 r0）起向外扩，
+        // 中心取发出那一刻伞所在处（之后随水流一起漂）；漂浮起伏的小圈与伞同心
+        const [xL, yT] = touchdown(T), yL = yT + 1;
         {
           const tl0 = t - T.qi;
           if (tl0 > -0.01) {
@@ -2017,7 +2278,7 @@
               if (age < 0 || age > life) return;
               const k = age / life;
               const rr = r0 + (rmax - r0) * (1 - Math.pow(1 - k, 2));
-              const al = a * (1 - k) * (1 - k) * smooth(age / 0.12);
+              const al = a * (1 - k) * (1 - k) * (1 - Math.exp(-age / 0.025));
               sg.strokeStyle = `rgba(226,232,234,${al.toFixed(3)})`;
               sg.beginPath(); sg.ellipse(x, y, rr, rr * 0.24, 0, 0, TAU); sg.stroke();
               const k2 = (age - 0.3 * life) / (0.7 * life);
@@ -2028,12 +2289,13 @@
               }
             };
             sg.lineWidth = 1.2;
-            for (let k = 0; k < 4; k++) {
+            ring(xL + nqAt(t) - nqAt(T.qi), U.wl + 1, tl0, 2.4, 4, 58, 0.75);
+            for (let k = 1; k < 4; k++) {
               const te = T.qi + k * 0.28;
               const xe = umbrellaAt(te, T).x + nqAt(t) - nqAt(te);
-              ring(xe, U.wl + 1, tl0 - k * 0.28, 2.6, 27, 60 + 14 * k, 0.7);
+              ring(xe, U.wl + 1, tl0 - k * 0.28, 2.6, 27 * US, (60 + 14 * k) * US, 0.6);
             }
-            for (let k = 0; k < 3; k++) ring(U.x, U.wl + 1, tl0 - 1.2 - k * 1.3, 1.6, 25, 44, 0.35);
+            for (let k = 0; k < 3; k++) ring(U.x, U.wl + 1, tl0 - 1.2 - k * 1.3, 1.6, 25 * US, 44 * US, 0.35);
             // 伞身附近的雨圈
             sg.lineWidth = 1;
             for (let i = 0; i < NB.length; i += 5) {
@@ -2051,7 +2313,7 @@
             // 挖掉伞身：吃水线处的水面椭圆 + 伞的实际轮廓（含没在水下的伞面）
             if (floating) {
               sg.fillStyle = '#000';
-              sg.beginPath(); sg.ellipse(U.x, U.wl, 25, 6.5, 0, 0, TAU); sg.fill();
+              sg.beginPath(); sg.ellipse(U.x, U.wl, 25 * US, 6.5 * US, 0, 0, TAU); sg.fill();
               drawUmbrella(sg, U.x, U.y, U.rot, U.lens, U.spin, 1);
               // 伞的倒影上涟漪减半，免得伞下的红影里叠着白圈
               sg.save(); sg.globalAlpha = 0.5;
@@ -2069,18 +2331,15 @@
         strandPaths(g, t, gust, false);
         g.strokeStyle = 'rgba(98,120,104,0.32)'; g.lineWidth = 3.2; g.stroke();
         g.strokeStyle = 'rgba(52,66,58,0.7)'; g.lineWidth = 1; g.stroke();
-        // 静靠时的接触暗影：柄尖落在边石沿上、伞面挨着栏杆（伞离开后 0.2s 内淡去）
+        // 静靠时的接触：柄尖落在边石沿上的一点暗影；伞柄贴住望柱右棱处一道 1px 暗线（阴天无硬影；伞离开后 0.15s 内淡去）
         {
-          const ca = U.phase === 0 ? 1 : U.phase === 1 ? 1 - smooth(U.tau / 0.2) : 0;
+          const ca = U.phase === 0 ? 1 : U.phase === 1 ? 1 - smooth(U.tau / 0.15) : 0;
           if (ca > 0.01) {
             g.globalAlpha = ca;
-            const ex = U0.x - HL * Math.sin(U0.rot), ey = U0.y + HL * Math.cos(U0.rot);
-            g.fillStyle = 'rgba(30,36,40,0.45)';
-            g.beginPath(); g.ellipse(ex + 0.6, ey + 0.4, 3, 1.1, 0, 0, TAU); g.fill();
-            const sg = g.createRadialGradient(U0.x + 2, U0.y + 4, 0, U0.x + 2, U0.y + 4, 30);
-            sg.addColorStop(0, 'rgba(30,36,40,0.22)'); sg.addColorStop(1, 'rgba(30,36,40,0)');
-            g.save(); g.translate(U0.x + 2, U0.y + 4); g.scale(1, 0.45); g.translate(-(U0.x + 2), -(U0.y + 4));
-            g.fillStyle = sg; g.fillRect(U0.x - 30, U0.y - 26, 64, 60); g.restore();
+            g.fillStyle = 'rgba(28,33,36,0.5)';
+            g.beginPath(); g.ellipse(U0.tipx + 0.4, U0.tipy + 0.6, 3.2, 1.1, 0, 0, TAU); g.fill();
+            g.fillStyle = 'rgba(24,28,31,0.7)';
+            g.fillRect(POST_X + POST_HW - 0.2, U0.cy8 - 5, 1, 9);
             g.globalAlpha = 1;
           }
         }
@@ -2090,7 +2349,7 @@
           g.fillStyle = 'rgba(232,238,240,0.75)';
           g.globalAlpha = clamp(1 - tl / 0.8);
           for (let k = 0; k < 14; k++) {
-            const a = h2(k, 45) * TAU, rb = 27 + 4 * h2(k, 46);
+            const a = h2(k, 45) * TAU, rb = 5 + 7 * h2(k, 46);
             if ((Math.sin(a) < 0) !== (half < 0)) continue;
             const x0 = xL + Math.cos(a) * rb, y0 = yL + Math.sin(a) * rb * 0.24;
             const vx = Math.cos(a) * (40 + h2(k, 41) * 90), vy = -(110 + h2(k, 42) * 150);
@@ -2101,7 +2360,7 @@
           }
           g.globalAlpha = 1;
         };
-        if (tl > 0 && tl < 0.45) splashCrown(g, xL, yL, tl, -1);
+        if (tl > 0 && tl < 0.5) splashCrown(g, xL, yL, tl, -1);
         if (tl > 0 && tl < 0.8) drops(-1);
         if (U.phase < 2) {
           drawUmbrella(g, U.x, U.y, U.rot, U.lens, U.spin, 1);
@@ -2140,7 +2399,49 @@
           }
           g.stroke();
         }
-        g.globalCompositeOperation = op;
+        // 第2句第1字：一阵斜雨帘自左向右扫过画面，前锋正好在伞被掀起那一刻经过伞（快起慢落的包络，粒子只在雨帘里显出）
+        {
+          const front = U0.x + (t - T.hen) * 1900;
+          if (front > -260 && front < W + 360) {
+            const env = smooth((t - T.hen + 0.55) / 0.25) * (1 - smooth((t - T.hen - 0.1) / 0.45));
+            if (env > 0.01) {
+              const gvx = 420, len = 46, dx = gvx / VY * len;
+              g.lineWidth = 1.1;
+              for (let grp = 0; grp < 3; grp++) {
+                g.beginPath();
+                for (let i = grp; i < 90; i += 3) {
+                  const yy = ((h2(i, 61) * (H + 80) + VY * 1.4 * tc) % (H + 80)) - 40;
+                  const xx = front - 300 * h2(i, 62) - (yy - 360) * 0.18;
+                  g.moveTo(xx, yy); g.lineTo(xx + dx, yy + len);
+                }
+                // 雨帘前锋最密、向后渐疏
+                g.strokeStyle = `rgba(240,244,246,${(0.42 * env * (1 - grp * 0.28)).toFixed(3)})`;
+                g.stroke();
+              }
+            }
+          }
+        }
+        // 结尾接圆形渐开（下一镜是夜里的灯）：最后 1.1s 先整体缓缓压暗到约 72%（smoothstep），亮→暗分摊到三十多帧；
+        // 圆口还小的时候在它外缘铺一圈淡暗晕，读起来是“推开一扇暗窗”而不是冒出一个太阳——圆口变大前暗晕就收掉，不叠在最快的那几帧上
+        // （圆形渐开本身在引擎里，这里只能从本镜一侧缓和）
+        {
+          const td = t - (c.dur - 1.1);
+          if (td > 0) {
+            g.fillStyle = `rgba(24,22,20,${(0.28 * smooth(td / 1.0)).toFixed(3)})`;
+            g.fillRect(0, 0, W, H);
+            const IRIS = 0.7, pi = (t - (c.dur - IRIS)) / IRIS;
+            const ha = 0.4 * smooth(pi / 0.1) * (1 - smooth((pi - 0.25) / 0.2));
+            if (pi > 0 && ha > 0.005) {
+              const R0 = Math.hypot(640, 360) / 0.75 + 4;
+              const r = easeInOut(pi) * R0 + 1, ri = r * 0.72, ro = r * 0.75 + 60 + 80 * smooth(pi * 3);
+              const hg = g.createRadialGradient(640, 360, ri, 640, 360, ro);
+              hg.addColorStop(0, `rgba(26,20,18,${ha.toFixed(3)})`);
+              hg.addColorStop(0.45, `rgba(26,20,18,${(ha * 0.45).toFixed(3)})`);
+              hg.addColorStop(1, 'rgba(26,20,18,0)');
+              g.fillStyle = hg; g.fillRect(0, 0, W, H);
+            }
+          }
+        }
       },
     });
   })();

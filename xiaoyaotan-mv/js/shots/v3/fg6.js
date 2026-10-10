@@ -49,41 +49,6 @@
     }
     return pts[pts.length - 1][1];
   }
-  // 山峰：顶点 (x, y)，左右底宽 wl / wr，底线 by；返回整体轮廓与受光半边（side 1 = 右坡受光）
-  function peakPaths(pk, by, seed, side) {
-    const r = rng(seed * 131 + 7);
-    const L = [], R = [];
-    const n = 11;
-    for (let i = 0; i <= n; i++) {
-      const s = i / n;
-      // 山肩：坡面先陡后缓，加两级起伏
-      const f = Math.pow(s, 0.85) + 0.05 * Math.sin(s * 7 + seed) * (1 - s) * s * 4;
-      const jl = (r() - 0.5) * 9 * (1 - s * 0.6), jr = (r() - 0.5) * 9 * (1 - s * 0.6);
-      L.push([lerp(pk.x - pk.wl, pk.x, s), lerp(by, pk.y, f) + jl * (i > 0 && i < n ? 1 : 0)]);
-      R.push([lerp(pk.x + pk.wr, pk.x, s), lerp(by, pk.y, f) + jr * (i > 0 && i < n ? 1 : 0)]);
-    }
-    const out = new Path2D();
-    out.moveTo(L[0][0], by + 2);
-    L.forEach((p) => out.lineTo(p[0], p[1]));
-    for (let i = n - 1; i >= 0; i--) out.lineTo(R[i][0], R[i][1]);
-    out.lineTo(R[0][0], by + 2);
-    out.closePath();
-    // 分水线：从山顶向下蜿蜒
-    const M = [];
-    for (let i = 0; i <= 8; i++) {
-      const s = i / 8;
-      M.push([pk.x + (side > 0 ? 1 : -1) * (0.08 + 0.22 * s) * (side > 0 ? pk.wr : pk.wl) * s + (r() - 0.5) * 10 * s, lerp(pk.y, by, s)]);
-    }
-    const lit = new Path2D();
-    const F = side > 0 ? R : L;
-    lit.moveTo(M[0][0], M[0][1]);
-    M.forEach((p) => lit.lineTo(p[0], p[1]));
-    lit.lineTo(F[0][0], by + 2);
-    F.forEach((p) => lit.lineTo(p[0], p[1]));
-    lit.closePath();
-    return { out, lit, F, M };
-  }
-
   // 中点位移法生成闪电主干与分枝（只用确定的随机数）
   function boltPaths(seed, x0, y0, x1, y1, o) {
     const r = rng(seed);
@@ -129,8 +94,9 @@
     return out;
   }
   // 闪电贴图：外层蓝白柔光 + 中层 + 白芯（建缓存时画好，播放时只改透明度）
-  function boltTex(key, segs, box, fadeTop, ws) {
+  function boltTex(key, segs, box, fadeTop, ws, pal) {
     const sw = ws || 1;
+    const P = pal || ['#7d96d8', '#b8c9f4', '#eef3ff', '#ffffff'];
     const [bx, by, bw, bh] = box;
     return K.cache(key, bw, bh, 1, (g) => {
       g.translate(-bx, -by);
@@ -142,10 +108,10 @@
           g.beginPath(); sgm.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
         }
       };
-      pass('#7d96d8', 14, 0.35, 8);
-      pass('#b8c9f4', 5, 0.7, 2);
-      pass('#eef3ff', 2.4, 1, 0);
-      pass('#ffffff', 1.1, 1, 0);
+      pass(P[0], 14, 0.35, 8);
+      pass(P[1], 5, 0.7, 2);
+      pass(P[2], 2.4, 1, 0);
+      pass(P[3], 1.1, 1, 0);
       g.filter = 'none';
       // 上端从云里透出来：顶部一段渐隐
       if (fadeTop != null) {
@@ -170,13 +136,14 @@
     const WARM = '#f2b765', WARM2 = '#f7d98f';
     // 前景雪坡顶线（老人坐处一段放平）
     const HILL = [[-30, 600], [90, 606], [220, 618], [262, 620], [410, 620], [462, 626], [520, 646], [575, 680], [625, 728], [660, 790]];
-    // 远山（底线 505）：月在 x=640，月左侧的山右坡受光，右侧的山左坡受光
-    const FAR = [
-      { x: -40, y: 372, wl: 170, wr: 180 }, { x: 160, y: 330, wl: 190, wr: 160 }, { x: 345, y: 362, wl: 150, wr: 150 },
-      { x: 520, y: 330, wl: 170, wr: 165 }, { x: 735, y: 356, wl: 160, wr: 150 }, { x: 890, y: 382, wl: 150, wr: 165 },
-      { x: 1080, y: 462, wl: 175, wr: 170 }, { x: 1250, y: 474, wl: 170, wr: 200 },
+    // 远山：一座双峰的大山（月左）、月下一道低缓的山鞍、月右一座孤尖峰、歌词区里几道极低的远丘——与别的镜头的群峰轮廓不同
+    // 主峰（受光面判定用）：月左的峰右坡受光，月右的峰左坡受光
+    const RIDGE = [
+      [-40, 432], [20, 410], [70, 386], [110, 360], [150, 342], [184, 322], [210, 302], [236, 316], [262, 308], [292, 332], [330, 356],
+      [372, 374], [412, 394], [452, 412], [500, 428], [560, 440], [620, 446], [680, 443], [740, 432], [790, 410], [830, 378], [860, 348],
+      [880, 326], [896, 314], [912, 324], [936, 348], [964, 380], [1002, 410], [1044, 432], [1100, 447], [1160, 452], [1220, 448], [1320, 458],
     ];
-
+    const SUMMITS = [[210, 302], [262, 308], [896, 314]];
     const sky = () => K.cache('fg6_d4_sky', W, 900, 0.25, (g) => {
       // 世界坐标 y = -160 .. 740
       g.translate(0, 160);
@@ -221,57 +188,145 @@
       }
     }
 
-    // 远山与中景山丘（两张缓存，视差不同）
+    // 远山：干笔水墨——轮廓边缘带细碎的笔触起伏，坡面是一笔笔顺坡而下、时断时续的竖向皴擦（迎月坡浅、背月坡深），
+    // 山顶迎月一侧一道断续的雪光，山脚没进一条软雾带（y 约 450–490）
     const farMtn = () => K.cache('fg6_d4_far', W, 300, 1, (g) => {
       // 世界 y = 300 .. 600
       g.translate(0, -300);
-      const BY = 505;
-      FAR.forEach((pk, i) => {
-        const side = pk.x < MOON.x ? 1 : -1;
-        const P = peakPaths(pk, BY, 30 + i, side);
-        const top = pk.y, d = BY - top;
-        const sh = g.createLinearGradient(0, top, 0, BY);
-        sh.addColorStop(0, '#536688'); sh.addColorStop(0.35, '#3c4b6b'); sh.addColorStop(1, '#2c3954');
-        g.fillStyle = sh; g.fill(P.out);
-        const li = g.createLinearGradient(0, top, 0, BY);
-        li.addColorStop(0, '#9bb0cf'); li.addColorStop(0.3, '#6f86aa'); li.addColorStop(1, '#3a4a69');
-        g.fillStyle = li; g.fill(P.lit);
-        // 雪沟：受光坡上几道暗纹，背光坡上几道淡纹；短、两头收尖、略模糊，顺坡向外下方
-        const r = rng(500 + i);
-        g.save(); g.clip(P.out);
-        g.filter = 'blur(0.8px)';
-        for (let k = 0; k < 5; k++) {
-          const s0 = 0.12 + r() * 0.45;
-          const sx = pk.x + (r() - 0.5) * (pk.wl + pk.wr) * 0.5 * s0 * 2;
-          const sy = top + d * s0 * 0.9;
-          const len = d * (0.1 + r() * 0.16);
-          const lean = (sx < pk.x ? -1 : 1) * (0.3 + r() * 0.3);
-          const w0 = 1.4 + r() * 1.4;
-          g.fillStyle = (sx < pk.x) === (side < 0) ? 'rgba(40,52,78,0.26)' : 'rgba(150,170,205,0.11)';
-          const Lp = [], Rp = [];
-          for (let j = 0; j <= 8; j++) {
-            const u = j / 8;
-            const x = sx + lean * len * (0.8 * u - 0.1 * u * u), y = sy + len * u;
-            const w = w0 * Math.sin(Math.PI * Math.pow(u, 0.6)) * 0.5;
-            Lp.push([x - w, y]); Rp.push([x + w, y]);
-          }
-          g.beginPath();
-          Lp.forEach((q, j) => (j ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])));
-          for (let j = Rp.length - 1; j >= 0; j--) g.lineTo(Rp[j][0], Rp[j][1]);
-          g.closePath(); g.fill();
+      const r = rng(4242);
+      // 细化轮廓：中点位移（只在建缓存时算一次）
+      let P = RIDGE.map((q) => [q[0], q[1]]);
+      for (let lv = 0; lv < 4; lv++) {
+        const np = [P[0]];
+        for (let i = 1; i < P.length; i++) {
+          const a = P[i - 1], b = P[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          np.push([(a[0] + b[0]) / 2 + (r() - 0.5) * len * 0.05, (a[1] + b[1]) / 2 + (r() - 0.5) * len * 0.16]);
+          np.push(b);
         }
+        P = np;
+      }
+      const ry = (x) => { for (let i = 1; i < P.length; i++) if (x <= P[i][0]) { const a = P[i - 1], b = P[i]; return lerp(a[1], b[1], (x - a[0]) / (b[0] - a[0] || 1)); } return P[P.length - 1][1]; };
+      // 每一处坡面属于哪座峰、是否迎月：坡向朝月的一侧受光
+      const owner = (x) => { let best = SUMMITS[0][0]; for (const [sx] of SUMMITS) if (Math.abs(sx - x) < Math.abs(best - x)) best = sx; return best; };
+      const litAt = (x) => {
+        const sx = owner(x), toMoon = Math.sign(MOON.x - sx) || 1;
+        const onSide = Math.sign(x - sx) || toMoon;
+        return onSide === toMoon ? 1 : 0;
+      };
+      const body = new Path2D();
+      body.moveTo(P[0][0], 600); P.forEach((q) => body.lineTo(q[0], q[1])); body.lineTo(P[P.length - 1][0], 600); body.closePath();
+      // 更远的一层：在山鞍后面露出几座淡淡的峰尖
+      const back = new Path2D();
+      back.moveTo(380, 600);
+      [[380, 440], [420, 420], [456, 404], [490, 392], [516, 380], [540, 386], [566, 398], [604, 408], [640, 402], [676, 390], [700, 384], [726, 392], [760, 404], [800, 414], [850, 430], [900, 600]].forEach((q) => back.lineTo(q[0], q[1]));
+      back.closePath();
+      g.filter = 'blur(1.2px)';
+      g.fillStyle = 'rgba(78,94,128,0.55)'; g.fill(back);
+      g.filter = 'blur(0.7px)';
+      const sh = g.createLinearGradient(0, 300, 0, 505);
+      sh.addColorStop(0, '#46557a'); sh.addColorStop(0.4, '#34425f'); sh.addColorStop(1, '#2b3752');
+      g.fillStyle = sh; g.fill(body);
+      g.filter = 'none';
+      g.save(); g.clip(body);
+      // 坡面的明暗：迎月坡从山脊往下渐淡的一层冷白，背月坡一层渐淡的暗青（先画在一张临时画布上，整体模糊一次，软边）
+      {
+        const c2 = document.createElement('canvas'); c2.width = g.canvas.width; c2.height = g.canvas.height;
+        const q = c2.getContext('2d'); q.setTransform(g.getTransform());
+        for (let x = -40; x < 1320; x += 4) {
+          const lit = litAt(x), y0 = ry(x), sx = owner(x);
+          const near = clamp(1 - Math.abs(x - sx) / 300);
+          const d = Math.min(160, 505 - y0);
+          const gr = q.createLinearGradient(0, y0, 0, y0 + d);
+          if (lit) { gr.addColorStop(0, `rgba(156,176,210,${0.3 + 0.28 * near})`); gr.addColorStop(0.45, 'rgba(120,140,180,0.16)'); gr.addColorStop(1, 'rgba(110,130,170,0)'); }
+          else { gr.addColorStop(0, `rgba(14,20,38,${0.22 + 0.2 * near})`); gr.addColorStop(0.5, 'rgba(14,20,38,0.12)'); gr.addColorStop(1, 'rgba(14,20,38,0)'); }
+          q.fillStyle = gr; q.fillRect(x, y0 - 2, 4.4, d + 2);
+        }
+        const m = g.getTransform();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.filter = 'blur(' + (3 * m.a).toFixed(2) + 'px)';
+        g.drawImage(c2, 0, 0);
         g.filter = 'none';
-        g.restore();
-        // 迎月一侧山脊的细亮线
-        g.strokeStyle = 'rgba(200,214,236,0.55)'; g.lineWidth = 1.2; g.lineJoin = 'round';
-        g.beginPath();
-        P.F.slice(4).forEach((p, k) => (k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
-        g.stroke();
-      });
-      // 山脚雾气
-      const fog = g.createLinearGradient(0, 420, 0, 520);
-      fog.addColorStop(0, 'rgba(52,66,96,0)'); fog.addColorStop(0.7, 'rgba(58,74,106,0.75)'); fog.addColorStop(1, 'rgba(60,76,108,0.95)');
-      g.fillStyle = fog; g.fillRect(0, 420, W, 180);
+        g.setTransform(m);
+      }
+      // 干笔皴擦：一组组短笔顺着坡面的落水线（从峰顶向外放射）往下擦，笔锋分成几丝、时断时续；越往下越稀、越淡，没进雾里
+      g.lineCap = 'round';
+      const summitOf = (x) => { let best = SUMMITS[0]; for (const S of SUMMITS) if (Math.abs(S[0] - x) < Math.abs(best[0] - x)) best = S; return best; };
+      for (let k = 0; k < 420; k++) {
+        const cx = -30 + r() * 1340, top = ry(cx);
+        if (top > 470) continue;
+        const u = Math.pow(r(), 1.35);
+        const cy = top + 2 + u * (500 - top);
+        if (cy > 492) continue;
+        const S = summitOf(cx), lit = litAt(cx);
+        let dx = (cx - S[0]) * 0.55, dy = cy - S[1] + 30;
+        const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+        const fade = 1 - smooth((cy - 440) / 50);
+        const n = 2 + Math.floor(r() * 4);
+        for (let j = 0; j < n; j++) {
+          const x0 = cx + (r() - 0.5) * 9, y0 = cy + (r() - 0.5) * 6;
+          if (y0 < ry(x0) + 1) continue;
+          const len = (8 + r() * 30) * (1 - 0.4 * u);
+          const w0 = 0.5 + r() * 1.0;
+          const a0 = (lit ? 0.12 + r() * 0.22 : 0.14 + r() * 0.24) * fade;
+          const col = lit ? (r() < 0.72 ? '204,216,238' : '24,32,56') : (r() < 0.86 ? '20,28,50' : '110,128,164');
+          // 一笔分前后两半（后半更淡更细），中间随机留一处飞白
+          const segs = 5, gap = r() < 0.55 ? -1 : 1 + Math.floor(r() * 3);
+          for (let half = 0; half < 2; half++) {
+            g.strokeStyle = `rgba(${col},${a0 * (half ? 0.45 : 0.9)})`;
+            g.lineWidth = w0 * (half ? 0.6 : 0.95);
+            g.beginPath();
+            for (let q = half ? 3 : 0; q < (half ? segs : 3); q++) {
+              if (q === gap) continue;
+              const u0 = q / segs, u1 = (q + 0.8) / segs;
+              g.moveTo(x0 + dx * len * u0, y0 + dy * len * u0); g.lineTo(x0 + dx * len * u1, y0 + dy * len * u1);
+            }
+            g.stroke();
+          }
+        }
+      }
+      // 山脊的支脉：从峰顶向下几道放射的岩脊，朝月一边亮、背月一边暗，山的体积靠它立起来
+      for (const S of SUMMITS) {
+        const toMoon = Math.sign(MOON.x - S[0]) || 1;
+        for (const [ox, len, bend] of [[-1, 120, 0.25], [-0.45, 150, -0.1], [0.35, 140, 0.12], [1, 110, -0.2]]) {
+          const pts = [];
+          for (let j = 0; j <= 10; j++) {
+            const u = j / 10;
+            pts.push([S[0] + ox * len * 0.62 * u + bend * 30 * Math.sin(u * Math.PI) + (h2(j, S[0] + ox * 10) - 0.5) * 4, S[1] + 6 + len * u]);
+          }
+          const litSide = toMoon;
+          for (const [off, col, a] of [[litSide * 1.2, '206,218,240', 0.32], [-litSide * 1.4, '18,24,44', 0.34]]) {
+            for (let j = 1; j < pts.length; j++) {
+              const p0 = pts[j - 1], p1 = pts[j];
+              if (h2(j, S[0] * 3 + ox * 7 + off) < 0.12) continue;
+              const fade = (1 - j / pts.length) * (1 - smooth((p1[1] - 440) / 50));
+              g.strokeStyle = `rgba(${col},${a * fade})`; g.lineWidth = 1.3 * (1 - j / 14);
+              g.beginPath(); g.moveTo(p0[0] + off, p0[1]); g.lineTo(p1[0] + off, p1[1]); g.stroke();
+            }
+          }
+        }
+      }
+      g.restore();
+      // 山脊迎月一侧一道断续的雪光；背月一侧不亮
+      g.lineJoin = 'round';
+      for (let i = 1; i < P.length; i++) {
+        const a = P[i - 1], b = P[i], mx = (a[0] + b[0]) / 2;
+        const pk = clamp(1 - Math.abs(mx - owner(mx)) / 240);
+        if (!litAt(mx) || h2(i, 77) < 0.3 || pk < 0.05) continue;
+        const near = clamp(1 - Math.abs(mx - MOON.x) / 700);
+        g.strokeStyle = `rgba(214,226,244,${(0.3 + 0.35 * near) * pk})`; g.lineWidth = 1.1;
+        g.beginPath(); g.moveTo(a[0], a[1] + 0.4); g.lineTo(b[0], b[1] + 0.4); g.stroke();
+      }
+      // 山脚雾带：一层渐浓的冷雾，加几团横向软雾，山脚看不出底线
+      const fog = g.createLinearGradient(0, 430, 0, 510);
+      fog.addColorStop(0, 'rgba(56,70,102,0)'); fog.addColorStop(0.45, 'rgba(62,78,110,0.55)'); fog.addColorStop(0.8, 'rgba(66,82,114,0.88)'); fog.addColorStop(1, 'rgba(64,80,112,0.96)');
+      g.fillStyle = fog; g.fillRect(0, 430, W, 170);
+      g.filter = 'blur(9px)';
+      for (let i = 0; i < 22; i++) {
+        const x = r() * W, y = 452 + r() * 34, w = 70 + r() * 150;
+        g.fillStyle = `rgba(104,120,154,${0.12 + r() * 0.14})`;
+        g.beginPath(); g.ellipse(x, y, w, 7 + r() * 8, 0, 0, TAU); g.fill();
+      }
+      g.filter = 'none';
     });
 
     // 中景山丘：雪顶，松林点点
@@ -299,10 +354,12 @@
         g.beginPath(); g.moveTo(x, y - hh); g.lineTo(x + hh * 0.14, y - hh * 0.6); g.lineTo(x - hh * 0.14, y - hh * 0.6); g.closePath(); g.fill();
       }
       g.restore();
-      // 迎月的山脊细亮线
-      g.strokeStyle = 'rgba(190,206,232,0.4)'; g.lineWidth = 1;
+      // 迎月的山脊细亮线（软一点、淡一点，不像描边）
+      g.filter = 'blur(0.7px)';
+      g.strokeStyle = 'rgba(190,206,232,0.26)'; g.lineWidth = 1.2;
       const q = new Path2D(); smoothTo(q, MID, true);
       g.stroke(q);
+      g.filter = 'none';
     });
 
     // 山谷：雪野、镇前的淡雾与远处一条冻河
@@ -735,22 +792,33 @@
       g.fill();
     }
     const cloud = () => K.cache('fg6_d4_cloud', 1720, 520, 0.5, (g) => {
-      g.filter = 'blur(5px)';
-      puffShape(g, '#222a40');
+      // 暴风雪的云：浓、暗、实的云体（与右上角的夜空差不多暗，经过歌词区时字后面的明暗不变），
+      // 只有迎月的云团左上角略亮，云团之间是更深的暗缝，前缘近月处才有银边
+      g.filter = 'blur(4px)';
+      puffShape(g, '#121624');
       g.filter = 'none';
       g.globalCompositeOperation = 'source-atop';
-      // 迎月的上缘、左缘：每个云团左上角一团淡光（大半径模糊）
-      g.filter = 'blur(10px)';
-      for (const b of PUFF) {
-        const f = clamp((b.x - CO) / 900);
-        g.fillStyle = rgba(mix('#64779c', '#36435f', f), 0.4);
-        g.beginPath(); g.arc(b.x - b.r * 0.28, b.y - b.r * 0.32, b.r * 0.62, 0, TAU); g.fill();
+      // （模糊滤镜每次填充都很慢：同色的云团合成一条路径一次填完，按离前缘远近分四档颜色）
+      g.filter = 'blur(9px)';
+      // 每个云团下半一团暗影（云团叠压的体积感）
+      g.fillStyle = 'rgba(4,6,12,0.45)';
+      g.beginPath();
+      for (const b of PUFF) { g.moveTo(b.x + b.r * 0.82, b.y + b.r * 0.38); g.arc(b.x + b.r * 0.12, b.y + b.r * 0.38, b.r * 0.7, 0, TAU); }
+      g.fill();
+      for (let lv = 0; lv < 4; lv++) {
+        g.fillStyle = rgba(mix('#4a5878', '#1e2536', lv / 3), 0.42);
+        g.beginPath();
+        for (const b of PUFF) {
+          if (Math.min(3, Math.floor(clamp((b.x - CO) / 700) * 4)) !== lv) continue;
+          g.moveTo(b.x - b.r * 0.3 + b.r * 0.5, b.y - b.r * 0.34); g.arc(b.x - b.r * 0.3, b.y - b.r * 0.34, b.r * 0.5, 0, TAU);
+        }
+        g.fill();
       }
       g.filter = 'none';
       // 内部纹理：低分辨率噪声放大
       const nc = document.createElement('canvas'); nc.width = 96; nc.height = 30;
       const nx = nc.getContext('2d'), r = rng(808);
-      for (let y = 0; y < 30; y++) for (let x = 0; x < 96; x++) { const v = r(); nx.fillStyle = v < 0.5 ? `rgba(12,16,26,${(0.5 - v) * 1.2})` : `rgba(110,128,166,${(v - 0.5) * 0.7})`; nx.fillRect(x, y, 1, 1); }
+      for (let y = 0; y < 30; y++) for (let x = 0; x < 96; x++) { const v = r(); nx.fillStyle = v < 0.5 ? `rgba(6,8,14,${(0.5 - v) * 1.2})` : `rgba(64,76,104,${(v - 0.5) * 0.6})`; nx.fillRect(x, y, 1, 1); }
       g.imageSmoothingEnabled = true; g.globalAlpha = 0.5;
       g.filter = 'blur(6px)';
       g.drawImage(nc, 0, 0, 1720, 520);
@@ -795,38 +863,71 @@
     });
 
     // 孔明灯
-    const lanternTex = () => K.cache('fg6_d4_lan', 24, 30, 3, (g) => {
+    // 孔明灯：上宽下窄、顶部圆鼓的纸罩（梯形），火在底口，纸从里面透出暖光——下部最亮，顶部偏橙；底口一圈竹篾、一点火苗
+    const LW_ = 36, LH_ = 46;
+    const lanternTex = () => K.cache('fg6_d4_lan2', LW_, LH_, 3, (g) => {
       const p = new Path2D();
-      p.moveTo(4.5, 27); p.lineTo(2.2, 9);
-      p.quadraticCurveTo(2, 2.4, 12, 1.6); p.quadraticCurveTo(22, 2.4, 21.8, 9);
-      p.lineTo(19.5, 27); p.closePath();
-      const gr = g.createLinearGradient(0, 2, 0, 28);
-      gr.addColorStop(0, '#d9893c'); gr.addColorStop(0.45, '#f4bd68'); gr.addColorStop(0.85, '#ffe7ad'); gr.addColorStop(1, '#fff4d2');
+      p.moveTo(9.5, 40); p.lineTo(5.2, 12);
+      p.bezierCurveTo(4.6, 5.2, 10, 2.2, 18, 2.0); p.bezierCurveTo(26, 2.2, 31.4, 5.2, 30.8, 12);
+      p.lineTo(26.5, 40); p.closePath();
+      const gr = g.createLinearGradient(0, 2, 0, 41);
+      gr.addColorStop(0, '#c26a2a'); gr.addColorStop(0.35, '#e79a48'); gr.addColorStop(0.75, '#f9cf7e'); gr.addColorStop(1, '#ffe6ae');
       g.fillStyle = gr; g.fill(p);
-      // 竹骨两道
-      g.strokeStyle = 'rgba(150,80,30,0.35)'; g.lineWidth = 0.8;
-      g.beginPath(); g.moveTo(3.2, 15); g.lineTo(20.8, 15); g.moveTo(12, 2); g.lineTo(12, 27); g.stroke();
-      g.fillStyle = 'rgba(255,250,230,0.9)';
-      g.beginPath(); g.ellipse(12, 27, 6.5, 1.5, 0, 0, TAU); g.fill();
+      g.save(); g.clip(p);
+      // 里面的火光：底口上方一团亮
+      const ig = g.createRadialGradient(18, 36, 0, 18, 34, 22);
+      ig.addColorStop(0, 'rgba(255,246,214,0.95)'); ig.addColorStop(0.45, 'rgba(255,224,150,0.45)'); ig.addColorStop(1, 'rgba(255,200,120,0)');
+      g.fillStyle = ig; g.fillRect(0, 0, LW_, LH_);
+      // 两侧略暗（圆筒的明暗），纸缝两道
+      const sg = g.createLinearGradient(5, 0, 31, 0);
+      sg.addColorStop(0, 'rgba(120,50,16,0.35)'); sg.addColorStop(0.3, 'rgba(120,50,16,0)'); sg.addColorStop(0.7, 'rgba(120,50,16,0)'); sg.addColorStop(1, 'rgba(120,50,16,0.35)');
+      g.fillStyle = sg; g.fillRect(0, 0, LW_, LH_);
+      g.strokeStyle = 'rgba(150,72,26,0.28)'; g.lineWidth = 0.9;
+      g.beginPath(); g.moveTo(12.6, 3.5); g.lineTo(14.4, 40); g.moveTo(23.4, 3.5); g.lineTo(21.6, 40); g.stroke();
+      g.restore();
+      // 底口竹篾与火苗
+      g.strokeStyle = 'rgba(110,52,20,0.8)'; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(9.5, 40); g.lineTo(26.5, 40); g.stroke();
+      const fl = g.createRadialGradient(18, 42.2, 0, 18, 42.2, 3.6);
+      fl.addColorStop(0, 'rgba(255,255,240,1)'); fl.addColorStop(0.5, 'rgba(255,222,140,0.9)'); fl.addColorStop(1, 'rgba(255,180,90,0)');
+      g.fillStyle = fl; g.fillRect(12, 38, 12, 8);
     });
+    // h：画面上的灯高（像素）；底口火苗在 (x, y)
+    function drawLantern(g, tex, x, y, h, a) {
+      const k = h / 38, w = LW_ * k, hh = LH_ * k;
+      g.globalAlpha = clamp(a);
+      g.drawImage(tex, x - w / 2, y - 42.2 * k, w, hh);
+    }
     const LAN = [];
     {
       const r = rng(9137);
       const N = 96;
       for (let i = 0; i < N; i++) {
         const near = r();
-        LAN.push({ tr: -60 + 67.5 * (i + r()) / N, x0: 420 + r() * 490, y0: 504 + near * 38, s: 3.2 + near * 3.6, v: 15 + near * 6 + r() * 2, ph: r() * 50, near, batch: false });
+        LAN.push({ tr: -60 + 67.5 * (i + r()) / N, x0: 420 + r() * 490, y0: 504 + near * 38, s: 5.6 + near * 4.2, v: 15 + near * 6 + r() * 2, ph: r() * 50, near, batch: false });
       }
-      const order = [4, 1, 7, 2, 6, 0, 8, 3, 5];
-      for (let k = 0; k < 9; k++) {
-        LAN.push({ q: order[k] / 8, x0: 548 + k * 26 + (r() - 0.5) * 16, y0: 538 + r() * 14, s: 9 + r() * 2.4, v: 18 + r() * 8, ph: r() * 50, near: 1, batch: true });
+      // 第31句第4字放飞的一批：从镇上各处屋顶升起（x 400–890）
+      const roofs = TOWN.filter((hs) => hs.ri > 0 && hs.x > 400 && hs.x < 890).sort((a, b) => a.x - b.x);
+      const NB = 10, order = [4, 1, 7, 2, 9, 6, 0, 8, 3, 5];
+      for (let k = 0; k < NB; k++) {
+        const hs = roofs[Math.round((k + 0.5) / NB * (roofs.length - 1))];
+        const top = hs.y - hs.hw * hs.s * (hs.two ? 1.6 : 1) - 6 * hs.s;
+        LAN.push({ q: order[k] / (NB - 1), x0: hs.x, y0: top - 1.5, s: 10.5 + r() * 2.6, v: 16 + r() * 13, ph: r() * 50, near: 1, batch: true });
       }
     }
+    // 近处的三盏（离镜头近：大、升得快），镜头开始时已在空中或从画面下缘升入；第一盏在第32句前从月亮旁边升过
+    const NEARL = [
+      { x0: 694, y0: 214, v: 25, h: 23, ph: 1.3, dr: 6.5 },
+      { x0: 594, y0: 486, v: 21, h: 19.5, ph: 3.1, dr: 5.2 },
+      { x0: 846, y0: 742, v: 30, h: 18, ph: 4.7, dr: 6.0 },
+    ];
     // 远处（歌词区）几点极小的灯
     const FARL = [[1012, 214, 1.4], [1085, 168, 1.1], [1150, 292, 1.3], [1228, 236, 1.0], [1046, 330, 1.2]];
     const TAUR = 26;
     function lanternState(L, a) {
-      const R = L.v * TAUR * (1 - Math.exp(-a / TAUR));
+      // 起飞时先慢后快（热气把灯托起），再随高度慢慢减速
+      const ae = a - 0.8 * (1 - Math.exp(-a / 0.8));
+      const R = L.v * TAUR * (1 - Math.exp(-ae / TAUR));
       const drift = 3.2 * a + 2.8 * a * clamp(R / 300);
       return {
         x: L.x0 - drift + 1.2 * Math.sin(0.5 * a + L.ph),
@@ -941,7 +1042,7 @@
         if (g.globalAlpha > 0.003) g.drawImage(townSpark1(), 360, 430 + ty, 640, 150);
         g.restore();
 
-        // 孔明灯
+        // 孔明灯（远处的、成批的）：先画柔光，再画纸罩；画面上不到 4 px 的只画一点暖光
         g.save();
         const lt = lanternTex(), gt = glowTex(WARM);
         const items = [];
@@ -953,23 +1054,20 @@
           const Ls = lanternState(L, a);
           const yy = Ls.y + cam * (0.85 + 0.02 * L.near);
           if (yy < -40) continue;
-          items.push([Ls.x, yy, Ls.s, Ls.b * (0.86 + 0.14 * noise1(t * 2.3 + L.ph, 5)), L.batch]);
+          items.push([Ls.x, yy, Ls.s * 1.12, Ls.b * (0.86 + 0.14 * noise1(t * 2.3 + L.ph, 5)), L.batch]);
         }
         g.globalCompositeOperation = 'lighter';
-        for (const [x, y, s, b, bt] of items) {
-          g.globalAlpha = clamp(b * (bt ? 0.66 : 0.56));
-          putGlow(g, gt, x, y, s * (bt ? 3.6 : 3.4));
+        for (const [x, y, h, b, bt] of items) {
+          g.globalAlpha = clamp(b * (bt ? 0.55 : 0.45));
+          putGlow(g, gt, x, y - h * 0.3, h * (bt ? 2.2 : 2.0));
         }
         g.globalCompositeOperation = 'source-over';
         g.fillStyle = '#ffe2a4';
-        for (const [x, y, s, b] of items) {
-          if (s < 2.6) {
+        for (const [x, y, h, b] of items) {
+          if (h < 4) {
             g.globalAlpha = clamp(b);
-            g.fillRect(x - s * 0.35, y - s * 0.45, s * 0.7, s * 0.9);
-          } else {
-            g.globalAlpha = clamp(b * 1.1);
-            g.drawImage(lt, x - s * 0.45, y - s * 0.6, s * 0.9, s * 1.12);
-          }
+            g.fillRect(x - h * 0.3, y - h * 0.8, h * 0.6, h * 0.8);
+          } else drawLantern(g, lt, x, y, h, b * 1.05);
         }
         g.restore();
 
@@ -979,7 +1077,8 @@
           g.drawImage(cloud1(), cx, cy, 1720, 520);
           // 银边：前缘离月越近越亮，月被吞进去后渐暗
           const dE = (xe - MOON.x) / 300;
-          const lin = Math.exp(-dE * dE) * (1 - 0.8 * smooth((MOON.x - 60 - xe) / 120)) + 0.25 * clamp(1 - Math.abs(dE) / 3);
+          // 前缘还在歌词区（x>980）时不亮银边，进到月亮这边才亮起来：字后面的明暗保持稳定
+          const lin = (Math.exp(-dE * dE) * (1 - 0.8 * smooth((MOON.x - 60 - xe) / 120)) + 0.25 * clamp(1 - Math.abs(dE) / 3)) * smooth((1000 - xe) / 160);
           if (lin > 0.01) {
             g.save(); g.globalAlpha = clamp(0.8 * lin); g.globalCompositeOperation = 'lighter';
             g.drawImage(cloudRim1(), cx, cy, 1720, 520);
@@ -996,6 +1095,23 @@
           }
         }
 
+        // 近处的三盏孔明灯（在云前、雪坡后）
+        {
+          g.save();
+          const lt2 = lanternTex(), gt2 = glowTex(WARM);
+          for (const N of NEARL) {
+            const yy = N.y0 - N.v * t + cam * 0.92;
+            if (yy < -60 || yy > 780) continue;
+            const x = N.x0 - N.dr * t * (1 + t / 40) + 2.2 * Math.sin(0.45 * t + N.ph);
+            const fb = 0.9 + 0.1 * noise1(t * 2.1 + N.ph, 7);
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = 0.5 * fb;
+            putGlow(g, gt2, x, yy - N.h * 0.3, N.h * 2.4);
+            g.globalCompositeOperation = 'source-over';
+            drawLantern(g, lt2, x, yy, N.h, fb);
+          }
+          g.restore();
+        }
         // 前景：雪坡、老树、老人
         g.drawImage(fgLayer(), -80, -160 + fy, 780, 1000);
         const rim = mix(BODY, RIM, ml);
@@ -1019,12 +1135,17 @@
   // ============================================================
   (function () {
     const FB = [0.267, 0.627, 0.967, 1.327, 2.287, 2.667, 3.167, 3.587, 3.907, 4.377, 4.847];
-    const MAN = { x: 520, y: 450, h: 80 };
-    const BODY = '#0a0d14';
+    // 人物放大到 124 px（720p 下看得出仰起的头、下巴、张开的手臂和斗篷），整个剪影绕脚底向后仰约 3.4°（仰天大笑的姿态，姿势整镜不变）
+    const MAN = { x: 520, y: 450, h: 124, lean: 0.06, wind: 0.62 };
+    const BODY = '#0b0b15';
+    // 冷紫蓝的主调，青白的闪电
+    const BOLT_PAL = ['#62b4ec', '#ace2ff', '#ecfaff', '#ffffff'];
+    const RIMC = '#d2f2ff';
     const RAINA = 0.27; // 雨向右斜：每下落 1 px 右移 0.27 px
     // 三道闪电：k = 对应的字；side 闪电在哪一侧（也是轮廓光那一侧）；amp 亮度
+    // 第一道闪电就是转场的闪白：切点那一帧起在左边落下（不在第1字再另打一道，免得白—暗—白连闪）
     const STRIKES = [
-      { k: 0, side: -1, amp: 0.8, seed: 11, x0: 250, y0: 180, x1: 150, y1: 572, br: 4 },
+      { k: -1, side: -1, amp: 0.9, seed: 11, x0: 250, y0: 180, x1: 150, y1: 572, br: 4 },
       { k: 4, side: 1, amp: 0.8, seed: 29, x0: 812, y0: 170, x1: 772, y1: 596, br: 3, maxX: 880, behind: true },
       { k: 8, side: -1, amp: 1.0, seed: 47, x0: 342, y0: 150, x1: 226, y1: 604, br: 5 },
     ];
@@ -1035,14 +1156,15 @@
       S.box = [Math.floor(x0 - 24), Math.floor(y0 - 24), Math.ceil(x1 - x0 + 48), Math.ceil(y1 - y0 + 48)];
       S.key = 'fg6_e1_bolt' + i;
     });
-    // 亮度包络：约 3 帧升起，0.5 s 回落；闪电枝本身更快熄灭
-    const skyEnv = (tau) => (tau < 0 ? 0 : tau < 0.1 ? smooth(tau / 0.1) : Math.exp(-(tau - 0.1) / 0.16));
-    const boltEnv = (tau) => (tau < 0 ? 0 : tau < 0.1 ? smooth(tau / 0.1) : Math.exp(-(tau - 0.1) / 0.075));
+    // 亮度包络：约 3 帧升起，0.5 s 回落；闪电枝本身更快熄灭。转场那一道从切点峰值直接回落（升起就是转场的闪白），
+    // 闪电枝多留约 0.15 s，等闪白退下去时还看得见
+    const skyEnv = (tau, cut) => (tau < 0 ? 0 : cut ? Math.exp(-tau / 0.19) : tau < 0.1 ? smooth(tau / 0.1) : Math.exp(-(tau - 0.1) / 0.16));
+    const boltEnv = (tau, cut) => (tau < 0 ? 0 : cut ? (tau < 0.15 ? 1 : Math.exp(-(tau - 0.15) / 0.09)) : tau < 0.1 ? smooth(tau / 0.1) : Math.exp(-(tau - 0.1) / 0.075));
 
     const sky = () => K.cache('fg6_e1_sky', W, H, 0.5, (g) => {
       const gr = g.createLinearGradient(0, 0, 0, H);
-      gr.addColorStop(0, '#0c1018'); gr.addColorStop(0.28, '#141925'); gr.addColorStop(0.46, '#1d2433');
-      gr.addColorStop(0.535, '#2b3446'); gr.addColorStop(0.58, '#252d3c'); gr.addColorStop(0.75, '#1b212d'); gr.addColorStop(1, '#131822');
+      gr.addColorStop(0, '#0e0d1d'); gr.addColorStop(0.28, '#17162c'); gr.addColorStop(0.46, '#232340');
+      gr.addColorStop(0.535, '#36385c'); gr.addColorStop(0.58, '#2e2f4c'); gr.addColorStop(0.75, '#202036'); gr.addColorStop(1, '#161628');
       g.fillStyle = gr; g.fillRect(0, 0, W, H);
     });
     // 远方的云海平面：地平线附近略亮，向下渐暗，几道横向云纹
@@ -1053,7 +1175,7 @@
       for (let i = 0; i < 30; i++) {
         const y = 404 + Math.pow(r(), 1.2) * 170, x = r() * W, w = 160 + r() * 380, hh = 1.5 + (y - 400) * 0.06 + r() * 3;
         const fa = smooth((y - 404) / 40);
-        g.fillStyle = r() < 0.6 ? `rgba(52,62,82,${0.5 * fa})` : `rgba(14,18,26,${0.4 * fa})`;
+        g.fillStyle = r() < 0.6 ? `rgba(58,58,92,${0.5 * fa})` : `rgba(14,14,28,${0.4 * fa})`;
         g.beginPath(); g.ellipse(x, y, w, hh, 0, 0, TAU); g.fill();
       }
       g.filter = 'none';
@@ -1078,10 +1200,20 @@
       for (const b of P) { g.moveTo(b.x + b.r, b.y); g.arc(b.x, b.y, b.r, 0, TAU); }
       g.fill();
       g.globalCompositeOperation = 'source-atop';
+      // 云团上的明暗块：同色的合成一条路径一次填完（模糊滤镜每次填充都很慢）；分两遍叠，重叠处仍有深浅
       g.filter = 'blur(12px)';
-      for (const b of P) {
-        g.fillStyle = b.k < 0.5 ? rgba(hi, 0.35) : rgba(lo, 0.4);
-        g.beginPath(); g.arc(b.x + (b.k - 0.5) * b.r, b.y - b.r * 0.3, b.r * 0.6, 0, TAU); g.fill();
+      for (let pass = 0; pass < 2; pass++) {
+        for (const lit of [true, false]) {
+          g.fillStyle = lit ? rgba(hi, 0.21) : rgba(lo, 0.24);
+          g.beginPath();
+          for (let i = pass; i < P.length; i += 2) {
+            const b = P[i];
+            if ((b.k < 0.5) !== lit) continue;
+            const cx = b.x + (b.k - 0.5) * b.r, cy = b.y - b.r * 0.3;
+            g.moveTo(cx + b.r * 0.6, cy); g.arc(cx, cy, b.r * 0.6, 0, TAU);
+          }
+          g.fill();
+        }
       }
       g.filter = 'none';
       // 云底更暗
@@ -1090,10 +1222,34 @@
       g.fillStyle = gr; g.fillRect(-20, -40, 1640, 600);
       g.globalCompositeOperation = 'source-over';
     }
-    const cA = () => K.cache('fg6_e1_cA', 1600, 600, 0.5, (g) => { g.translate(0, 40); cloudLayer(g, PA, '#151a26', '#262e40', '#0c1018', 260); });
-    const cAlit = () => K.cache('fg6_e1_cAl', 1600, 600, 0.5, (g) => { g.translate(0, 40); cloudLayer(g, PA, '#6a7896', '#b4c2dc', '#4a5672', 260); });
-    const cB = () => K.cache('fg6_e1_cB', 1600, 600, 0.5, (g) => { g.translate(0, 40); g.globalAlpha = 0.75; cloudLayer(g, PB, '#1b2130', '#2c3446', '#10141d', 0); });
-    const cBlit = () => K.cache('fg6_e1_cBl', 1600, 600, 0.5, (g) => { g.translate(0, 40); g.globalAlpha = 0.75; cloudLayer(g, PB, '#76849f', '#c0cce2', '#56627c', 0); });
+    const cA = () => K.cache('fg6_e1_cA', 1600, 600, 0.5, (g) => { g.translate(0, 40); cloudLayer(g, PA, '#18172b', '#2c2b4a', '#0d0c1b', 260); });
+    const cAlit = () => K.cache('fg6_e1_cAl', 1600, 600, 0.5, (g) => { g.translate(0, 40); cloudLayer(g, PA, '#6c70a6', '#c0ccf4', '#4a4c7e', 260); });
+    const cB = () => K.cache('fg6_e1_cB', 1600, 600, 0.5, (g) => { g.translate(0, 40); g.globalAlpha = 0.75; cloudLayer(g, PB, '#1f1e36', '#33324e', '#11101f', 0); });
+    const cBlit = () => K.cache('fg6_e1_cBl', 1600, 600, 0.5, (g) => { g.translate(0, 40); g.globalAlpha = 0.75; cloudLayer(g, PB, '#7a7eae', '#cad4f6', '#565a88', 0); });
+    // 孤峰身后的云底被远方天光映亮的一条冷带（世界 y 约 250–420）：闪电之间人物和山尖也能从天上分出来；歌词区（x>950）淡出
+    const band = () => K.cache('fg6_e1_band', W, 260, 0.5, (g) => {
+      g.translate(0, -220);
+      g.filter = 'blur(14px)';
+      const r = rng(2601);
+      for (let lv = 0; lv < 2; lv++) {
+        g.fillStyle = `rgba(112,116,170,${lv ? 0.26 : 0.17})`;
+        g.beginPath();
+        for (let i = 0; i < 13; i++) {
+          const x = 40 + r() * 980, y = 300 + r() * 90, w = 90 + r() * 170, hh = 12 + r() * 22;
+          g.moveTo(x + w, y); g.ellipse(x, y, w, hh, 0, 0, TAU);
+        }
+        g.fill();
+      }
+      g.filter = 'none';
+      const v = g.createLinearGradient(0, 240, 0, 440);
+      v.addColorStop(0, 'rgba(98,102,154,0)'); v.addColorStop(0.35, 'rgba(98,102,154,0.3)'); v.addColorStop(0.7, 'rgba(98,102,154,0.34)'); v.addColorStop(1, 'rgba(98,102,154,0)');
+      g.fillStyle = v; g.fillRect(0, 230, W, 230);
+      g.globalCompositeOperation = 'destination-in';
+      const hz = g.createLinearGradient(0, 0, W, 0);
+      hz.addColorStop(0, 'rgba(0,0,0,0.55)'); hz.addColorStop(0.3, 'rgba(0,0,0,1)'); hz.addColorStop(0.55, 'rgba(0,0,0,1)'); hz.addColorStop(0.74, 'rgba(0,0,0,0)');
+      g.fillStyle = hz; g.fillRect(0, 220, W, 260);
+      g.globalCompositeOperation = 'source-over';
+    });
 
     const skyAll = () => K.cache('fg6_e1_skyall', W, H, 1, (g) => {
       g.drawImage(sky(), 0, 0, W, H);
@@ -1136,34 +1292,41 @@
       p.closePath();
       return p;
     }
+    // 脚下山尖的前沿：两块小石棱压住鞋尖和鞋跟（画在人物之后），脚像踩进岩缝里，不是站在平台上
+    const TIP = (() => {
+      const p = new Path2D();
+      const q = [[499, 462], [503, 455.6], [507, 451.6], [509.6, 449.3], [512, 449.0], [514.4, 450.1], [517, 451.0], [523, 451.1], [526, 449.9], [528.6, 448.9], [531, 449.3], [534, 451.6], [538, 456.4], [541, 462]];
+      p.moveTo(q[0][0], q[0][1]); q.forEach((v) => p.lineTo(v[0], v[1])); p.closePath();
+      return p;
+    })();
     const FARP = ridgePath([[-30, 640], [20, 600], [70, 578], [120, 592], [180, 612], [240, 596], [300, 606], [380, 620], [460, 612], [600, 618], [700, 604], [760, 582], [820, 572], [880, 590], [960, 606], [1040, 592], [1120, 584], [1190, 600], [1260, 612], [1320, 620]], 760, 61, 5);
     const MIDL = ridgePath([[-30, 612], [30, 588], [90, 568], [140, 560], [180, 572], [240, 600], [300, 640], [360, 700], [380, 760]], 760, 73, 6);
     const MIDR = ridgePath([[760, 760], [800, 694], [850, 618], [900, 574], [940, 563], [990, 578], [1060, 610], [1130, 598], [1190, 590], [1250, 602], [1320, 618]], 760, 79, 6);
-    const MAIN = ridgePath([[300, 760], [326, 736], [348, 704], [374, 692], [390, 664], [410, 656], [420, 628], [434, 610], [446, 602], [452, 574], [464, 552], [468, 522], [480, 502], [486, 480], [497, 464], [506, 452], [520, 450], [536, 451], [544, 459], [548, 477], [558, 490], [561, 514], [575, 530], [579, 560], [594, 574], [599, 602], [617, 620], [626, 650], [648, 668], [670, 700], [710, 722], [760, 744], [804, 760]], 760, 89, 3);
+    const MAIN = ridgePath([[300, 760], [326, 736], [348, 704], [374, 692], [390, 664], [410, 656], [420, 628], [434, 610], [446, 602], [452, 574], [464, 552], [468, 522], [480, 502], [486, 480], [494, 467], [501, 460], [507, 455.5], [512, 452.4], [516, 449.2], [520, 448.4], [524, 449.4], [528, 451.6], [533, 454.6], [538, 458.4], [544, 463], [548, 477], [558, 490], [561, 514], [575, 530], [579, 560], [594, 574], [599, 602], [617, 620], [626, 650], [648, 668], [670, 700], [710, 722], [760, 744], [804, 760]], 760, 89, 3);
     const farPeaks = () => K.cache('fg6_e1_farp', W, 360, 1, (g) => {
       // 世界 y = 400 .. 760
       g.translate(0, -400);
-      g.fillStyle = '#1a202c'; g.fill(FARP);
+      g.fillStyle = '#1d1c31'; g.fill(FARP);
       // 远峰脚下的云雾
       const fg = g.createLinearGradient(0, 590, 0, 660);
-      fg.addColorStop(0, 'rgba(36,44,58,0)'); fg.addColorStop(1, 'rgba(36,44,58,0.9)');
+      fg.addColorStop(0, 'rgba(40,40,64,0)'); fg.addColorStop(1, 'rgba(40,40,64,0.9)');
       g.fillStyle = fg; g.fillRect(0, 580, W, 180);
     });
     const midPeaks = () => K.cache('fg6_e1_midp', W, 360, 1, (g) => {
       g.translate(0, -400);
       // 比主峰远：颜色浅一层、偏蓝，脚下没进雾里
       const mc = g.createLinearGradient(0, 560, 0, 700);
-      mc.addColorStop(0, '#171c28'); mc.addColorStop(1, '#1d2431');
+      mc.addColorStop(0, '#18172a'); mc.addColorStop(1, '#1f1f35');
       g.fillStyle = mc; g.fill(MIDL); g.fill(MIDR);
       const mg = g.createLinearGradient(0, 600, 0, 720);
-      mg.addColorStop(0, 'rgba(30,36,48,0)'); mg.addColorStop(1, 'rgba(30,36,48,0.75)');
+      mg.addColorStop(0, 'rgba(32,32,52,0)'); mg.addColorStop(1, 'rgba(32,32,52,0.75)');
       g.save(); g.clip(MIDL); g.fillStyle = mg; g.fillRect(0, 560, W, 200); g.restore();
       g.save(); g.clip(MIDR); g.fillStyle = mg; g.fillRect(0, 560, W, 200); g.restore();
     });
     const mainPeak = () => K.cache('fg6_e1_main', 520, 320, 1, (g) => {
       // 世界 x = 290 .. 810, y = 440 .. 760
       g.translate(-290, -440);
-      g.fillStyle = '#0b0e15'; g.fill(MAIN);
+      g.fillStyle = '#0c0c17'; g.fill(MAIN);
       g.save(); g.clip(MAIN);
       // 石面：斧劈皴——一笔笔顺坡向外下方斜劈的长楔形，上宽下尖；亮面只比岩色略浅，旁边贴一道暗缝
       const r = rng(97);
@@ -1196,7 +1359,7 @@
         const ang = side * (0.2 + 0.35 * out + r() * 0.15);
         const len = 22 + r() * 54, w = (3 + r() * 6) * (0.7 + (y - 450) / 600);
         const lit = side < 0 ? 0.2 : 0.12;
-        wedge(x, y, ang, len, w * side, `rgba(44,50,66,${lit + r() * 0.05})`);
+        wedge(x, y, ang, len, w * side, `rgba(46,46,72,${lit + r() * 0.05})`);
         // 劈面外侧的暗缝
         wedge(x + side * w * 0.95, y + 2, ang, len * 0.85, w * 0.32 * side, 'rgba(0,0,0,0.25)');
       }
@@ -1222,7 +1385,7 @@
       return K.cache(key, box[2], box[3], 1, (g) => {
         g.translate(-box[0], -box[1]);
         if (blur) g.filter = 'blur(' + blur + 'px)';
-        g.fillStyle = '#d6e0f4';
+        g.fillStyle = RIMC;
         for (const p of paths) g.fill(p);
         g.globalCompositeOperation = 'destination-out';
         g.translate(-side * w, w * 0.7);
@@ -1250,7 +1413,7 @@
       g.filter = 'blur(10px)';
       for (let i = 0; i < 40; i++) {
         const x = r() * 1600, y = 60 + r() * 120, w = 80 + r() * 200;
-        g.fillStyle = rgba(k ? '#2c3444' : '#232a38', 0.35 + r() * 0.3);
+        g.fillStyle = rgba(k ? '#2f2e4a' : '#25243c', 0.35 + r() * 0.3);
         g.beginPath(); g.ellipse(x, y, w, 16 + r() * 22, 0, 0, TAU); g.fill();
       }
       g.filter = 'none';
@@ -1266,7 +1429,7 @@
       g.save();
       g.lineCap = 'round';
       for (const L of RAIN) {
-        g.strokeStyle = rgba('#b9c6dc', clamp(L.a * k));
+        g.strokeStyle = rgba('#bcc4e8', clamp(L.a * k));
         g.lineWidth = L.w;
         g.beginPath();
         const span = H + 160, spanX = W + 420;
@@ -1289,11 +1452,12 @@
         // 各道闪电的时刻与亮度
         let env = 0, cur = STRIKES[0], curE = 0;
         const fl = STRIKES.map((S) => {
-          const t0 = charAt(c, S.k, 0, FB);
-          const e = skyEnv(t - t0) * S.amp;
+          const cut = S.k < 0;
+          const t0 = cut ? 0 : charAt(c, S.k, 0, FB);
+          const e = skyEnv(t - t0, cut) * S.amp;
           if (t >= t0 - 0.3) cur = S;
           if (e > env) env = e;
-          return { S, t0, e, be: boltEnv(t - t0) };
+          return { S, t0, e, be: boltEnv(t - t0, cut) };
         });
         curE = fl.find((f) => f.S === cur).e;
         const tKong = charAt(c, 10, 0, FB);
@@ -1303,7 +1467,8 @@
         const sn = (v) => Math.round(v * Sx) / Sx;
         // 开镜的闪白里先建好闪电要用的贴图
         if (t < 0.2) {
-          fl.forEach((f, i) => { litOf(i, f.t0); boltTex(f.S.key, f.S.segs, f.S.box, f.S.y0); rimM(f.S.side); rimP(f.S.side); });
+          band();
+          fl.forEach((f, i) => { litOf(i, f.t0); boltTex(f.S.key, f.S.segs, f.S.box, f.S.y0, 1, BOLT_PAL); rimM(f.S.side); rimP(f.S.side); });
         }
         // 天空与远方云海
         g.drawImage(skyAll(), 0, 0, W, H);
@@ -1311,19 +1476,24 @@
         const ax = sn(-150 + 8 * t), bx = sn(-150 + 24 * t);
         g.drawImage(up('fg6_e1_cA', 1600, 600, cA), ax, -40, 1600, 600);
         g.drawImage(up('fg6_e1_cB', 1600, 600, cB), bx, -40, 1600, 600);
+        // 孤峰身后映亮的云底（静止的一条冷带，闪电之间也能把人物从天上分出来）
+        g.drawImage(up('fg6_e1_band', W, 260, band), 0, 220, W, 260);
         // 闪电照亮云层：浅色云层在闪电周围显出来，歌词区（x>980）最多提亮约 15%
         if (env > 0.004) {
           const S = cur, f0 = fl.find((f) => f.S === cur);
           g.save();
-          g.globalAlpha = clamp(0.42 * env);
+          g.globalAlpha = clamp(0.78 * env);
           g.drawImage(litOf(STRIKES.indexOf(S), f0.t0), ax, -40, 1600, 600);
           g.globalCompositeOperation = 'lighter';
           // 闪电周围的天光；右侧那道收小一些，不把歌词区照亮
-          const gr0 = S.side > 0 ? 240 : 340;
-          g.globalAlpha = clamp(0.27 * env);
-          putGlow(g, softTex('#8aa0d0'), S.x0 - (S.side > 0 ? 40 : 0), S.y0 + 60, gr0);
-          g.globalAlpha = clamp(0.32 * env);
-          putGlow(g, softTex('#7f92b8'), S.x1, S.y1, S.side > 0 ? 170 : 230);
+          const gr0 = S.side > 0 ? 240 : 360;
+          g.globalAlpha = clamp(0.34 * env);
+          putGlow(g, softTex('#8e9ce6'), S.x0 - (S.side > 0 ? 40 : 0), S.y0 + 60, gr0);
+          g.globalAlpha = clamp(0.34 * env);
+          putGlow(g, softTex('#8492cc'), S.x1, S.y1, S.side > 0 ? 170 : 240);
+          // 云层从里面被照亮：孤峰人物身后的云底也亮起来，剪影被衬出来
+          g.globalAlpha = clamp(0.3 * env);
+          putGlow(g, softTex('#8c98dc'), MAN.x + S.side * 40, 330, 250);
           g.restore();
         }
 
@@ -1334,7 +1504,7 @@
             if (f.be < 0.004 || !f.S.behind !== !behind) continue;
             const B = f.S.box;
             g.globalAlpha = clamp(f.be * (0.75 + 0.25 * f.S.amp));
-            g.drawImage(boltTex(f.S.key, f.S.segs, B, f.S.y0), B[0], B[1], B[2], B[3]);
+            g.drawImage(boltTex(f.S.key, f.S.segs, B, f.S.y0, 1, BOLT_PAL), B[0], B[1], B[2], B[3]);
           }
           g.restore();
         };
@@ -1359,14 +1529,32 @@
           g.drawImage(rimM(cur.side), BOXM[0], BOXM[1], BOXM[2], BOXM[3]);
           g.restore();
         }
-        g.fillStyle = 'rgba(0,0,0,0.5)';
-        g.beginPath(); g.ellipse(MAN.x, MAN.y + 1, 12, 2, 0, 0, TAU); g.fill();
+        // 脚下一小团柔和的暗影（没有亮边）
+        g.save(); g.globalAlpha = 0.7;
+        g.translate(MAN.x, MAN.y + 0.5); g.scale(1, 0.25);
+        putGlow(g, softTex('#04040a'), 0, 0, 7);
+        g.restore();
+        // 人物：整个剪影绕脚底向后仰一点（面朝左，向右仰）；闪电在哪边，哪边就有 2–3 px 的青白轮廓光
+        g.save();
+        g.translate(MAN.x, MAN.y); g.rotate(MAN.lean); g.translate(-MAN.x, -MAN.y);
         XYT.sil.draw(g, 'youth', 'laughSide', MAN.x, MAN.y, MAN.h, t + 3, {
-          facing: -1, wind: 1, windDir: 1, body: BODY, rim: mix(BODY, '#e2eaff', clamp(curE * 1.1)), rimSide: cur.side, rimWidth: 1.5,
+          facing: -1, wind: MAN.wind, windDir: 1, body: BODY, rim: mix(BODY, RIMC, clamp(curE * 1.15)), rimSide: cur.side, rimWidth: 2.4,
         });
+        g.restore();
+        // 脚下山尖的前沿石棱（压住鞋尖、鞋跟），迎闪电一侧的石棱上沿跟着亮
+        g.fillStyle = '#0c0c17'; g.fill(TIP);
+        if (curE > 0.004) {
+          g.save(); g.clip(TIP);
+          g.strokeStyle = rgba(RIMC, clamp(0.7 * curE)); g.lineWidth = 1.6;
+          g.beginPath();
+          if (cur.side < 0) { g.moveTo(499, 462); g.lineTo(503, 455.6); g.lineTo(507, 451.6); g.lineTo(509.6, 449.3); g.lineTo(512, 449.0); }
+          else { g.moveTo(528.6, 448.9); g.lineTo(531, 449.3); g.lineTo(534, 451.6); g.lineTo(538, 456.4); g.lineTo(541, 462); }
+          g.stroke();
+          g.restore();
+        }
 
         // 黑暗吞没：峰与人只剩极淡轮廓
-        if (dark > 0.002) { g.fillStyle = rgba('#03050a', 0.74 * dark); g.fillRect(0, 0, W, H); }
+        if (dark > 0.002) { g.fillStyle = rgba('#04040c', 0.74 * dark); g.fillRect(0, 0, W, H); }
         // 雨（闪电时被照亮，黑暗里变淡但不停）
         drawRain(g, t, (1 + 2.2 * env) * (1 - 0.45 * dark));
       },
@@ -1414,8 +1602,9 @@
     const mtFar = () => K.cache('fg6_e3_mfar', 900, 360, 0.5, (g) => {
       g.translate(90, -320);
       ridgeFill(g, RFAR, 680, '#29313c');
-      const fg = g.createLinearGradient(0, 400, 0, 480);
-      fg.addColorStop(0, 'rgba(34,42,51,0)'); fg.addColorStop(1, 'rgba(34,42,51,0.95)');
+      // 远山脚下一层冷雾（比中景山亮），闪电之间也看得出远山与中景山的轮廓
+      const fg = g.createLinearGradient(0, 396, 0, 486);
+      fg.addColorStop(0, 'rgba(52,62,76,0)'); fg.addColorStop(0.6, 'rgba(56,67,82,0.8)'); fg.addColorStop(1, 'rgba(58,70,86,0.95)');
       g.fillStyle = fg; g.fillRect(-90, 380, 900, 300);
     });
     const mtMid = () => K.cache('fg6_e3_mmid', 900, 300, 0.5, (g) => {
@@ -1432,8 +1621,8 @@
         }
       }
       g.restore();
-      const fg = g.createLinearGradient(0, 500, 0, 580);
-      fg.addColorStop(0, 'rgba(30,37,46,0)'); fg.addColorStop(1, 'rgba(30,37,46,0.9)');
+      const fg = g.createLinearGradient(0, 492, 0, 580);
+      fg.addColorStop(0, 'rgba(40,49,60,0)'); fg.addColorStop(0.65, 'rgba(44,54,66,0.78)'); fg.addColorStop(1, 'rgba(46,56,68,0.9)');
       g.fillStyle = fg; g.fillRect(-90, 480, 900, 260);
     });
     const mtNear = () => K.cache('fg6_e3_mnear', 900, 260, 0.5, (g) => {
@@ -1465,9 +1654,10 @@
     });
     // 山路：从远山垭口盘旋下来，过近丘，沿庙前地面通到门口；按远近分三段，各自被前面的山挡住
     const ROAD = [
-      { pts: [[330, 370], [350, 378], [292, 396], [352, 420], [318, 452]], w0: 0.8, w1: 1.7, seed: 31 },
-      { pts: [[300, 478], [338, 486], [262, 502], [350, 522], [296, 546], [372, 566]], w0: 1.6, w1: 2.8, seed: 32 },
-      { pts: [[296, 582], [392, 590], [338, 600], [470, 608], [566, 613], [648, 617]], w0: 3, w1: 6, seed: 33 },
+      { pts: [[330, 370], [350, 378], [292, 396], [352, 420], [318, 452]], w0: 1.6, w1: 3.0, seed: 31 },
+      { pts: [[300, 478], [338, 486], [262, 502], [350, 522], [296, 546], [372, 566]], w0: 3.0, w1: 4.6, seed: 32 },
+      // 近段：过近丘后沿庙前地面一直通到台阶前（人物脚下的门前）；台阶下沿是 y 616，路在它下面露出来
+      { pts: [[296, 582], [392, 590], [338, 600], [452, 610], [548, 618], [620, 621], [684, 622], [742, 620]], w0: 4.6, w1: 7.0, seed: 33 },
     ];
     // 每段路只缓存自己的外框（整张大图用 lighter 叠加很慢）
     ROAD.forEach((R) => {
@@ -1504,12 +1694,19 @@
         Lp.push([P[i][0] - ty * wl, P[i][1] + tx * wl]); Rp.push([P[i][0] + ty * wr, P[i][1] - tx * wr]);
       }
       g.filter = 'blur(0.3px)';
-      g.fillStyle = 'rgba(150,168,194,0.4)';
+      g.fillStyle = 'rgba(150,168,194,0.5)';
       g.beginPath();
       Lp.forEach((q, i) => (i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])));
       for (let i = n - 1; i >= 0; i--) g.lineTo(Rp[i][0], Rp[i][1]);
       g.closePath(); g.fill();
       g.filter = 'none';
+      // 湿路面映着天光：路心一道断续的亮水光
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(222,232,246,0.62)';
+      g.setLineDash([11, 4, 5, 7, 16, 5]);
+      g.lineWidth = Math.max(0.7, 0.32 * (R.w0 + R.w1) / 2);
+      g.beginPath(); P.forEach((q, i) => (i ? g.lineTo(q[0], q[1] - 0.15 * R.w1) : g.moveTo(q[0], q[1] - 0.15 * R.w1))); g.stroke();
+      g.setLineDash([]);
       // 几处被草木、土坎挡住的断口（两端渐隐，不是刀切）
       g.globalCompositeOperation = 'destination-out';
       for (let j = 0; j < 3; j++) {
@@ -1739,24 +1936,26 @@
       g.beginPath(); g.moveTo(HOOK.x, E(HOOK.x) - 2); g.lineTo(HOOK.x, HOOK.y); g.stroke();
     });
     // 檐下的暖光（墙、椽、台基），随灯焰明暗
-    const lampLight = () => K.cache('fg6_e3_lamp', 760, 760, 0.5, (g) => {
-      const cx = 380, cy = 380;
-      const gr = g.createRadialGradient(cx, cy, 0, cx, cy, 340);
-      gr.addColorStop(0, 'rgba(217,150,80,0.5)'); gr.addColorStop(0.2, 'rgba(190,124,60,0.24)'); gr.addColorStop(0.5, 'rgba(150,92,44,0.07)'); gr.addColorStop(1, 'rgba(120,80,40,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 760, 760);
+    // 暖金色是这一镜的主色：灯光照得更开、更暖（左边雨夜山野保持冷色，冷暖对照）
+    const LR = 400;
+    const lampLight = () => K.cache('fg6_e3_lamp2', 2 * LR, 2 * LR, 0.5, (g) => {
+      const cx = LR, cy = LR;
+      const gr = g.createRadialGradient(cx, cy, 0, cx, cy, LR);
+      gr.addColorStop(0, 'rgba(232,162,84,0.62)'); gr.addColorStop(0.16, 'rgba(214,140,66,0.34)'); gr.addColorStop(0.42, 'rgba(176,108,50,0.13)'); gr.addColorStop(0.72, 'rgba(140,86,40,0.04)'); gr.addColorStop(1, 'rgba(120,80,40,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 2 * LR, 2 * LR);
     });
     // 风灯悬于檐下：只照得到檐口以下（檐底、墙、地），照不到瓦面
+    // 照得到的范围：柱子以右的檐下（墙、柱、门），再加台阶面；台阶下沿（y 616）以下是歌词区，不受灯焰明暗影响
     const UNDER = new Path2D();
-    UNDER.moveTo(540, E(540));
-    for (let x = 560; x <= 1340; x += 40) UNDER.lineTo(x, E(x));
-    UNDER.lineTo(1340, 720); UNDER.lineTo(540, 720); UNDER.closePath();
-    // 只留光强 > 1% 的范围（半径约 290，上沿是檐口），合成面积小一半
+    UNDER.moveTo(628, E(628));
+    for (let x = 640; x <= 1340; x += 40) UNDER.lineTo(x, E(x));
+    UNDER.lineTo(1340, 616); UNDER.lineTo(566, 616); UNDER.lineTo(566, 600); UNDER.lineTo(628, 600); UNDER.closePath();
     const LCX = HOOK.x, LCY = HOOK.y + CORD + 18;
-    const LX = LCX - 290, LY = Math.floor(E(LCX + 290)) - 2, LW = 580, LH = LCY + 290 - LY;
-    const lampLit = () => K.cache('fg6_e3_lampc', LW, LH, 1, (g) => {
+    const LX = 566, LY = Math.floor(E(LCX + LR)) - 2, LW = Math.min(1340, LCX + LR) - 566, LH = 616 - LY;
+    const lampLit = () => K.cache('fg6_e3_lampc2', LW, LH, 1, (g) => {
       g.translate(-LX, -LY);
       g.clip(UNDER);
-      g.drawImage(lampLight(), LCX - 380, LCY - 380, 760, 760);
+      g.drawImage(lampLight(), LCX - LR, LCY - LR, 2 * LR, 2 * LR);
     });
     // 人挡住灯光，墙上留下的影子：灯在右上方，影子落在人左下方，按灯—人—墙的距离放大约 1.6 倍；
     // 纸罩有宽度，影子边缘是软的；只落到墙面（台基以上、檐底以下）
@@ -2050,7 +2249,7 @@
           g.drawImage(tc, Math.floor(X2 / 2) / Sx, -60, tc.width / Sx, tc.height / Sx);
         }
         // 檐下暖光
-        g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = clamp(0.8 * lamp);
+        g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = clamp(0.95 * lamp);
         g.drawImage(lampLit(), sn(LX + ox), LY, LW, LH);
         g.restore();
         // 墙上的人影：深浅随灯焰；灯向右摆时影子向左移（影子离灯更远，位移约为灯的一半、方向相反）
@@ -2103,6 +2302,30 @@
           }
         }
 
+        // 蓑衣下缘的草穗滴水：湿透的蓑衣在前后两处慢慢滴水（与斗笠的滴水错开），落到台阶上溅一点水花
+        for (const [dx, P, ph] of [[-21, 1.37, 0.2], [25, 1.61, 0.9], [21, 1.93, 1.5]]) {
+          const xd = mxp + dx, yd = MAN.y - 0.405 * MAN.h;
+          const u = pmod(t + ph, P);
+          const k = lampK(xd - ox, yd);
+          const col = mix('#9aa8b8', WARM2, clamp(k * 1.4));
+          if (u < 0.5) {
+            const rr = 0.5 + 1.1 * smooth(u / 0.5);
+            g.fillStyle = rgba(col, 0.7 * smooth(u / 0.15));
+            g.beginPath(); g.ellipse(xd, yd + rr * 0.8, rr * 0.75, rr, 0, 0, TAU); g.fill();
+          } else {
+            const v = u - 0.5, y = yd + 0.5 * 1224 * v * v;
+            if (y < STEP_Y) {
+              g.strokeStyle = rgba(col, 0.75); g.lineWidth = 1.3; g.lineCap = 'round';
+              g.beginPath(); g.moveTo(xd, y - Math.min(10, 2 + 1224 * v * 0.01)); g.lineTo(xd, y); g.stroke();
+            } else {
+              const sp = (v - Math.sqrt(2 * (STEP_Y - yd) / 1224)) / 0.28;
+              if (sp < 1) {
+                g.strokeStyle = rgba(col, 0.5 * (1 - sp)); g.lineWidth = 0.8;
+                g.beginPath(); g.ellipse(xd, STEP_Y, 1.2 + 5 * sp, 0.5 + 1.2 * sp, 0, Math.PI, TAU); g.stroke();
+              }
+            }
+          }
+        }
         // 风灯（摆动；纸罩内火焰）
         g.save();
         g.translate(HOOK.x + ox, HOOK.y);
@@ -2122,6 +2345,9 @@
         g.restore();
         g.globalAlpha = clamp(0.5 * lamp);
         putGlow(g, glowTex(WARM), 0, CORD + 26, 46);
+        // 灯外一圈大的暖色光晕（雨雾里的灯）
+        g.globalAlpha = clamp(0.24 * lamp);
+        putGlow(g, softTex('#e0a052'), 0, CORD + 26, 120);
         g.restore();
 
         // 檐口雨帘（在人物前面）
