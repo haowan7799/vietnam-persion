@@ -730,12 +730,6 @@
       for (let k = 0; k <= 12; k++) { const u = k / 12 * 0.96; g.lineTo(ax(u) - h * lerp(0.022, 0.004, u), y + 0.5 - h * u); }
       for (let k = 12; k >= 0; k--) { const u = k / 12 * 0.96; g.lineTo(ax(u) + h * lerp(0.022, 0.004, u), y + 0.5 - h * u); }
       g.closePath(); g.fill();
-      // 树冠的一层淡墨（把一层层枝团连成一棵树的整体）
-      g.fillStyle = rgba(inkL, 0.13);
-      g.beginPath(); g.moveTo(ax(1), y - h);
-      for (let k = 0; k <= 10; k++) { const u = 1 - k / 10 * 0.9; g.lineTo(ax(u) + h * (0.3 * Math.pow(1 - u, 0.9) + 0.02) * (0.9 + 0.2 * Math.sin(k * 2.1 + wob)), y - h * u); }
-      for (let k = 10; k >= 0; k--) { const u = 1 - k / 10 * 0.9; g.lineTo(ax(u) - h * (0.3 * Math.pow(1 - u, 0.9) + 0.02) * (0.9 + 0.2 * Math.sin(k * 1.7 + wob * 2)), y - h * u); }
-      g.closePath(); g.fill();
       // 枝团：低处的枝几乎垂到雪面，越往上越小越密；左右交错、长短不一
       const n = Math.max(5, Math.min(14, Math.round(h / 10)));
       const pads = [];
@@ -954,7 +948,7 @@
       blurInto(g, 1280, 720, 7, (q2) => {
         for (const [x, y, h] of trees) {
           const s = sOf(y), far = clamp(1 - s * 1.6);
-          q2.fillStyle = `rgba(70,76,84,${(0.09 * (1 - 0.7 * far)).toFixed(3)})`;
+          q2.fillStyle = `rgba(70,76,84,${(0.12 * (1 - 0.7 * far)).toFixed(3)})`;
           q2.beginPath(); q2.ellipse(x, y - h * 0.42, h * 0.3, h * 0.5, 0, 0, TAU); q2.fill();
         }
       });

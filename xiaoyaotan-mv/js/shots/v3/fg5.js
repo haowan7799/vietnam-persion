@@ -1856,12 +1856,13 @@
           g.restore();
           // 山间雾带
           const M = MIST[k];
-          g.globalAlpha = M.a; g.drawImage(mistTex(k), -160 + M.v * (t + 0.7), M.y, W + 240, 90); g.globalAlpha = 1;
+          if (!(window.__fg5skip || {}).mist) { g.globalAlpha = M.a; g.drawImage(mistTex(k), -160 + M.v * (t + 0.7), M.y, W + 240, 90); g.globalAlpha = 1; }
         }
         g.drawImage(ridgeTex(), 0, 250, W, 470);
-        drawTufts(g, t);
+        if (!(window.__fg5skip || {}).tufts) drawTufts(g, t);
         // 地影与高处的余晖
-        earthShadow(g, ysh);
+        const SK = window.__fg5skip || {};
+        if (!SK.shadow) earthShadow(g, ysh);
         // 城楼（低处，始终在地影里）
         g.drawImage(towerShadeTex(), 0, 310, 330, 340);
         // 山脊与墙顶的暖光：只在地影线以上
@@ -1885,7 +1886,7 @@
         drawPole(g, FLAG, ysh, t, 9, true);
         drawBanner(g, t, ysh);
         const lit = smooth((ysh - (MAN.y - MAN.h)) / (MAN.h * 0.9));
-        XYT.sil.draw(g, 'old', 'standSide', MAN.x, MAN.y, MAN.h, Math.max(0, t) + 2, { facing: 1, wind: 0.3, windDir: 1, body: '#18203a', rim: lit > 0.02 ? mix(WARM, WARM2, 0.5) : null, rimSide: 1, rimWidth: 2, alpha: 1 });
+        if (!SK.man) XYT.sil.draw(g, 'old', 'standSide', MAN.x, MAN.y, MAN.h, Math.max(0, t) + 2, { facing: 1, wind: 0.3, windDir: 1, body: '#18203a', rim: lit > 0.02 ? mix(WARM, WARM2, 0.5) : null, rimSide: 1, rimWidth: 2, alpha: 1 });
         // 烽台前沿的女墙与垛头：墙身挡到老人的大腿，垛头齐腰
         drawParapet(g, ysh);
         const wl = smooth((t - tLing) / 0.6);
@@ -1905,7 +1906,7 @@
           g.restore();
         }
         // 零星细雪
-        drawSnow(g, t);
+        if (!SK.snow) drawSnow(g, t);
         g.restore();
       },
     });
