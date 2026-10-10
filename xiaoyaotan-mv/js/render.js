@@ -11,6 +11,74 @@
     return { c, g: c.getContext('2d') };
   }
 
+  // 墨晕转场的遮罩：五团墨的并集，收进同一个 Path2D 一次填充（A.inkBlob 每次都会 beginPath，不能直接连用）。
+  // 轮廓只与种子有关，按角度预先算好、按种子缓存：粗噪声给墨团的大起伏，细噪声只向外凸，是墨渗进纸纹的“洇丝”；
+  // 噪声首尾混合成周期函数，0 与 2π 处半径相同（否则右侧会出现一道水平缺口）；
+  // 第一团在 p = 1 时盖满全画面（边缘起伏最多收缩到约 0.66 倍），转场结束时不留上一镜的残片
+  const INK_N = 512, INK_C = new Float32Array(INK_N + 1), INK_S = new Float32Array(INK_N + 1), inkProf = new Map();
+  for (let i = 0; i <= INK_N; i++) { INK_C[i] = Math.cos((i / INK_N) * TAU); INK_S[i] = Math.sin((i / INK_N) * TAU); }
+  function inkProfile(seed) {
+    let P = inkProf.get(seed);
+    if (P) return P;
+    P = [];
+    for (let k = 0; k < 5; k++) {
+      const x = 140 + h2(seed, k) * 1000, y = 120 + h2(seed, k + 9) * 480, sd = seed + k;
+      const R0 = k === 0 ? Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) / 0.66 : 950 * (0.55 + 0.45 * h2(seed, k + 3));
+      const fq = Math.min(R0 / 40, 26), m = new Float32Array(INK_N + 1), f = new Float32Array(INK_N + 1);
+      for (let i = 0; i <= INK_N; i++) {
+        const u = i / INK_N, a = u * TAU;
+        const per = (fr, s) => A.noise1(a * fr + sd, s) * (1 - u) + A.noise1((a - TAU) * fr + sd, s) * u;
+        m[i] = 1 + 0.28 * (per(1.6, sd) - 0.5) * 2 + 0.08 * (per(7, sd + 1) - 0.5);
+        f[i] = Math.pow(Math.max(0, (per(fq, sd + 2) - 0.5) * 2.4), 1.5);
+      }
+      // Rfull：半径到多大时，这一团（向内收 12 px、再留 8 px 柔边）沿每个方向都越过画框
+      let mMax = 0, fMax = 0, Rfull = 0;
+      for (let i = 0; i <= INK_N; i++) {
+        mMax = Math.max(mMax, m[i]); fMax = Math.max(fMax, f[i]);
+        const c = INK_C[i], s = INK_S[i];
+        const d = Math.min(c > 1e-6 ? (W - x) / c : c < -1e-6 ? -x / c : 1e9, s > 1e-6 ? (H - y) / s : s < -1e-6 ? -y / s : 1e9);
+        Rfull = Math.max(Rfull, (d + 8) / m[i] * 1.01 + 12);
+      }
+      P.push({ x, y, R0, m, f, mMax, fMax, Rfull });
+    }
+    if (inkProf.size > 16) inkProf.clear();
+    inkProf.set(seed, P);
+    return P;
+  }
+  // pad：整圈外扩的像素（可为负，向内收）；fib：洇丝最长的像素（小墨团按半径缩小，避免锯齿）
+  function inkPath(seed, p, pad, fib, step = 1) {
+    const path = new Path2D();
+    for (const b of inkProfile(seed)) {
+      const R = Math.max(0, p * p * b.R0 + pad), fa = fib * Math.min(1, R / 160);
+      for (let i = 0; i <= INK_N; i += step) {
+        const rr = R * b.m[i] + fa * b.f[i];
+        const px = b.x + INK_C[i] * rr, py = b.y + INK_S[i] * rr;
+        i ? path.lineTo(px, py) : path.moveTo(px, py);
+      }
+      path.closePath();
+    }
+    return path;
+  }
+
+  // 墨团在画面里的外接矩形（并集，含柔边余量，按 4 px 对齐）；为空返回 null；
+  // 第一团向内收 12 px 后仍盖满全画面时返回 'full'（遮罩处处为 1、水痕也全在画外）
+  function inkBox(seed, p, pad, fib) {
+    const P = inkProfile(seed), b0 = P[0];
+    if (p * p * b0.R0 >= b0.Rfull) return 'full';
+    let x0 = W, y0 = H, x1 = 0, y1 = 0;
+    for (const b of P) {
+      const R = Math.max(0, p * p * b.R0 + pad);
+      if (R <= 0) continue;
+      const r = R * b.mMax + fib * Math.min(1, R / 160) * b.fMax + 8;
+      x0 = Math.min(x0, b.x - r); y0 = Math.min(y0, b.y - r); x1 = Math.max(x1, b.x + r); y1 = Math.max(y1, b.y + r);
+    }
+    x0 = Math.max(0, Math.floor(x0 / 4) * 4); y0 = Math.max(0, Math.floor(y0 / 4) * 4);
+    x1 = Math.min(W, Math.ceil(x1 / 4) * 4); y1 = Math.min(H, Math.ceil(y1 / 4) * 4);
+    return x1 > x0 && y1 > y0 ? [x0, y0, x1 - x0, y1 - y0] : null;
+  }
+  // 1/4 分辨率缓冲里的一块放大到画面同一块
+  const blitBox = (g, src, b) => { const k = src.width / W; g.drawImage(src, b[0] * k, b[1] * k, b[2] * k, b[3] * k, b[0], b[1], b[2], b[3]); };
+
   class Renderer {
     constructor(canvas) {
       this.cv = canvas;
@@ -84,6 +152,17 @@
       return c;
     }
 
+    // 墨晕转场用的 1/4 分辨率缓冲（k = 0 遮罩，1 水痕）：清空并设好画面坐标
+    inkLayer(k) {
+      if (!this.inkBufs) this.inkBufs = [mkBuf(), mkBuf()];
+      const b = this.inkBufs[k], w = Math.round(W / 4), h = Math.round(H / 4);
+      if (b.c.width !== w || b.c.height !== h) { b.c.width = w; b.c.height = h; }
+      const x = b.g;
+      x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+      x.clearRect(0, 0, w, h); x.setTransform(w / W, 0, 0, h / H, 0, 0);
+      return x;
+    }
+
     // 转场：新场景画到缓冲，再用遮罩合成
     composite(g, type, p, seed, night, trans) {
       const gb = this.buf.g;
@@ -91,13 +170,17 @@
       gb.setTransform(this.S, 0, 0, this.S, 0, 0);
       gb.globalCompositeOperation = 'destination-in';
       if (type === 'ink') {
-        gb.fillStyle = '#fff';
-        gb.beginPath();
-        for (let k = 0; k < 5; k++) {
-          const x = 140 + h2(seed, k) * 1000, y = 120 + h2(seed, k + 9) * 480;
-          A.inkBlob(gb, x, y, p * p * 950 * (0.55 + 0.45 * h2(seed, k + 3)) + 4, seed + k);
+        // 遮罩画进 1/4 分辨率的缓冲再放大：边缘自然柔开约 4–8 px，像湿墨在纸上洇开的边，不是剪开的硬边
+        // 墨点从无到有：外扩量在转场最初 0.12 内长出来，第一帧不会突然冒出墨团
+        // 只在墨团的外接矩形里合成（软件光栅下整幅放大合成要 7–8 ms），矩形外上一镜原样保留
+        const gr = smooth(p / 0.12), box = (this.inkBoxNow = inkBox(seed, p, 4 * gr, 3 * gr));
+        if (box && box !== 'full') {
+          const mb = this.inkLayer(0);
+          mb.fillStyle = '#fff'; mb.fill(inkPath(seed, p, 4 * gr, 3 * gr));
+          gb.beginPath(); gb.rect(box[0], box[1], box[2], box[3]); gb.clip();
+          gb.imageSmoothingEnabled = true; gb.imageSmoothingQuality = 'low';
+          blitBox(gb, mb.canvas, box);
         }
-        gb.fill();
       } else if (type === 'iris') {
         const r = easeInOut(p) * 820 + 1;
         const gr = gb.createRadialGradient(640, 360, r * 0.75, 640, 360, r);
@@ -127,22 +210,33 @@
         gb.globalCompositeOperation = 'source-over';
       }
       gb.restore();
-      if (type === 'ink') {
-        g.fillStyle = rgba(night ? '#06070b' : '#15120f', 0.55 * (1 - p));
-        g.beginPath();
-        for (let k = 0; k < 5; k++) {
-          const x = 140 + h2(seed, k) * 1000, y = 120 + h2(seed, k + 9) * 480;
-          A.inkBlob(g, x, y, p * p * 950 * (0.55 + 0.45 * h2(seed, k + 3)) + 24, seed + k);
-        }
-        g.fill();
-      }
       if (type === 'fade') g.globalAlpha = smooth(p);
       if (type === 'fog') {
         g.fillStyle = rgba(night ? '#c8cde0' : '#f5efe2', 0.7 * Math.sin(Math.PI * p));
         g.fillRect(0, 0, W, H);
         g.globalAlpha = smooth(p);
       }
-      g.drawImage(this.buf.c, 0, 0, W, H);
+      if (type !== 'ink') g.drawImage(this.buf.c, 0, 0, W, H);
+      else if (this.inkBoxNow === 'full') g.drawImage(this.buf.c, 0, 0, W, H);
+      else if (this.inkBoxNow) {
+        const box = this.inkBoxNow;
+        g.save(); g.beginPath(); g.rect(box[0], box[1], box[2], box[3]); g.clip();
+        g.drawImage(this.buf.c, 0, 0, W, H);
+        // 水痕：只在新画面一侧，贴着洇开的边积一圈极淡的墨色（外缘最深、向内渐无），与遮罩同形同柔，不落到上一镜上
+        // 小墨团时最清楚，p = 0.8 前淡尽（之后不再画）
+        const ta = 0.18 * (1 - smooth(p / 0.8));
+        if (ta > 0.002) {
+          const gr = smooth(p / 0.12), tb = this.inkLayer(1);
+          tb.fillStyle = night ? '#06070b' : '#15120f'; tb.fill(inkPath(seed, p, 4 * gr, 3 * gr));
+          tb.globalCompositeOperation = 'destination-out';
+          tb.globalAlpha = 0.55; tb.fill(inkPath(seed, p, -3, 3 * gr, 2));
+          tb.globalAlpha = 1; tb.fill(inkPath(seed, p, -11, 3 * gr, 2));
+          tb.globalCompositeOperation = 'source-over';
+          g.globalAlpha = ta; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'low';
+          blitBox(g, tb.canvas, box);
+        }
+        g.restore();
+      }
       g.globalAlpha = 1;
       if (type && type.startsWith('wipe')) {
         // 横扫的前缘带一道有颜色的雾/雨/尘/浪
@@ -187,7 +281,7 @@
       const k = this.segIndex(t), seg = tl.segments[k], next = tl.segments[k + 1];
       const b = an.grid.info(t);
       let c = this.drawScene(g, seg, t, b);
-      let curScene = seg;
+      let curScene = seg, postNext = null, postK = 0;
       if (next && next.trans && t >= next.start - next.trans.dur) {
         const p = clamp((t - (next.start - next.trans.dur)) / next.trans.dur);
         const gb = this.buf.g;
@@ -198,6 +292,8 @@
         const nightNext = (XYT.scenes[next.scene] || {}).night;
         this.composite(g, next.trans.type, p, next.seed, nightNext, next.trans);
         if (p > 0.5) curScene = next;
+        // 后期（柔光、暗角、纸纹）随转场进度在两镜之间渐变，不在中点跳变
+        postNext = XYT.scenes[next.scene] || XYT.scenes.mist; postK = smooth(p);
       }
       if (seg.trans && seg.trans.type === 'flash' && t - seg.start < 0.17) {
         const u = clamp((t - seg.start) / 0.17);
@@ -211,7 +307,7 @@
       // 质检时可关掉歌词（XYT.QA.noLyrics），只看镜头本身的运动
       if (!(XYT.QA && XYT.QA.noLyrics)) this.lyrics(g, t);
       this.endCard(g, t);
-      this.post(g, t, sc);
+      this.post(g, t, postNext ? XYT.scenes[seg.scene] || XYT.scenes.mist : sc, postNext, postK);
     }
 
     overlays(g, t, c, sc) {
@@ -438,7 +534,9 @@
       if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); }
     }
 
-    post(g, t, sc) {
+    post(g, t, sc, sc2, k) {
+      // sc2/k：转场中的下一镜与进度，参数线性过渡
+      const mixP = (f) => (sc2 ? lerp(f(sc), f(sc2), k) : f(sc));
       // 柔光：缩小到 1/8 再自乘（压暗暗部、保留亮部），放大后以“滤色”叠回，亮处泛起光晕
       const bw = Math.max(16, Math.round(this.cv.width / 8)), bh = Math.max(9, Math.round(this.cv.height / 8));
       if (!this.bloom) this.bloom = mkBuf();
@@ -448,15 +546,20 @@
       bgx.globalCompositeOperation = 'copy'; bgx.drawImage(this.cv, 0, 0, bw, bh);
       bgx.globalCompositeOperation = 'multiply'; bgx.drawImage(this.bloom.c, 0, 0);
       g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
-      g.globalCompositeOperation = 'screen'; g.globalAlpha = sc.bloom != null ? sc.bloom : sc.night ? 0.5 : 0.28;
+      g.globalCompositeOperation = 'screen'; g.globalAlpha = mixP((s) => (s.bloom != null ? s.bloom : s.night ? 0.5 : 0.28));
       g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
       g.drawImage(this.bloom.c, 0, 0, this.cv.width, this.cv.height);
       g.restore();
-      g.globalAlpha = sc.night ? 0.8 : 0.45;
+      g.globalAlpha = mixP((s) => (s.night ? 0.8 : 0.45));
       g.drawImage(XYT.sprites.vignette, 0, 0, W, H);
-      g.globalAlpha = sc.night ? 0.06 : 0.16;
-      g.globalCompositeOperation = sc.night ? 'overlay' : 'multiply';
-      g.fillStyle = this.patMain; g.fillRect(0, 0, W, H);
+      g.fillStyle = this.patMain;
+      const grain = (night, w) => {
+        g.globalAlpha = (night ? 0.06 : 0.16) * w;
+        g.globalCompositeOperation = night ? 'overlay' : 'multiply';
+        g.fillRect(0, 0, W, H);
+      };
+      if (!sc2 || !sc.night === !sc2.night) grain(sc.night, 1);
+      else { grain(sc.night, 1 - k); grain(sc2.night, k); }
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     }
   }
