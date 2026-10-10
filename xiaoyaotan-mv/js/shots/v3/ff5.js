@@ -1893,7 +1893,7 @@
         if (t < f.tr) continue;
         const u = t - f.tr;
         if (u < f.tl) {
-          const ka0 = smooth(u / 0.45), kb = smooth(1 - (f.tl - u) / 0.25);
+          const ka0 = smooth(u / 0.25), kb = smooth(1 - (f.tl - u) / 0.25);
           const sL = lerp(f.L, f.sL, ka0), sW = lerp(f.q.Wd, f.sW, ka0), sx = lerp(1, flipF(f, u), ka0);
           const th = lerp(f.fth(u), f.thL, kb), sq = lerp(1, SQ, kb), e = ext(sL, sW, th, sx, sq);
           st8.push({ f, fall: true, ka0, x: f.fx(u), y: Math.min(f.fy(u), f.yl + 2 - e), th, sx, sq, sL, sW });
@@ -1930,7 +1930,7 @@
         drawLoose(g, loosePetalSprite(o.f.spr, false), o.x, o.y, o.th, o.sx, o.sq, o.sW, o.sL, o.f.wet ? 0.9 : 0.95);
       });
       st8.filter((o) => o.fall).forEach((o) => {
-        if (o.ka0 < 1) { g.globalAlpha = 1 - o.ka0; drawPetal(g, petalSprite(o.f.q.spr, o.f.q.dark), o.x, o.y, o.th, o.sx, 1, o.sW, o.sL, 'c', o.sq); g.globalAlpha = 1; }
+        if (o.ka0 < 1) { g.globalAlpha = (1 - o.ka0) * 0.7; drawPetal(g, petalSprite(o.f.q.spr, o.f.q.dark), o.x, o.y, o.th, o.sx, 1, o.sW, o.sL, 'c', o.sq); g.globalAlpha = 1; }
         drawLoose(g, loosePetalSprite(o.f.spr, false), o.x, o.y, o.th, o.sx, o.sq, o.sW, o.sL, o.ka0);
       });
       // 5) 还在花头上的花瓣：先铺一层晕开的淡红（没骨晕染的水气），再画花瓣

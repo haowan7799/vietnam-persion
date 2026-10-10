@@ -163,8 +163,8 @@
         const p0 = inner[0], pc = pts[cut], pe = pts[pts.length - 1];
         const dir = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy); return [dx / l, dy / l]; };
         const d1 = dir(p0, pe), d2 = dir(pc, pe);
-        const gL = grp({ parent, px: p0[0], py: p0[1], f: L.f[0], zt: 0.17, kw: 0.010, kt: 0.005, kl: 0.008, uy: d1[1], sx: Math.sign(d1[0]) });
-        const gS = grp({ parent: gL.id, px: pc[0], py: pc[1], f: L.f[1], zt: 0.13, kw: 0.03, kt: 0.018, kl: 0.022, uy: d2[1], sx: Math.sign(d2[0]) });
+        const gL = grp({ parent, big: parent < 0 ? 1 : 0, px: p0[0], py: p0[1], f: L.f[0] + 0.25, zt: 0.25, kw: 0.036, kt: 0.004, kl: 0.008, uy: d1[1], sx: Math.sign(d1[0]) });
+        const gS = grp({ parent: gL.id, big: 0, px: pc[0], py: pc[1], f: L.f[1] + 0.2, zt: 0.22, kw: 0.046, kt: 0.011, kl: 0.018, uy: d2[1], sx: Math.sign(d2[0]) });
         L.gi = gL.id;
         gL.segs.push({ pts: inner, lvl: 0 });
         gS.segs.push({ pts: outer, lvl: 0 });
@@ -349,16 +349,21 @@
         anc(cl.g, (k) => { for (let j = 0; j < n && i0 + j <= NS; j++) load[k][i0 + j] += cl.m / n / tot[k]; });
       }
       for (const L of load) { let s = 0; for (let i = 0; i <= NS; i++) { s += L[i]; L[i] = Math.max(0, 1 - s); } }
-      // 阻尼弹簧：阵风推、湍流摇、卸雪回弹
+      // 阻尼弹簧：每阵风一记短促的推力（0.05 秒起、约 0.3 秒落）把枝推向左，随后按弹簧回弹、衰减；
+      // 湍流随风势轻摇；积雪卸掉后平衡位置上抬（枝条回弹）。粗枝比细枝晚 0.07 秒
+      const kicks = [[e.du - 0.06, 0.75], [e.cheng - 0.06, 0.9], [e.hong - 0.08, 1.1]];
+      for (const b of e.beats) kicks.push([b - 0.04, 0.35]);
+      const kick = (t) => { let s = 0; for (const [tk, a] of kicks) { const u = t - tk; if (u > 0) s += a * (1 - Math.exp(-u / 0.05)) * Math.exp(-u / 0.28) * 1.65; } return s; };
       const th = G.map(() => new Float32Array(NS + 1));
       G.forEach((gp, k) => {
-        const w = TAU * gp.f, z = gp.zt, d = dl(gp.cx), sd = 17 + k * 7;
+        const w = TAU * gp.f, z = gp.zt, d = dl(gp.cx) + (gp.big ? 0.07 : 0), sd = 17 + k * 7;
+        const push = -gp.kw * (0.4 + 0.6 * Math.abs(gp.uy));
         let x = 0, v = 0;
         for (let i = 0; i <= NS; i++) {
           const t = T0 + i * DT, gg = gw(t - d);
-          const turb = 2 * noise1(t * 2.7 + k * 3.1, sd) - 1;
+          const turb = 2 * noise1(t * 3.4 + k * 3.1, sd) - 1;
           const breeze = 0.0015 * (2 * noise1(t * 0.55, sd + 1) - 1) * (gp.parent >= 0 ? 2 : 1);
-          const eq = gg * (gp.kw * gp.uy + gp.kt * turb) - gp.kl * gp.sx * (1 - load[k][i]) + breeze;
+          const eq = kick(t - d) * push + gg * gp.kt * turb - gp.kl * gp.sx * (1 - load[k][i]) + breeze;
           v += (w * w * (eq - x) - 2 * z * w * v) * DT;
           x += v * DT;
           th[k][i] = x;
@@ -387,7 +392,7 @@
         let tl = 3;
         for (let s = 0; s < 3; s += 0.005) { if (fallY(cl, s) >= cl.yg) { tl = s; break; } }
         cl.tl = tl;
-        cl.spin = (h2(cl.i, 34) - 0.5) * 4;
+        cl.spin = (h2(cl.i, 34) - 0.5) * (cl.early >= 0 ? 4 : 1.6);
       }
       // 成片抖落的雪粉：每组每批挑几个雪团当发射点
       const EM = [];
@@ -449,11 +454,11 @@
             ax: 2, wx: TAU * 0.8, px: 0, ay: 2, wy: TAU * 1.1, py: 0, spin: 1.2, rot: TAU * h2(sd, 56), wf: TAU * 0.9, pf: TAU * h2(sd, 58), size: 5 * ZTREE / z, col: 0 });
         }
       }
-      add(44, e.du, 0.6, 101, 0.8, 0.5);
-      add(50, e.cheng, 0.6, 202, 1.0, 0.35);
-      add(124, e.hong, 0.7, 303, 1.3, 0.24, 0.3);   // 第1句第14字：最大的一批，三成被托得更高，扫过左上的天空
-      e.beats.forEach((bt, k) => add(14, bt, 0.35, 404 + k * 17, 0.6));
-      for (let k = 0, t = e.du + 0.3; t < 8.6; k++, t += 0.12) add(1, t, 0.05, 900 + k, 0.45);
+      add(34, e.du, 0.6, 101, 0.8, 0.5);
+      add(36, e.cheng, 0.6, 202, 1.0, 0.35);
+      add(60, e.hong, 0.7, 303, 1.3, 0.24, 0.3);   // 第1句第14字：最大的一批，三成被托得更高，扫过左上的天空
+      e.beats.forEach((bt, k) => add(8, bt, 0.35, 404 + k * 17, 0.6));
+      for (let k = 0, t = e.du + 0.3; t < 8.6; k++, t += 0.18) add(1, t, 0.05, 900 + k, 0.45);
       // 花瓣出生位置与落地时间
       for (const p of P) {
         const m = mats(p.b)[p.g];
@@ -466,7 +471,44 @@
       }
       // 枝组各状态的贴图一次建好（实时预览时不在阵风中途卡顿）
       for (const gp of G) for (let k = 0; k <= gp.sws.length; k++) for (let part = 0; part < 3; part++) grpState(gp, k, e.key, part);
-      return { gw, D, gwSlow, thAt, mats, P, EM };
+      // 上风处（画右外）被阵风卷来的红瓣：三层景深——远（小、淡、慢，在树后）、中（与人同深）、近（大而虚、快，从人前掠过）。
+      // 大多从画面右缘进入；远、中两层有一部分在画面里从雪雾中 0.45 秒淡入。第1句第12字起零星，第14字后成片
+      const UP = [];
+      const LAY = [
+        { n: 44, z0: 16, z1: 34, y0: 178, y1: 455, u0: 70, u1: 130, v0: 8, v1: 20, inF: 0.45 },
+        { n: 46, z0: 5.6, z1: 10.5, y0: 215, y1: 560, u0: 220, u1: 360, v0: 24, v1: 58, inF: 0.4 },
+        { n: 18, z0: 2.3, z1: 3.6, y0: 255, y1: 590, u0: 480, u1: 690, v0: 36, v1: 80, inF: 0 },
+      ];
+      LAY.forEach((Ly, li) => {
+        for (let j = 0; j < Ly.n; j++) {
+          const sd = 9000 + li * 500 + j, q = (j + h2(sd, 1)) / Ly.n;
+          let te;
+          if (q < 0.15) te = e.du - 0.3 + (e.cheng - e.du) * (q / 0.15);
+          else if (q < 0.35) te = e.cheng - 0.3 + (e.hong - e.cheng) * ((q - 0.15) / 0.2);
+          else te = e.hong - 0.3 + (8.4 - e.hong) * Math.pow((q - 0.35) / 0.65, 1.3);
+          const z = Ly.z0 + (Ly.z1 - Ly.z0) * h2(sd, 2), k = ZTREE / z, inside = h2(sd, 3) < Ly.inF;
+          const u = Ly.u0 + (Ly.u1 - Ly.u0) * h2(sd, 4), whole = li === 1 && h2(sd, 5) < 0.12;
+          const p = {
+            te, z, yg: gyZ(z), li, inside, whole,
+            xe: inside ? 470 + 780 * h2(sd, 6) : W + 24 + 14 * k, ye: Ly.y0 + (Ly.y1 - Ly.y0) * h2(sd, 7),
+            u, vt: Ly.v0 + (Ly.v1 - Ly.v0) * h2(sd, 8), kd: u * 0.45, lk: [6, 26, 48][li] * (0.5 + h2(sd, 9)),
+            ax: [2, 6, 14][li] * (0.5 + h2(sd, 10)), wx: TAU * (0.5 + 0.6 * h2(sd, 11)), px: TAU * h2(sd, 12),
+            ay: [2.5, 7, 18][li] * (0.5 + h2(sd, 13)), wy: TAU * (0.6 + 0.8 * h2(sd, 14)), py: TAU * h2(sd, 15),
+            spin: (h2(sd, 16) < 0.5 ? -1 : 1) * (1.4 + 3 * h2(sd, 17)), rot: TAU * h2(sd, 18),
+            wf: TAU * (0.6 + 1.0 * h2(sd, 19)), pf: TAU * h2(sd, 20),
+            size: li === 0 ? Math.max(1.4, 3.6 * k) : li === 2 ? Math.min(12, (3.0 + 1.0 * h2(sd, 21)) * k) : (whole ? 5 : 3.3 + 1.3 * h2(sd, 21)) * k,
+            col: h2(sd, 22), a: li === 0 ? 0.5 + 0.25 * h2(sd, 23) : li === 2 ? 0.9 : 1,
+          };
+          p.De = D(te - dl(640));
+          p.tl = 1e9;
+          if (li === 1) {
+            for (let s2 = 0.05; s2 < 8; s2 += 0.05) { if (upPos(p, te + s2, D)[1] >= p.yg) { p.tl = s2; break; } }
+            if (p.tl < 1e9) { let lo = p.tl - 0.05, hi = p.tl; for (let it = 0; it < 10; it++) { const m = (lo + hi) / 2; if (upPos(p, te + m, D)[1] >= p.yg) hi = m; else lo = m; } p.tl = hi; p.lx2 = upPos(p, te + hi, D)[0]; }
+          }
+          UP.push(p);
+        }
+      });
+      return { gw, D, gwSlow, thAt, mats, P, EM, UP };
     }
     function slideDir(cl) {
       let ca = Math.cos(cl.a), sa = Math.sin(cl.a);
@@ -478,16 +520,16 @@
     const TT = VTC / GRAV;
     function fallY(cl, s) { return cl.fy + VTC * s + (cl.vy - VTC) * TT * (1 - Math.exp(-s / TT)); }
     function fallX(cl, s) { return cl.fx + cl.vx * 0.55 * (1 - Math.exp(-s / 0.55)) - 80 * s * s; }
-    // 雪团在空中存留的时长：滑落的小团一直落到地上；抖落的雪团在落地前散尽
-    const lifeOf = (cl) => (cl.early >= 0 ? cl.tl : Math.min(0.35 + 0.3 * h2(cl.i, 35), 0.95 * cl.tl));
-    const isChunk = (cl) => cl.early >= 0 || (cl.w >= 14 && h2(cl.i, 36) < 0.35);
+    // 雪团在空中存留的时长：滑落的小团一直落到地上；抖落的雪团成团下坠 0.3–0.5 秒后在空中崩散成雪粉
+    const lifeOf = (cl) => (cl.early >= 0 ? cl.tl : Math.min(0.3 + 0.2 * h2(cl.i, 35), 0.95 * cl.tl));
+    const BU = 0.55;   // 抖落的雪团在寿命的这一点开始崩散（雪粉从这里接替）
     // 下落中的雪团：位置、转角、缩放、透明度
     const XR = 0.12;   // 离枝后这段时间里雪团仍按所在枝组的前后次序画一份（被前面的枝挡住的部分不会一下子跳到最前）
     function coreXf(cl, s) {
       const early = cl.early >= 0, u = s / lifeOf(cl);
       const tilt = early ? (slideDir(cl)[0] > 0 ? 0.5 : -0.5) : 0;
-      const k = early ? 1 - 0.5 * smooth(s / cl.tl) : 1 - 0.65 * smooth(u);
-      return [fallX(cl, s), fallY(cl, s), cl.a + cl.th0 + tilt + cl.spin * s, k, early ? 1 : 1 - smooth((u - 0.6) / 0.4)];
+      const k = early ? 1 - 0.5 * smooth(s / cl.tl) : 1 + 0.3 * smooth((u - BU) / (1 - BU));
+      return [fallX(cl, s), fallY(cl, s), cl.a + cl.th0 + tilt + cl.spin * s, k, early ? 1 : 1 - smooth((u - BU) / (1 - BU))];
     }
     // 花瓣：水平速度随风、竖直有终速，阵风托起，带摆荡
     const TR = 0.3;
@@ -502,6 +544,12 @@
       const x = p.x0 - p.U0 * ramp - p.U1 * (D(t - p.dlb) - p.Db) * (1 - Math.exp(-s / TR))
         + p.ax * (Math.sin(p.wx * s + p.px) - Math.sin(p.px)) * (1 - Math.exp(-s / 0.5));
       return [x, petalY(p, s)];
+    }
+    // 上风红瓣的位置：匀速随风向左，阵风时多推一段、托高一点，带摆荡
+    function upPos(p, t, D) {
+      const s = t - p.te, Dg = D(t - dl(640)) - p.De;
+      return [p.xe - p.u * s - p.kd * Dg + p.ax * (Math.sin(p.wx * s + p.px) - Math.sin(p.px)),
+        p.ye + p.vt * s - p.lk * Dg + p.ay * (Math.sin(p.wy * s + p.py) - Math.sin(p.py))];
     }
     const getM = (e) => { let m = MEMO.get(e.key); if (!m) { if (MEMO.size > 4) MEMO.clear(); m = build(e); MEMO.set(e.key, m); } return m; };
 
@@ -890,8 +938,24 @@
       }
     }));
     // 霜褪去的时刻：滑落的小团在滑动中褪，抖落的雪团离枝即褪
-    const frostA = (cl, t) => (cl.early >= 0 ? 1 - smooth((t - cl.r + 0.14) / 0.2) : 1 - smooth((t - cl.r + 0.02) / 0.12));
-    const frostEnd = (cl) => (cl.early >= 0 ? cl.r + 0.06 : cl.r + 0.1);
+    const frostA = (cl, t) => 1 - smooth((t - cl.r + 0.14) / 0.2);
+    const frostEnd = (cl) => (cl.early >= 0 ? cl.r + 0.06 : cl.r + 0.4);
+    // 抖落的雪团：霜跟着离去的雪团被揭开——雪团离开一朵花越远，这朵花上的霜越淡（顺着雪团离去的方向依次露出）
+    function frostWipe(g, cl, L, t) {
+      const s = t - cl.r;
+      let dx = 0, dy = 0;
+      if (s > 0) { dx = fallX(cl, s) - cl.fx; dy = fallY(cl, s) - cl.fy; }
+      const tc = s > 0 ? 1 - smooth((s - 0.22) / 0.16) : 1;
+      if (tc < 0.003) return;
+      const cx = cl.x, cy = cl.y - 0.25 * cl.h, rx = 0.55 * cl.w + 1.5, ry = 0.55 * cl.h + 1.5;
+      for (const o of L) {
+        const ux = (o.x - cx) / rx, uy = (o.y - cy) / ry;
+        const r0 = Math.hypot(ux, uy), r1 = Math.hypot(ux - dx / rx, uy - dy / ry);
+        const a = tc * (1 - smooth((r1 - Math.max(r0, 0.35)) / 0.6));
+        if (a < 0.003) continue;
+        g.globalAlpha = a; g.fillStyle = frostCol(o); g.fill(frostPath(o));
+      }
+    }
     // 雪团：不规则的软团，上白下影，底缘一线冷灰
     const clumpSpr = (v) => K.cache('f8:clump' + v, 40, 26, 1.6, (g) => {
       const r = A.rng(6600 + v);
@@ -912,6 +976,30 @@
         b.restore();
       });
     });
+    // 离枝后的雪团：不规则的圆团（几团软球叠成），上白下影，边缘略虚
+    const lumpSpr = (v) => K.cache('f8:lump' + v, 32, 32, 1.6, (g) => {
+      const r = A.rng(6700 + v), path = new Path2D();
+      path.arc(16, 17, 8.5, 0, TAU);
+      const n = 4 + (r() * 3 | 0);
+      for (let i = 0; i < n; i++) {
+        const a = r() * TAU, d = 3 + r() * 4, rr = 4 + r() * 3.5, x = 16 + Math.cos(a) * d, y = 17 + Math.sin(a) * d * 0.8;
+        path.moveTo(x + rr, y); path.arc(x, y, rr, 0, TAU);
+      }
+      blurInto(g, 32, 32, 0.7, (b) => {
+        const gr = b.createLinearGradient(0, 6, 0, 28);
+        gr.addColorStop(0, '#fbfcfd'); gr.addColorStop(0.55, '#eceff3'); gr.addColorStop(1, '#bcc6d2');
+        b.fillStyle = gr; b.fill(path);
+      });
+    });
+    // 下落中的雪团：离枝的 0.1 秒里从枝上的雪条形状松成一个圆团（抖落的）；滑落的小团保持原形
+    function drawFalling(g, B, C1, cl, s, am) {
+      const [x, y, a, k, al] = coreXf(cl, s), A0 = al * am;
+      if (A0 < 0.004) return;
+      if (cl.early >= 0) { g.globalAlpha = A0; setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26); return; }
+      const d = 0.8 * cl.w * k, ml = smooth(s / 0.07), mc = 1 - smooth((s - 0.03) / 0.12);
+      if (ml > 0.004) { g.globalAlpha = A0 * ml; setT(g, B, mul(C1, trs(x, y - 0.25 * cl.h, a * 0.5, d / 32, d * 0.82 / 32))); g.drawImage(lumpSpr(cl.v), -16, -17, 32, 32); }
+      if (mc > 0.004) { g.globalAlpha = A0 * mc; setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26); }
+    }
     // 柔光圆点（雪片、雪粉）
     const dot = (col, core) => K.cache(`f8dot:${col}:${core}`, 64, 64, 1, (g) => {
       const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -940,6 +1028,10 @@
       g.bezierCurveTo(1.5, 12, 1.5, 3.5, 6.2, 2); g.quadraticCurveTo(8, 3.4, 9.8, 2);
       g.bezierCurveTo(14.5, 3.5, 14.5, 12, 8, 14.5); g.fill();
     });
+    // 近处的花瓣：离镜头近、在焦外，预先模糊
+    const petalBlur = (v) => K.cache('f8:petalB' + v, 24, 24, 2, (g) => {
+      blurInto(g, 24, 24, 1.3, (b) => { b.drawImage(petalSpr(v), 4, 4, 16, 16); });
+    });
     const flowerSpr = () => K.cache('f8:flower', 20, 20, 3, (g) => drawBlossom(g, { x: 10, y: 10, rad: 7.2, kind: 0, rot: 0.3, pos: 0, sq: 1 }));
     // 前景：近处两道雪坎（略虚）
     const fgLayer = () => K.cache('f8:fg', W + 120, 140, 0.75, (g) => {
@@ -963,16 +1055,39 @@
       });
     });
 
-    // 暖色罩：强度直接存在贴图的透明度里（约 0.07，带固定细噪），每帧只调 globalAlpha（0–1）。
-    // globalAlpha 只有 8 位精度：强度若放在 globalAlpha 里，整幅会每隔几帧一起跳一级色阶
-    const warmTex = () => K.cache('f8:warm', W, H, 1, (g) => {
-      const cv = g.canvas, id = g.createImageData(cv.width, cv.height), d = id.data;
-      let s = 97531;
-      for (let i = 0; i < d.length; i += 4) {
-        s = (Math.imul(s, 1103515245) + 12345) | 0;
-        d[i] = 255; d[i + 1] = 196; d[i + 2] = 176; d[i + 3] = 15 + ((s >>> 16) % 6);
+    // 红梅露出后的暖调：整幅先乘一层 #f2d0c8（雪的亮部转向暖粉、冷灰褪去），再在树冠周围滤色叠一团很淡的暖红，像满树红花映出的光
+    const warmGlow = () => K.cache('f8:warmglow', W, H, 0.5, (g) => {
+      let gr = g.createRadialGradient(470, 360, 0, 470, 360, 620);
+      gr.addColorStop(0, 'rgba(255,150,118,0.2)'); gr.addColorStop(0.45, 'rgba(255,165,135,0.1)'); gr.addColorStop(1, 'rgba(255,170,140,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      gr = g.createLinearGradient(0, 470, 0, H);
+      gr.addColorStop(0, 'rgba(255,170,150,0)'); gr.addColorStop(1, 'rgba(255,170,150,0.06)');
+      g.fillStyle = gr; g.fillRect(0, 470, W, H - 470);
+    });
+    // 雪地上的落红：围着树根、人脚边最密，顺风（向左）拖开，远处零星；分五层，随花瓣落下一层层淡入
+    const SCAT_Y = 556;
+    const scatterLayer = (k) => K.cache('f8:scat' + k, W + 120, H - SCAT_Y, 1, (g) => {
+      g.translate(60, -SCAT_Y);
+      const r = A.rng(8200 + k), nrm = () => (r() + r() + r() - 1.5) / 0.5;
+      for (let i = 0; i < 38; i++) {
+        const c = r();
+        let z, x;
+        if (c < 0.42) { z = ZTREE + 1.1 * nrm(); const u = nrm(); x = 432 + 105 * u - 70 * Math.abs(u); }
+        else if (c < 0.72) { z = ZMAN + 0.8 * nrm(); const u = nrm(); x = 748 + 70 * u - 45 * Math.abs(u); }
+        else { z = 5.5 + 16 * r(); x = -40 + (W + 80) * r(); }
+        z = clamp(z, 4.2, 40);
+        const y = gyZ(z), kk = ZTREE / z;
+        if (y < SCAT_Y + 4 || y > H + 6) continue;
+        if (Math.abs(x - MAN.x) < 20 && Math.abs(y - MAN.y) < 4) continue;
+        const rx = (1.5 + 1.5 * r()) * kk, ry = rx * (0.32 + 0.22 * r()), rot = (r() - 0.5) * 0.9;
+        const base = r() < 0.2 ? '#9c2030' : mix('#b8192c', '#d63a3c', r());
+        g.save(); g.translate(x, y); g.rotate(rot);
+        g.globalAlpha = 0.75 + 0.25 * r();
+        g.fillStyle = 'rgba(120,40,52,0.18)'; g.beginPath(); g.ellipse(0.4 * kk, 0.5 * kk, rx * 1.05, ry * 1.1, 0, 0, TAU); g.fill();
+        g.fillStyle = base; g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(255,140,120,0.45)'; g.beginPath(); g.ellipse(-0.3 * rx, -0.25 * ry, rx * 0.45, ry * 0.45, 0, 0, TAU); g.fill();
+        g.restore();
       }
-      g.putImageData(id, 0, 0);
     });
     // ---------------- 每帧绘制的部件 ----------------
     // 雪：远处两层平铺的雪点贴图，中景粒子，近处少量大而虚的雪片
@@ -1019,7 +1134,7 @@
       });
       g.globalAlpha = 1; g.setTransform(B);
     }
-    function midSnow(g, B, cam, t, D, dens, near, tDu) {
+    function midSnow(g, B, cam, t, D, dens, near, tDu, tHong) {
       setT(g, B, cam);
       const sp = dot('#f7f9fb', near ? 0.35 : 0.5);
       const n = near ? 18 : 110, span = H + 80, wid = W + 120;
@@ -1029,6 +1144,7 @@
         let a = near ? 0.4 + 0.2 * h2(sd, 1) : 0.62 + 0.35 * h2(sd, 1);
         if (boost) a *= smooth((dens - 0.6 * h2(sd, 9)) / 0.4);
         if (!near && i >= 72) a *= 1 - smooth((t - tDu - 0.3 * h2(sd, 10)) / 0.4);   // 第1句第12字后让出粒子名额给花瓣
+        else if (!near && i >= 52) a *= 1 - smooth((t - tHong - 0.4 * h2(sd, 10)) / 0.5);   // 第14字后再让出一些
         if (a < 0.01) continue;
         const vy = near ? 200 + 60 * h2(sd, 2) : 88 + 40 * h2(sd, 2), vx = near ? 160 + 50 * h2(sd, 3) : 70 + 32 * h2(sd, 3);
         const kd = near ? 300 : 170;
@@ -1112,7 +1228,7 @@
       draw(g, c) {
         const t = c.lt, dur = c.dur;
         const e = events(c), M = getM(e), D = M.D;
-        XYT._f8dbg = { M, G, CL, e };
+        XYT._f8dbg = { M, G, CL, e, petalPos, upPos };
         const B = g.getTransform();
         // 镜头：整镜 1.00 → 1.07 缓推；远景视差慢、近景快
         const Z = 1 + 0.07 * smooth((t + 0.7) / (dur + 0.7));
@@ -1123,10 +1239,44 @@
         g.setTransform(B); g.drawImage(bgLayer(), -60, -40, W + 120, 560);
         farSnow(g, B, t, D, dens);
         setT(g, B, C1); g.drawImage(groundLayer(), -60, HOR - 6, W + 120, H - HOR + 60);
+        const SCT = [e.du + 0.55, e.cheng + 0.35, e.hong + 0.12, e.hong + 0.42, e.hong + 0.75];
+        for (let k = 0; k < 5; k++) {
+          const a = smooth((t - SCT[k]) / 0.5);
+          if (a > 0.004) { g.globalAlpha = a; g.drawImage(scatterLayer(k), -60, SCAT_Y, W + 120, H - SCAT_Y); }
+        }
+        g.globalAlpha = 1;
         const MS = M.mats(t);
         // 花瓣（按景深分三档：树后、树与人之间、人前）
         const petals = (zMin, zMax) => {
           const ps = petalSpr(0), fl = flowerSpr();
+          const C3 = cam(1.3);
+          const drawP = (x, y, rot, sx, sy, sz, a, whole, col, li) => {
+            if (y < 150) { a *= 0.35 + 0.65 * smooth((y - 90) / 60); sz *= 0.8; }   // 歌词区里小而淡
+            if (a < 0.004) return;
+            g.globalAlpha = a;
+            const Mg = mul(li === 2 ? C3 : C1, trs(x, y, 0, 1, sy));
+            if (whole) { setT(g, B, mul(Mg, trs(0, 0, rot, sz / 10 * sx, sz / 10))); g.drawImage(fl, -10, -10, 20, 20); return; }
+            const v = col < 0.6 ? 0 : col < 0.85 ? 1 : 2;
+            setT(g, B, mul(Mg, trs(0, 0, rot, sz / 7 * sx, sz / 7)));
+            if (li === 2) g.drawImage(petalBlur(v), -12, -12, 24, 24);
+            else g.drawImage(v ? petalSpr(v) : ps, -8, -8, 16, 16);
+          };
+          for (let i = 0; i < M.UP.length; i++) {
+            const p = M.UP[i];
+            if (p.z <= zMin || p.z > zMax || t < p.te) continue;
+            const s = t - p.te;
+            const flip = (v) => { const f = Math.cos(p.wf * v + p.pf); return Math.sign(f || 1) * Math.max(0.22, Math.abs(f)); };
+            const a = p.a * smooth(s / (p.inside ? 0.45 : 0.15));
+            if (s >= p.tl) {
+              const v = s - p.tl, u = smooth(v / 0.18), fL = flip(p.tl);
+              if (p.lx2 < -30 || p.lx2 > W + 30) continue;
+              drawP(p.lx2, p.yg, p.rot + p.spin * p.tl + p.spin * 0.06 * (1 - Math.exp(-v / 0.06)), lerp(fL, Math.sign(fL), u), 1 - 0.58 * u, p.size, a, p.whole, p.col, p.li);
+              continue;
+            }
+            const q = upPos(p, t, D);
+            if (q[0] < -40 || q[0] > W + 40 || q[1] > H + 30) continue;
+            drawP(q[0], q[1], p.rot + p.spin * s, flip(s), 1, p.size, a, p.whole, p.col, p.li);
+          }
           for (let i = 0; i < M.P.length; i++) {
             const p = M.P[i];
             if (p.z <= zMin || p.z > zMax || t < p.b) continue;
@@ -1144,12 +1294,7 @@
               sx = flip(s); sy = 1;
             }
             if (x < -30 || x > W + 30 || y > H + 20) continue;
-            if (y < 150) a *= 0.35 + 0.65 * smooth((y - 90) / 60);   // 歌词区里小而淡
-            const sz = p.size * (y < 150 ? 0.8 : 1);
-            g.globalAlpha = a;
-            const Mg = mul(C1, trs(x, y, 0, 1, sy));
-            if (p.whole) { setT(g, B, mul(Mg, trs(0, 0, rot, sz / 10 * sx, sz / 10))); g.drawImage(fl, -10, -10, 20, 20); }
-            else { setT(g, B, mul(Mg, trs(0, 0, rot, sz / 7 * sx, sz / 7))); g.drawImage(p.col < 0.6 ? ps : petalSpr(p.col < 0.85 ? 1 : 2), -8, -8, 16, 16); }
+            drawP(x, y, rot, sx, sy, p.size, a, p.whole, p.col, 1);
           }
           g.globalAlpha = 1;
         };
@@ -1171,6 +1316,7 @@
               if (cl.sw > t || t >= frostEnd(cl)) continue;
               const L = part === 0 ? cl.hbB : cl.hbF;
               if (!L.length) continue;
+              if (cl.early < 0) { frostWipe(g, cl, L, t); continue; }
               g.globalAlpha = frostA(cl, t);
               if (g.globalAlpha > 0.003) drawFrost(g, L);
             }
@@ -1191,14 +1337,7 @@
           if (k > 0) for (const cl of gp.clumps) {
             const s = t - cl.r;
             if (s < 0 || s >= XR) continue;
-            if (isChunk(cl)) {
-              const [x, y, a, kk, al] = coreXf(cl, s);
-              g.globalAlpha = al; setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * kk, cl.h / 26 * kk)));
-            } else {
-              const x = fallX(cl, Math.min(s, 0.1)) - 70 * s, y = fallY(cl, Math.min(s, 0.1)) + 30 * s, kk = 1 + 0.25 * smooth(s / XR);
-              g.globalAlpha = 1 - smooth(s / XR); setT(g, B, mul(C1, trs(x, y, cl.a + cl.th0, cl.w / 40 * kk, cl.h / 26 * kk)));
-            }
-            g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
+            drawFalling(g, B, C1, cl, s, 1);
           }
           g.globalAlpha = 1;
         }
@@ -1233,26 +1372,36 @@
             const y = ye + 55 * age + (160 + GRAV * d) * 0.4 * (1 - Math.exp(-age / 0.4));
             const R = em.w * (0.6 + 0.3 * j) + 34 * Math.pow(age, 0.6);
             const st = 1 + 1.1 * Math.exp(-age / 0.4);
-            puffAt(x, y, R, R * st, 0.24 * smooth(age / 0.12) * (1 - smooth((age - 0.2) / 1.2)));
+            puffAt(x, y, R, R * st, 0.2 * smooth(age / 0.12) * (1 - smooth((age - 0.2) / 1.2)));
           }
         }
         for (const cl of CL) {
           if (t < cl.r) continue;
           const s = t - cl.r;
-          if (s > cl.tl + 1.4) continue;
-          const early = cl.early >= 0, chunk = isChunk(cl);
-          // 小雪团一离枝就散成一小团粉；大团下坠中渐渐散小
-          const life = lifeOf(cl);
-          if (!chunk) {
-            if (s > 0.45) continue;
-            // 离枝的一刻就是一团白，随即散开、变淡
-            const x = fallX(cl, Math.min(s, 0.1)) - 70 * s, y = fallY(cl, Math.min(s, 0.1)) + 30 * s;
-            const R = 0.55 * cl.w + 18 * Math.pow(s, 0.6);
-            puffAt(x, y - 0.25 * cl.h, R, R * 0.8, 0.85 * smooth(s / 0.07) * (1 - smooth(s / 0.45)));
+          const early = cl.early >= 0, life = lifeOf(cl);
+          if (s > (early ? cl.tl + 1.4 : life + 1.0)) continue;
+          if (!early) {
+            // 成团下坠，到寿命的 BU 处在空中崩散：一团雪粉从雪团的位置接替它，被风带向左、散开、沉降、淡去
+            const te = BU * life, age = s - te;
+            if (age > 0 && age < 0.95) {
+              const x0 = fallX(cl, te), y0 = fallY(cl, te) - 0.22 * cl.h;
+              const x = x0 - 55 * age - 120 * (D(t - dl(x0)) - D(cl.r + te - dl(x0)));
+              const y = y0 + 18 * (1 - Math.exp(-age / 0.25)) + 22 * age;
+              const R = 0.5 * cl.w + 3 + 28 * Math.pow(age, 0.6);
+              puffAt(x, y, R, R * 0.85, (0.26 + 0.2 * clamp((cl.w - 8) / 20)) * smooth(age / 0.08) * (1 - smooth(age / 0.95)));
+            }
+            // 下坠途中身后拖出的一小团雪粉
+            const ta = s - 0.1;
+            if (ta > 0 && ta < 0.6 && life > 0.1) {
+              const x0 = fallX(cl, 0.1), y0 = fallY(cl, 0.1) - 0.2 * cl.h;
+              const R = 0.35 * cl.w + 2 + 18 * Math.pow(ta, 0.6);
+              puffAt(x0 - 50 * ta - 100 * (D(t - dl(x0)) - D(cl.r + 0.1 - dl(x0))), y0 + 14 * ta, R, R * 0.9, 0.16 * smooth(ta / 0.06) * (1 - smooth(ta / 0.6)));
+            }
+            if (s < life) cores.push(cl);
             continue;
           }
-          // 雪团身后的一串雪粉
-          const step = early ? 0.06 : 0.12, plife = early ? 1.1 : 0.6;
+          // 滑落的小团身后的一串雪粉
+          const step = 0.06, plife = 1.1;
           for (let te = step; te <= Math.min(s, life); te += step) {
             const age = s - te;
             if (age > plife) continue;
@@ -1262,7 +1411,7 @@
             const R = 2 + 0.3 * cl.w + 26 * Math.pow(age, 0.7);
             puffAt(x, y, R, R, 0.3 * (1 - age / plife) * smooth(age / 0.06));
           }
-          if (s < life || (early && s < cl.tl + 0.5)) cores.push(cl);
+          if (s < cl.tl + 0.5) cores.push(cl);
           if (early && s > cl.tl - 0.06 && s < cl.tl + 0.5) { // 快落地时地上渐显一小片冷影，落地后随雪团一起淡去
             const age = s - cl.tl, rx = 0.42 * cl.w + 4;
             const sa = 0.25 * smooth((age + 0.06) / 0.07) * (1 - smooth(age / 0.5));
@@ -1300,11 +1449,7 @@
             g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
             continue;
           }
-          const [x, y, a, k, al] = coreXf(cl, s);
-          g.globalAlpha = al * smooth(s / XR);   // 最前面这一份渐显；组内那一份保证没被挡住的地方始终不透明
-          if (g.globalAlpha < 0.004) continue;
-          setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k)));
-          g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
+          drawFalling(g, B, C1, cl, s, smooth(s / XR));   // 最前面这一份渐显；组内那一份保证没被挡住的地方始终不透明
         }
         g.globalAlpha = 1;
         petals(ZMAN, ZTREE + 0.2);
@@ -1313,23 +1458,43 @@
         const shg = g.createRadialGradient(0, 0, 0, 0, 0, 1);
         shg.addColorStop(0, 'rgba(96,108,126,0.42)'); shg.addColorStop(0.6, 'rgba(110,122,140,0.16)'); shg.addColorStop(1, 'rgba(110,122,140,0)');
         g.save(); g.translate(MAN.x + 6, MAN.y + 1); g.scale(46, 7); g.fillStyle = shg; g.beginPath(); g.arc(0, 0, 1, 0, TAU); g.fill(); g.restore();
+        // 衣摆、散发：阵风里把 sil 的风力推到上限 1（sil 的背影站姿本身摆幅很小，这里已是它允许的最大值）；
+        // 肩头、发髻上的积雪随每阵风被吹薄
+        const snowMan = 0.5 - 0.12 * smooth((t - e.du - 0.05) / 0.6) - 0.08 * smooth((t - e.cheng - 0.05) / 0.6) - 0.1 * smooth((t - e.hong - 0.05) / 0.6);
         XYT.sil.draw(g, 'old', 'standBack', MAN.x, MAN.y, MAN.h, t + 40, {
-          facing: 1, wind: clamp(0.5 + 0.2 * M.gwSlow(t - dl(MAN.x))), windDir: -1,
-          body: '#3b3f4a', rim: '#eef2f6', rimSide: -1, snow: 0.5,
+          facing: 1, wind: clamp(0.55 + 0.45 * M.gwSlow(t - dl(MAN.x))), windDir: -1,
+          body: '#3b3f4a', rim: '#eef2f6', rimSide: -1, snow: snowMan,
         });
         setT(g, B, C1);
         g.fillStyle = 'rgba(229,233,237,0.9)';
         g.beginPath(); g.ellipse(MAN.x, MAN.y + 1.2, 17, 1.7, 0, 0, TAU); g.fill();
+        // 阵风从肩头、发髻上吹起的雪粉，向左飘散
+        for (const [tg0, amp] of [[e.du, 0.3], [e.cheng, 0.34], [e.hong, 0.42]]) {
+          const tg = tg0 + dl(MAN.x) - 0.02, age = t - tg;
+          if (age < 0 || age > 1.3) continue;
+          for (const [ox, oy, rr] of [[-21, -178, 6], [21, -178, 6], [0, -214, 4.5]]) {
+            const x0 = MAN.x + ox, y0 = MAN.y + oy;
+            const x = x0 - 55 * age - 90 * (D(t - dl(x0)) - D(tg - dl(x0))), y = y0 - 5 * Math.sin(Math.min(age, 0.5) * Math.PI) + 14 * age;
+            const R = rr + 20 * Math.pow(age, 0.6), sx = 1 + 0.8 * smooth(age / 0.5);   // 被风拉成向左的一缕
+            g.globalAlpha = amp * smooth(age / 0.1) * (1 - smooth(age / 1.3));
+            g.drawImage(pf, x - R * sx * 1.3, y - 0.7 * R, 2 * R * sx, 1.4 * R);
+          }
+        }
+        g.globalAlpha = 1;
         petals(-99, ZMAN);
         // 中景雪、前景、近处大雪片
-        midSnow(g, B, C1, t, D, dens, false, e.du);
+        midSnow(g, B, C1, t, D, dens, false, e.du, e.hong);
         setT(g, B, cam(1.25)); g.drawImage(fgLayer(), -60, 600, W + 120, 140);
         grass(g, B, cam(1.25), t, M.gw);
-        midSnow(g, B, cam(1.3), t, D, dens, true, e.du);
+        midSnow(g, B, cam(1.3), t, D, dens, true, e.du, e.hong);
         // 色调：开头冷灰，满树红梅露出后转暖一点
         g.setTransform(B);
-        const warm = 0.35 * smooth((t - e.du) / 0.9) + 0.65 * smooth((t - e.hong) / 1.3);
-        if (warm > 0.004) { g.globalAlpha = warm; g.drawImage(warmTex(), 0, 0, W, H); g.globalAlpha = 1; }
+        const warm = 0.2 * smooth((t - e.du) / 0.6) + 0.2 * smooth((t - e.cheng) / 0.5) + 0.6 * smooth((t - e.hong + 0.05) / 0.6);
+        if (warm > 0.002) {
+          g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.62 * warm; g.fillStyle = '#f3d5c3'; g.fillRect(0, 0, W, H);
+          g.globalCompositeOperation = 'screen'; g.globalAlpha = warm; g.drawImage(warmGlow(), 0, 0, W, H);
+          g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+        }
       },
     });
   })();

@@ -735,10 +735,12 @@
       } else {
         for (const tb of [-1.6, 0.06, 1.72]) out.push({ t0: tb, A: 30, up: 0.9, hold: 0.12, creep: 2, down: 1.3, foam: 0.6, seed: Math.round(tb * 10) + 50, big: false });
       }
-      const tFlow = charLt(c, 6, 1, FB2);
-      out.push({ t0: tBig, A: 122, up: 1.25, hold: Math.max(0.2, tFlow - tBig - 1.25), creep: 4, down: 1.5, foam: 1, seed: 3, big: true });
+      // 大浪：「已」涌来，「声」漫到脚下；「向」起退去（约 0.7 s 退回岸线），在下一镜淡入之前留出一段只剩湿沙映月的空滩
+      const tBack = charLt(c, 4, 1, FB2);
+      out.push({ t0: tBig, A: 122, up: 1.25, hold: Math.max(0.2, tBack - tBig - 1.25), creep: 4, down: BACK_DUR, foam: 1, seed: 3, big: true });
       return out;
     }
+    const BACK_DUR = 0.7;
     // 冲流前沿的横向起伏
     const peel = (x, w) => (w.big ? 0.24 : 0.42) * ((noise1(x / 380 + w.seed * 1.7, w.seed + 4) - 0.5) * 2 + 0.35 * (noise1(x / 120 + w.seed, w.seed + 5) - 0.5));
     const frontY = (base, x, w, t) => base + (w.big ? 9 : 5) * (noise1(x / 90 + w.seed * 3.1, w.seed) - 0.5) * 2 + 2.5 * (noise1(x / 27 + t * 0.3, w.seed + 9) - 0.5) * 2;
@@ -783,7 +785,6 @@
           const gg = g.createLinearGradient(0, SHORE, 0, reach + 6);
           gg.addColorStop(0, `rgba(120,150,180,${ga})`); gg.addColorStop(1, `rgba(120,150,180,${ga * 0.3})`);
           g.fillStyle = gg; g.fill();
-          glowAt(g, MX, (SHORE + reach) / 2 + 10, 50, (reach - SHORE) * 0.7, '#e6e4d6', ga * 1.4);
         }
       }
       // 泡沫边：前进时白而密，停住后变薄，退时散成细线（分段画，浓淡随位置变化；按浓淡分档合并绘制）
@@ -816,42 +817,64 @@
         }
       }
     }
-    // 远处涌来的浪峰：深色浪面 + 被月光照亮的峰线，近岸时卷起白沫
+    // 远处涌来的浪峰：深色浪面 + 被月光照亮的峰顶。峰顶不是细线，而是一条 4–8 px 的柔软泡沫带：
+    // 由外到内三层（宽而淡的晕、半宽的带、断续的亮芯），浓淡按噪声断续，在月光路里更亮，两端约 80 px 渐隐
     function drawBreaker(g, t, w) {
       const lead = w.big ? 1.9 : 1.3;
       const u0 = (t - (w.t0 - lead)) / lead;
       if (u0 < -0.5 || u0 > 1.6) return;
       const amp = w.big ? 7 : 3.5;
       const NB = 12;
-      const face = [], crest = [], foam = [], froth = [];
+      const face = [], halo = [], band = [], core = [], froth = [];
       // 沿岸各段的进度不同（卷浪），亮度也分段变化；按浓淡分档合并绘制
-      const seg = 24;
+      const seg = 12;
+      const yAt = (x, k) => lerp(w.big ? 405 : 462, SHORE - 3, Math.pow(k, 1.4)) + amp * (0.4 + k) * (noise1(x / 110 + w.seed, w.seed + 2) - 0.5) * 2;
+      // 可见度：峰的连续段由低频噪声决定，渐隐段至少约 80 px 长（噪声尺度 1/260，阈值带宽 0.5）
+      const visAt = (x) => smooth((noise1(x / 260 + w.seed * 2.3, w.seed + 1) - 0.18) / 0.5);
       for (let x = -60; x < 1340; x += seg) {
         const u = u0 + peel(x + seg / 2, w) / lead;
         if (u < 0 || u > 1.08) continue;
         const k = clamp(u);
-        const yA = lerp(w.big ? 405 : 462, SHORE - 3, Math.pow(k, 1.4));
-        const vis = smooth(u / 0.3) * (1 - smooth((u - 0.98) / 0.1)) * smooth((noise1((x + 0.5 * seg) / 150 + w.seed * 2.3, w.seed + 1) - 0.2) / 0.6);
+        const vis = smooth(u / 0.3) * (1 - smooth((u - 0.98) / 0.1)) * visAt(x + seg / 2);
         if (vis < 0.03) continue;
-        const yy0 = yA + amp * (0.4 + k) * (noise1(x / 110 + w.seed, w.seed + 2) - 0.5) * 2;
-        const yy1 = yA + amp * (0.4 + k) * (noise1((x + seg) / 110 + w.seed, w.seed + 2) - 0.5) * 2;
+        const yy0 = yAt(x, k), yy1 = yAt(x + seg, k);
         const th = amp * (0.4 + k) * 1.4 + 2;
-        const white = smooth((k - 0.55) / 0.4);
         const b1 = Math.round(vis * (NB - 1));
         (face[b1] || (face[b1] = [])).push(x, yy0, yy1, th);
-        (crest[b1] || (crest[b1] = [])).push(x, yy0, yy1);
+        // 峰顶亮度：远处只是一道被月光擦亮的浪脊（很淡），越近越白；在月光路（月亮正下方）里亮一倍
+        const moon = 1 + 1.2 * Math.exp(-Math.pow((x + seg / 2 - MX) / 70, 2));
+        const lit = (w.big ? 0.22 + 0.78 * smooth((k - 0.25) / 0.6) : 0.35 + 0.65 * smooth((k - 0.4) / 0.5)) * (w.big ? 1 : 0.7);
+        const brk = 0.45 + 0.55 * smooth((noise1(x / 38 + w.seed * 5.3 + t * 0.12, w.seed + 11) - 0.3) / 0.35);
+        const cA = clamp(vis * lit * moon * 0.55);
+        const bH = Math.round(cA * (NB - 1));
+        if (bH > 0) {
+          const hw = (w.big ? 4 : 2.6) * (0.6 + 0.4 * k);
+          (halo[bH] || (halo[bH] = [])).push(x, yy0 - 1, yy1 - 1, hw);
+          const bB = Math.round(clamp(cA * brk) * (NB - 1));
+          if (bB > 0) (band[bB] || (band[bB] = [])).push(x, yy0 - 1, yy1 - 1, hw * 0.5);
+          // 亮芯只在断续的浓处出现：不会连成一条贯穿画面的直线
+          const cc = clamp(cA * smooth((brk - 0.7) / 0.25));
+          const bC = Math.round(cc * (NB - 1));
+          if (bC > 0) (core[bC] || (core[bC] = [])).push(x, yy0 - 1, yy1 - 1, 0.7);
+        }
+        const white = smooth((k - 0.55) / 0.4);
         if (white > 0.05) {
           const b2 = Math.round(vis * white * (NB - 1));
-          (foam[b2] || (foam[b2] = [])).push(x, yy0, yy1);
           const F = froth[b2] || (froth[b2] = []);
-          for (let j = 0; j < 3; j++) {
+          for (let j = 0; j < 2; j++) {
             const q = Math.round(x) * 3 + j + w.seed * 17;
             const fx = x + h2(q, 1) * seg;
             F.push(fx, lerp(yy0, yy1, (fx - x) / seg) - 1 - h2(q, 2) * 4 * white, 2 + h2(q, 3) * 6, 0.7 + h2(q, 4) * 0.8);
           }
         }
       }
-      const sc = w.big ? 1 : 0.8;
+      // 以峰线为中线、半宽 hw 的一段四边形（相邻段共用竖边，不叠不漏）
+      const quads = (A, col, a) => {
+        g.fillStyle = `rgba(${col},${a.toFixed(3)})`;
+        g.beginPath();
+        for (let i = 0; i < A.length; i += 4) { const x = A[i], h = A[i + 3]; g.moveTo(x, A[i + 1] - h); g.lineTo(x + seg, A[i + 2] - h); g.lineTo(x + seg, A[i + 2] + h); g.lineTo(x, A[i + 1] + h); g.closePath(); }
+        g.fill();
+      };
       for (let bk = 1; bk < NB; bk++) {
         const v = bk / (NB - 1);
         let A = face[bk];
@@ -859,20 +882,12 @@
           g.fillStyle = `rgba(8,16,28,${(0.32 * v).toFixed(3)})`;
           g.beginPath(); for (let i = 0; i < A.length; i += 4) { const x = A[i]; g.moveTo(x, A[i + 1]); g.lineTo(x + seg, A[i + 2]); g.lineTo(x + seg, A[i + 2] + A[i + 3]); g.lineTo(x, A[i + 1] + A[i + 3]); g.closePath(); } g.fill();
         }
-        A = crest[bk];
-        if (A) {
-          // 大浪的峰线迎着月光更亮一些
-          g.strokeStyle = w.big ? `rgba(160,188,214,${(0.5 * v).toFixed(3)})` : `rgba(120,150,180,${(0.32 * v * sc).toFixed(3)})`; g.lineWidth = w.big ? 2.2 : 1.4;
-          g.beginPath(); for (let i = 0; i < A.length; i += 3) { g.moveTo(A[i], A[i + 1] - 0.5); g.lineTo(A[i] + seg, A[i + 2] - 0.5); } g.stroke();
-        }
-        A = foam[bk];
-        if (A) {
-          g.strokeStyle = `rgba(222,232,240,${(0.6 * v * sc).toFixed(3)})`; g.lineWidth = w.big ? 2.6 : 1.8;
-          g.beginPath(); for (let i = 0; i < A.length; i += 3) { g.moveTo(A[i], A[i + 1] - 0.5); g.lineTo(A[i] + seg, A[i + 2] - 0.5); } g.stroke();
-        }
+        if (halo[bk]) quads(halo[bk], '150,178,204', 0.22 * v);
+        if (band[bk]) quads(band[bk], '196,214,230', 0.3 * v);
+        if (core[bk]) quads(core[bk], '228,236,242', 0.45 * v);
         A = froth[bk];
         if (A) {
-          g.fillStyle = `rgba(206,220,232,${(0.4 * v).toFixed(3)})`;
+          g.fillStyle = `rgba(206,220,232,${(0.32 * v).toFixed(3)})`;
           g.beginPath(); for (let i = 0; i < A.length; i += 4) { g.moveTo(A[i] + A[i + 2], A[i + 1]); g.ellipse(A[i], A[i + 1], A[i + 2], A[i + 3], 0, 0, TAU); } g.fill();
         }
       }
@@ -922,19 +937,94 @@
       }
       g.globalCompositeOperation = op;
     }
-    // 倒影：人影上下翻转画进临时画布，再按横条加波纹贴到湿沙上
-    function drawPairReflection(g, t, alpha, glow, wet) {
-      const RW = 250, RH = 160, ox = PAIR.x - 145, oy = PAIR.y;
+    // ---- 两人：伊人在少年左侧稍后（与 pair 姿势同一站位：她缩放 0.94、着地点左移 9.6%h，他右移 8.4%h），
+    // 分开用 XYT.sil 画，好让「耳」字时她的上身向他微倾（从髋部起平滑弯过去，脚和裙摆不动），头再偏一点；
+    // 披帛换成月光下柔和的淡粉（不是发亮的细管）。两人先在离屏画布上按不透明叠好，再整体按 alpha 贴上，淡出时重叠处不叠暗。
+    const HER = { dx: -9.6 * PAIR.h / 100, h: PAIR.h * 0.94 }, HIM = { dx: 8.4 * PAIR.h / 100, h: PAIR.h };
+    const CB = { x0: -112, x1: 104, y0: -258, y1: 14 };       // 离屏范围（相对两人着地点）
+    const RIM = '#dfe8f0', BODY = '#1d2128', HER_BODY = '#22272f', SHAWL = '#937586';
+    // 设备分辨率 × 镜头缩放的离屏画布（与目标像素一一对应，贴上时不再重采样）
+    const sbMap = new Map();
+    function sbuf(key, w, h, sc) {
+      const pw = Math.max(1, Math.ceil(w * sc)), ph = Math.max(1, Math.ceil(h * sc));
+      let c = sbMap.get(key);
+      if (!c) { c = document.createElement('canvas'); sbMap.set(key, c); }
+      if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
+      const g = c.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+      g.clearRect(0, 0, pw, ph);
+      return { c, g };
+    }
+    // 弯身：高于着地点 s 像素处的脊线转角。髋（0.36h）到胸（0.62h）之间平滑弯到 θ1，颈（0.84h–0.90h）再偏 θ2
+    const LEAN1 = 6.5 * Math.PI / 180, LEAN2 = 4 * Math.PI / 180;
+    const leanAng = (s, e) => {
+      const H = HER.h;
+      return e * (LEAN1 * smooth((s - 0.36 * H) / (0.26 * H)) + LEAN2 * smooth((s - 0.84 * H) / (0.06 * H)));
+    };
+    // 画两人到离屏画布：返回 { c, sc, x0, y0 }（画布左上角对应的逻辑坐标）。fx/fy 为亚像素偏移
+    function drawCouple(t, lean, glow, sc, fx, fy, refl) {
+      const W = CB.x1 - CB.x0, Hh = CB.y1 - CB.y0;
+      const ax = -CB.x0, ay = -CB.y0;                         // 两人着地点在离屏画布里的逻辑坐标
+      const tint = (col) => mix(col, RIM, 0.12 * glow);
+      const oH = { wind: 0.4, windDir: 1, body: tint(refl ? '#0b121d' : HER_BODY), accent: refl ? '#2a2630' : SHAWL, rim: refl ? null : RIM, rimSide: 1, rimWidth: 1.4 };
+      const oY = { wind: 0.4, windDir: 1, body: tint(refl ? '#0a111c' : BODY), accent: refl ? '#0e1622' : null, rim: refl ? null : RIM, rimSide: 1, rimWidth: 1.4 };
+      // 她：先画进 A（不弯），再按横条弯进 B
+      const A = sbuf(refl ? 'a3herR' : 'a3her', W, Hh, sc);
+      A.g.setTransform(sc, 0, 0, sc, fx, fy);
+      XYT.sil.draw(A.g, 'heroine', 'standBack', ax + HER.dx, ay, HER.h, t, oH);
+      const B = sbuf(refl ? 'a3cplR' : 'a3cpl', W, Hh, sc);
+      const fxA = ax + HER.dx, s0 = 0.36 * HER.h;
+      B.g.setTransform(1, 0, 0, 1, 0, 0);
+      // 髋以下原样
+      const yCut = Math.max(0, Math.floor((ay - s0) * sc + fy));
+      B.g.drawImage(A.c, 0, yCut, A.c.width, A.c.height - yCut, 0, yCut, A.c.width, A.c.height - yCut);
+      if (lean > 0.001) {
+        // 髋以上按 3 px 一条，沿弯过去的脊线逐条转贴（每条与下一条叠 0.6 px，避免发丝缝）
+        const step = 3;
+        let X = 0, Y = -s0;
+        for (let s = s0; s < ay; s += step) {
+          const ph = leanAng(s + step * 0.5, lean);
+          B.g.setTransform(sc, 0, 0, sc, fx, fy);
+          B.g.translate(fxA + X, ay + Y); B.g.rotate(ph);
+          const sy = (ay - s - step) * sc + fy, sh = (step + 0.6) * sc;
+          B.g.drawImage(A.c, 0, sy, A.c.width, sh, -fxA - fx / sc, -step, A.c.width / sc, step + 0.6);
+          X += Math.sin(ph) * step; Y -= Math.cos(ph) * step;
+        }
+      } else {
+        B.g.drawImage(A.c, 0, 0, A.c.width, yCut, 0, 0, A.c.width, yCut);
+      }
+      // 他在前
+      B.g.setTransform(sc, 0, 0, sc, fx, fy);
+      XYT.sil.draw(B.g, 'youth', 'standBack', ax + HIM.dx, ay, HIM.h, t, oY);
+      return B;
+    }
+    // 把离屏的两人贴到主画布（整像素对齐）；返回贴图用的设备坐标信息
+    function placeCouple(g, t, lean, glow, alpha) {
+      const T = g.getTransform(), sc = T.a;
+      const px = T.a * (PAIR.x + CB.x0) + T.e, py = T.d * (PAIR.y + CB.y0) + T.f;
+      const ix = Math.floor(px), iy = Math.floor(py);
+      const B = drawCouple(t, lean, glow, sc, px - ix, py - iy, false);
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = alpha; g.drawImage(B.c, ix, iy);
+      g.restore();
+    }
+    // 倒影：同样的两人（更暗、无轮廓光）上下翻转，再按横条加波纹贴到湿沙上
+    function drawPairReflection(g, t, lean, alpha, wet) {
+      const RW = CB.x1 - CB.x0, RH = 160, ox = PAIR.x + CB.x0, oy = PAIR.y;
+      const S = SS();
+      const B = drawCouple(t, lean, 0, S, 0, 0, true);
+      // 翻转：离屏 B 的第 (ay − y) 行 → 倒影第 y 行；先翻进 s，再按横条加波纹
       const s = scratch('a3refl', RW, RH);
-      s.g.translate(-ox, -oy);
-      s.g.translate(0, 2 * PAIR.y); s.g.scale(1, -1);
-      XYT.sil.draw(s.g, 'pair', 'standBack', PAIR.x, PAIR.y, PAIR.h, t, { wind: 0.4, windDir: 1, body: '#0a111c', accent: '#0e1622', alpha: 1 });
+      s.g.setTransform(1, 0, 0, 1, 0, 0);
+      const ay = -CB.y0;
+      s.g.translate(0, ay * S); s.g.scale(1, -1);
+      s.g.drawImage(B.c, 0, 0);
       s.g.setTransform(1, 0, 0, 1, 0, 0);
       s.g.globalCompositeOperation = 'destination-in';
-      const S = SS();
       const fg = s.g.createLinearGradient(0, 0, 0, RH * S);
       fg.addColorStop(0, 'rgba(0,0,0,1)'); fg.addColorStop(0.5, 'rgba(0,0,0,0.4)'); fg.addColorStop(1, 'rgba(0,0,0,0)');
       s.g.fillStyle = fg; s.g.fillRect(0, 0, RW * S, RH * S);
+      s.g.globalCompositeOperation = 'source-over';
       const o = g.globalAlpha;
       g.globalAlpha = o * alpha * (0.22 + 0.2 * wet);
       const band = 3;
@@ -945,42 +1035,42 @@
       }
       g.globalAlpha = o;
     }
-    // 人影淡去时升起的光点（≤30），退浪时随水流回海里
-    function drawMotes(g, t, tFade, tFlow) {
+    // 人影淡去时升起的光点（30 个）：在两人剪影范围内 0.3 s 淡入，以 18–26 px/s 缓缓上浮、顺风右飘；
+    // 「向」起退浪：空中的光点被带向海面（向上、向远处、变小变淡），水膜上的光点随泡沫线退回岸线，都在下一镜淡入前淡尽
+    function drawMotes(g, t, tFade, tBack) {
       const op = g.globalCompositeOperation;
       g.globalCompositeOperation = 'lighter';
-      for (let i = 0; i < 28; i++) {
-        const ts = tFade + 0.05 + 1.0 * h2(i, 21);
+      const back = Math.max(0, t - tBack);
+      for (let i = 0; i < 30; i++) {
+        const ts = tFade + 0.05 + 0.6 * h2(i, 21);
         const age = t - ts;
         if (age < 0) continue;
-        const life = 1.8 + 1.2 * h2(i, 22);
-        // 出生点：两人剪影的范围内
-        const bx = PAIR.x - 70 + 125 * h2(i, 23), by = PAIR.y - 200 * Math.pow(h2(i, 24), 0.8) - 6;
         const water = i % 3 === 0; // 三分之一落在水膜上，随退浪回海
         let x, y, a, r;
         if (!water) {
-          const rise = 14 + 16 * h2(i, 25);
-          x = bx + 9 * age + 4 * Math.sin(age * 2.1 + i);
-          y = by - rise * age - 4 * age * age;
-          a = smooth(age / 0.4) * (1 - smooth((age - life * 0.55) / (life * 0.45)));
-          r = 1.8 + 1.6 * h2(i, 26);
-          // 退浪时：被带向海面（画面上方、远处），变小变淡
-          const back = Math.max(0, t - tFlow);
+          // 出生点：两人剪影的范围内（她在左、他在右），人影从下往上淡，光点也先从下半身升起
+          const hy = Math.pow(h2(i, 24), 0.8);
+          const bx = PAIR.x - 46 + 92 * h2(i, 23) + 10 * hy, by = PAIR.y - 200 * hy - 8;
+          const rise = 22 + 10 * h2(i, 25);
+          x = bx + 10 * age + 5 * Math.sin(age * 2.2 + i * 1.7) - 5 * Math.sin(i * 1.7);
+          y = by - rise * age - 6 * age * age;
+          a = smooth(age / 0.3);
+          r = 1.7 + 1.5 * h2(i, 26);
           if (back > 0) {
-            y -= 40 * back * back + 20 * back;
-            x += (MX - x) * 0.12 * back;
-            a *= 1 - smooth(back / 0.75);
-            r *= 1 - 0.45 * clamp(back / 0.75);
+            const q = smooth(back / 0.55);
+            y -= 70 * q;
+            x += (MX - 40 - x) * 0.06 * q;
+            a *= 1 - q;
+            r *= 1 - 0.45 * q;
           }
         } else {
-          // 水面上的微光：在脚边铺开，退浪时向海面（画面上方）移动、变小
-          const fx = PAIR.x - 80 + 160 * h2(i, 27), fy = PAIR.y - 6 + 22 * h2(i, 28);
-          const back = Math.max(0, t - tFlow);
-          const q = clamp(back / 1.5), pull = (fy - SHORE) * 0.9 * q * q * (3 - 2 * q);
-          x = fx + 6 * Math.sin(age * 1.3 + i) + 4 * back;
-          y = fy - pull;
-          a = smooth(age / 0.5) * (1 - smooth((back - 0.3) / 0.6)) * (y > SHORE ? 1 : 0);
-          r = (1.2 + 1.2 * h2(i, 29)) * (1 - 0.4 * clamp(back / 0.9));
+          // 水面上的微光：在脚边的水膜上铺开；退浪时跟着泡沫线退向岸线、变小
+          const fx = PAIR.x - 74 + 150 * h2(i, 27), fy = PAIR.y - 4 + 22 * h2(i, 28);
+          const q = smooth(back / BACK_DUR);
+          x = fx + 5 * Math.sin(age * 1.3 + i) - 5 * Math.sin(i) + 6 * q;
+          y = fy - (fy - SHORE - 6) * q;
+          a = smooth(age / 0.4) * (1 - smooth((back - 0.1) / 0.45));
+          r = (1.2 + 1.1 * h2(i, 29)) * (1 - 0.4 * q);
         }
         if (a <= 0.01) continue;
         glowAt(g, x, y, r * 7, r * 7, '#f2d9a6', 0.5 * a);
@@ -989,12 +1079,33 @@
       }
       g.globalCompositeOperation = op;
     }
+    // 退浪后的湿沙像镜子：月亮正下方（与月亮同一竖列）一道拉长的暖白月影，被细纹断成几段，慢慢稳定
+    const WETMOON = [];
+    for (let i = 0; i < 16; i++) WETMOON.push({ v: (i + 0.5 * h2(i, 81)) / 16, w: 0.55 + 0.45 * h2(i, 82), o: h2(i, 83) * 2 - 1, p: h2(i, 84) });
+    function drawWetMoon(g, t, k) {
+      if (k < 0.005) return;
+      const y0 = SHORE + 6, y1 = SHORE + 116;
+      const op = g.globalCompositeOperation;
+      g.globalCompositeOperation = 'lighter';
+      glowAt(g, MX, (y0 + y1) / 2 - 6, 46, (y1 - y0) * 0.75, '#e9e2cc', 0.32 * k);
+      for (const q of WETMOON) {
+        const y = lerp(y0, y1, q.v);
+        // 越近越宽、越淡；细纹让每段左右轻轻错动
+        const half = (12 + 16 * q.v) * q.w;
+        const xo = q.o * 3 * (0.4 + q.v) + 1.6 * Math.sin(t * 1.6 + q.p * TAU);
+        const a = k * (0.5 - 0.3 * q.v) * (0.75 + 0.25 * Math.sin(t * 2.1 + q.p * 9));
+        g.fillStyle = `rgba(246,238,216,${a.toFixed(3)})`;
+        g.beginPath(); g.ellipse(MX + xo, y, half, 1.1 + 1.4 * q.v, 0, 0, TAU); g.fill();
+      }
+      g.globalCompositeOperation = op;
+    }
 
     XYT.registerShot('a3_tide', {
       name: '\u4f0a\u4eba\u6f6e\u58f0', zone: 'top', night: true, text: '#eef2f4', shadow: 'rgba(6,10,20,0.9)', accent: '#e7a6b8', bloom: 0.32,
       draw(g, c) {
         const t = c.lt;
-        const tBig = charLt(c, 0, 1, FB2), tSheng = charLt(c, 3, 1, FB2), tFlow = charLt(c, 6, 1, FB2);
+        const tBig = charLt(c, 0, 1, FB2), tSheng = charLt(c, 3, 1, FB2), tBack = charLt(c, 4, 1, FB2);
+        const tEr = charLt(c, 4, 0, FB1);
         // 镜头：整镜 1.00→1.03；第6句随浪右移 40px
         const z = 1 + 0.03 * smooth((t + 0.9) / (c.dur + 0.9));
         const dx = 40 * smooth((t - tBig) / 2.5);
@@ -1019,23 +1130,29 @@
         for (const w of waves) drawBreaker(g, t, w);
         g.restore();
         for (const w of waves) drawSwash(g, t, w, dx);
-        // 人：淡出（形状不变）+ 柔光增强
-        const fade = smooth((t - tSheng) / 1.2);
+        // 退浪后湿沙映月（月亮正下方）：「向」起退浪，约 0.5 s 后最亮并留到镜尾
+        drawWetMoon(g, t, smooth((t - tBack - 0.15) / 0.5) * (1 - 0.25 * smooth((t - tBack - 1.2) / 0.8)));
+        // 人：「声」前 0.15 s 起 0.8 s 内整体淡出（形状不变，柔光 0.3→0.8），退浪开始前已经完全消失
+        const fade = smooth((t - (tSheng - 0.15)) / 0.8);
         const alpha = 1 - fade, glow = 0.3 + 0.5 * fade;
+        // 「耳」：她向他微倾（1.2 s 缓入后保持）
+        const lean = easeInOut(clamp((t - tEr + 0.25) / 1.2));
         const big = waves[waves.length - 1];
         const wet = clamp((swashFront(t, big) - (PAIR.y - SHORE) + 6) / 12);
         if (alpha > 0.002) {
-          drawPairReflection(g, t, alpha, glow, wet);
+          drawPairReflection(g, t, lean, alpha, wet);
           g.fillStyle = `rgba(6,10,18,${(0.45 * alpha).toFixed(3)})`;
           g.beginPath(); g.ellipse(PAIR.x - 10, PAIR.y + 2, 70, 5, 0, 0, TAU); g.fill();
-          XYT.sil.draw(g, 'pair', 'standBack', PAIR.x, PAIR.y, PAIR.h, t, { wind: 0.4, windDir: 1, rim: '#dfe8f0', rimSide: 1, rimWidth: 1.4, glow, alpha });
+          // 周身柔光（两人共用一团，画在身后）
+          glowAt(g, PAIR.x - 2, PAIR.y - 112, 128, 196, RIM, 0.5 * glow * alpha);
+          placeCouple(g, t, lean, glow, alpha);
           // 浪漫过脚面时的细泡
           if (wet > 0.01) {
             g.strokeStyle = `rgba(214,226,236,${(0.5 * wet * alpha).toFixed(3)})`; g.lineWidth = 1.2;
             for (const [fx, fw] of [[PAIR.x - 52, 16], [PAIR.x + 24, 12]]) { g.beginPath(); g.ellipse(fx, PAIR.y + 1, fw, 2.4, 0, Math.PI * 0.05, Math.PI * 0.95); g.stroke(); }
           }
         }
-        drawMotes(g, t, tSheng, tFlow);
+        drawMotes(g, t, tSheng - 0.15, tBack);
         g.restore();
         // 前景礁石（离镜头更近，平移略多）
         g.save();

@@ -1147,20 +1147,20 @@
       g.globalAlpha = 1;
     }
     // 人影：屋里灯前的人投在窗纸上的影子——用 XYT.sil 的剪影整块染成影子色，建缓存时按远近模糊（不画任何细节）
-    // 贴图 380×340，人物着地点在贴图 (190, 340)；只露出窗里的上半身
+    // 贴图 380×340，人物着地点在贴图 (190, fy)；只露出窗里的上半身
     const SHW = 380, SHH = 340;
     function paintShadow(g, B) {
       const S = g.getTransform().a;
       const tmp = document.createElement('canvas');
       tmp.width = Math.round(SHW * S); tmp.height = Math.round(SHH * S);
       const tg = tmp.getContext('2d'); tg.scale(S, S);
-      XYT.sil.draw(tg, B.who, B.pose, SHW / 2, SHH, B.h, 2.0, { facing: B.facing, wind: 0, body: '#5c2e16' });
+      XYT.sil.draw(tg, B.who, B.pose, SHW / 2, B.fy, B.h, 2.0, { facing: B.facing, wind: 0, body: '#5c2e16' });
       tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-in';
       tg.fillStyle = '#5c2e16'; tg.fillRect(0, 0, tmp.width, tmp.height);
       blurInto(g, SHW, SHH, B.blur, (q) => { q.save(); q.setTransform(1, 0, 0, 1, 0, 0); q.drawImage(tmp, 0, 0); q.restore(); });
     }
     // 折扇影：open 1 全开、0 合拢；扇纸为半环，扇骨从扇轴放射；枢轴藏在人影肩头里
-    const FAN = { x: 448, y: 356, R: 62 };
+    const FAN = { x: 404, y: 352, R: 58 };
     function paintFan(g, open) {
       blurInto(g, 160, 120, 1.8, (q) => {
         const cx = 40, cy = 96;
@@ -1177,12 +1177,13 @@
       });
     }
     const FAN_N = 20;
-    // 人影：说书人（左，背身坐着，扇子举在右肩）、举起葫芦大笑的听客（右，背身坐着）、离灯更近的仰头大笑的听客（影子更大更虚）
-    // x、y 是剪影着地点（坐面）在窗里的位置（坐面在窗下沿附近，只露上半身）
+    // 人影都是侧影或带动作的剪影，一眼看得出是人：说书人（左，侧坐朝右，折扇举在胸前）、
+    // 举起葫芦喝酒的听客（中，背身坐着，离灯近一些，影子略大略虚）、仰头大笑的听客（右，侧身朝左、双臂微张）
+    // x、y 是剪影着地点在窗里的位置（坐姿是坐面，站姿是脚底；都在窗下沿以下或附近，只露上半身）
     const BLOBS = [
-      { who: 'old', pose: 'sitBack', facing: 1, h: 320, x: 400, y: 500, blur: 3.5, a: 0.6, laugh: 0.35 },
-      { who: 'old', pose: 'sitBoat', facing: 1, h: 300, x: 632, y: 506, blur: 3.5, a: 0.56, laugh: 1 },
-      { who: 'youth', pose: 'laughSide', facing: -1, h: 380, x: 528, y: 610, blur: 10, a: 0.22, laugh: 0.7 },
+      { who: 'old', pose: 'sitSide', facing: 1, h: 318, x: 352, y: 470, fy: 300, blur: 3.2, a: 0.62, laugh: 0.35 },
+      { who: 'old', pose: 'sitBoat', facing: 1, h: 320, x: 530, y: 516, fy: 300, blur: 5.2, a: 0.5, laugh: 0.6 },
+      { who: 'youth', pose: 'laughSide', facing: -1, h: 300, x: 664, y: 598, fy: 340, blur: 3.4, a: 0.58, laugh: 1 },
     ];
     function drawWindow(g, t, flash, closeK, laugh) {
       const W0 = WIN.x1 - WIN.x0, H0 = WIN.y1 - WIN.y0;
@@ -1192,10 +1193,10 @@
       // 人影（远的先画）
       for (let i = 2; i >= 0; i--) {
         const B = BLOBS[i];
-        const spr = K.cache('b4shadow' + i, SHW, SHH, 0.6, (q) => paintShadow(q, B));
+        const spr = K.cache('b4shadowB' + i, SHW, SHH, 0.6, (q) => paintShadow(q, B));
         const dy = laugh * B.laugh;
         g.globalAlpha = B.a;
-        g.drawImage(spr, B.x - SHW / 2, B.y - SHH + dy, SHW, SHH);
+        g.drawImage(spr, B.x - SHW / 2, B.y - B.fy + dy, SHW, SHH);
       }
       // 扇影：在 FAN_N 个预先模糊好的状态之间交叉淡化
       const f = (1 - closeK) * (FAN_N - 1), i0 = Math.floor(f), w = f - i0;
@@ -1843,20 +1844,79 @@
     })();
     const STREAKS = (() => {
       const r = rng(77), out = [];
-      for (let i = 0; i < 18; i++) out.push({ x: 380 + r() * 900, d: 8.6 + r() * 3.2, len: 10 + r() * 18, ph: r() * TAU, f: 0.12 + 0.1 * r() });
+      for (let i = 0; i < 30; i++) {
+        const near = i >= 20;
+        out.push({ x: near ? 370 + r() * 230 : 380 + r() * 900, d: near ? 3.8 + r() * 2.6 : 8.6 + r() * 3.2, len: (near ? 16 : 10) + r() * 18, ph: r() * TAU, f: 0.12 + 0.1 * r() });
+      }
       return out;
     })();
-    // 竖条叠色：按风力 w(x) 把“风里”那张贴图分成竖条叠到“静”的上面（alpha 取条中心的风力）
-    function paleStrips(g, img, ox, oy, w, h, t, amp) {
-      const k = img.width / img.lw;
-      for (let x = Math.max(0, Math.floor(ox)); x < Math.min(1280, ox + w); x += 32) {
-        const a = amp * gust(x + 16, t);
-        if (a < 0.01) continue;
-        const sw = Math.min(32, ox + w - x);
-        g.globalAlpha = Math.min(1, a);
-        g.drawImage(img, (x - ox) * k, 0, sw * k, img.height, x, oy, sw, h);
+    // 风里叶色变浅：把“风里”那张贴图拷进草稿画布，乘上一道随风头横向平滑变化的透明度渐变，再叠到“静”的上面（没有竖条的硬边）
+    let PB = null, PBG = null;
+    function paleBlend(g, img, ox, oy, w, h, t, amp) {
+      const x0 = Math.max(0, -ox), x1 = Math.min(w, 1280 - ox);
+      let any = false;
+      for (let x = x0; x <= x1; x += 24) if (amp * gust(ox + x, t) > 0.01) { any = true; break; }
+      if (!any) return;
+      if (!PB || PB.width < img.width || PB.height < img.height) {
+        PB = document.createElement('canvas'); PB.width = img.width; PB.height = img.height; PBG = PB.getContext('2d');
       }
-      g.globalAlpha = 1;
+      const k = img.width / img.lw;
+      PBG.setTransform(1, 0, 0, 1, 0, 0); PBG.globalCompositeOperation = 'copy'; PBG.globalAlpha = 1;
+      PBG.drawImage(img, 0, 0);
+      PBG.globalCompositeOperation = 'destination-in';
+      const gr = PBG.createLinearGradient(0, 0, img.width, 0);
+      for (let x = 0; x <= w; x += 24) gr.addColorStop(Math.min(1, x / w), `rgba(0,0,0,${Math.min(1, amp * gust(ox + x, t)).toFixed(3)})`);
+      gr.addColorStop(1, `rgba(0,0,0,${Math.min(1, amp * gust(ox + w, t)).toFixed(3)})`);
+      PBG.fillStyle = gr; PBG.fillRect(0, 0, img.width, img.height);
+      PBG.globalCompositeOperation = 'source-over';
+      g.drawImage(PB, 0, 0, img.width, img.height, ox, oy, img.width / k, img.height / k);
+    }
+
+    // 一只红蜻蜓（约 3 m，翼展约 20 像素）：从右上飞来，第17句第3字前后落在右边花苞的尖上（小荷才露尖尖角，早有蜻蜓立上头），
+    // 停到第17句第6字后起飞，向左朝水道远处飞去，越飞越远、越小，没入远处
+    const DF_A = [[-0.6, 1340, 300, 3.2], [0.2, 1236, 346, 3.0], [0.72, 1168, 384, 2.9], [1.05, 1146, 396, 2.9]];
+    const DF_B = [[2.62, 1146, 396, 2.9], [2.95, 1090, 366, 3.3], [3.55, 900, 404, 5.4], [4.35, 700, 438, 9.5], [5.0, 560, 452, 14]];
+    function crSample(K, t) {
+      if (t <= K[0][0]) return K[0].slice(1);
+      if (t >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+      let i = 0; while (t > K[i + 1][0]) i++;
+      const p0 = K[Math.max(0, i - 1)], p1 = K[i], p2 = K[i + 1], p3 = K[Math.min(K.length - 1, i + 2)];
+      const u = (t - p1[0]) / (p2[0] - p1[0]), u2 = u * u, u3 = u2 * u;
+      const out = [];
+      for (let j = 1; j < 4; j++) out.push(0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * u + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * u2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * u3));
+      return out;
+    }
+    // 蜻蜓在镜头未动时的屏幕位置与深度；perch 是停在花苞尖上的程度（0 飞，1 停）
+    function dfState(t, tip) {
+      const wL = smooth((t - 0.8) / 0.25), wT = 1 - smooth((t - 2.62) / 0.3);
+      const fly = t < 1.8 ? crSample(DF_A, t) : crSample(DF_B, t);
+      // 悬停时的细小抖动
+      const jit = (1 - Math.min(wL, wT)) * 2.2;
+      fly[0] += jit * Math.sin(TAU * 1.3 * t + 0.4); fly[1] += jit * 0.7 * Math.sin(TAU * 1.9 * t + 1.1);
+      const perch = Math.min(wL, wT);
+      return { x: lerp(fly[0], tip[0], perch), y: lerp(fly[1], tip[1], perch), d: lerp(fly[2], 2.9, perch), perch };
+    }
+    function drawDragonfly(g, x, y, d, ang, perch, alpha) {
+      if (alpha < 0.01) return;
+      const L = (F * 0.075) / d, Wn = (F * 0.046) / d;
+      g.save(); g.translate(x, y); g.rotate(ang); g.globalAlpha *= alpha;
+      // 翅：停着时四片平展、看得清翅脉的前缘；飞时扇成两团淡淡的虚影
+      const wa = lerp(0.24, 0.5, perch);
+      for (const [ox, sp, sc] of [[0.12, -1, 1], [0.12, 1, 1], [0.0, -1, 0.92], [0.0, 1, 0.92]]) {
+        const len = Wn * sc, wid = lerp(Wn * 0.42, Wn * 0.17, perch);
+        g.save(); g.translate(L * ox, 0); g.rotate(sp * lerp(1.35, 1.48, perch) + (ox ? -0.12 : 0.14) * sp);
+        g.fillStyle = `rgba(236,246,250,${wa.toFixed(3)})`;
+        g.beginPath(); g.ellipse(len * 0.5, 0, len * 0.5, wid * 0.5, 0, 0, TAU); g.fill();
+        if (perch > 0.5) { g.strokeStyle = `rgba(90,70,60,${(0.45 * perch).toFixed(3)})`; g.lineWidth = 0.6; g.beginPath(); g.moveTo(0, -wid * 0.2); g.lineTo(len * 0.98, -wid * 0.12); g.stroke(); }
+        g.restore();
+      }
+      // 腹（细长、渐细，朱红）、胸、头
+      g.strokeStyle = '#c4472e'; g.lineCap = 'round';
+      g.lineWidth = Math.max(1, L * 0.085); g.beginPath(); g.moveTo(L * 0.05, 0); g.lineTo(-L * 0.55, 0); g.stroke();
+      g.lineWidth = Math.max(0.7, L * 0.05); g.beginPath(); g.moveTo(-L * 0.5, 0); g.lineTo(-L * 0.78, L * 0.02); g.stroke();
+      g.fillStyle = '#7a3a24'; g.beginPath(); g.ellipse(L * 0.1, 0, L * 0.11, L * 0.075, 0, 0, TAU); g.fill();
+      g.fillStyle = '#4e2618'; g.beginPath(); g.arc(L * 0.24, 0, Math.max(0.8, L * 0.065), 0, TAU); g.fill();
+      g.restore();
     }
 
     XYT.registerShot('c1_lotus', {
@@ -1891,17 +1951,15 @@
         g.drawImage(K.cache('c1v4far', FAR_W, FAR_H, 1, paintFar), offX(BANK_D), FAR_Y0 + offY(BANK_D), FAR_W, FAR_H);
         // 风过水面：被风揉皱的水面映出更多天光，一道偏灰的浅色带随风头向右扫过
         if (t > T_GU && t < T_GU + 4.5) {
-          for (let x = 0; x < 1280; x += 32) {
-            const a = 0.16 * gust(x + 16, t);
-            if (a < 0.005) continue;
-            g.fillStyle = `rgba(226,236,228,${a.toFixed(3)})`; g.fillRect(x, wy0 + 6, 32, 720 - wy0);
-          }
+          const gr = g.createLinearGradient(0, 0, 1280, 0);
+          for (let x = 0; x <= 1280; x += 32) gr.addColorStop(x / 1280, `rgba(226,236,228,${(0.16 * gust(x, t)).toFixed(3)})`);
+          g.fillStyle = gr; g.fillRect(0, wy0 + 6, 1280, 720 - wy0);
         }
         // 水道对面的挺水叶与荷花
         const m0 = K.cache('c1v4mid0', MID_W, MID_H, 1, (q) => paintMid(q, false));
         const mxx = offX(MID_D), myy = MID_Y0 + offY(MID_D);
         g.drawImage(m0, mxx, myy, MID_W, MID_H);
-        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v4mid1', MID_W, MID_H, 1, (q) => paintMid(q, true)), mxx, myy, MID_W, MID_H, t, 0.65);
+        if (t > T_GU && t < T_GU + 4.5) paleBlend(g, K.cache('c1v4mid1', MID_W, MID_H, 1, (q) => paintMid(q, true)), mxx, myy, MID_W, MID_H, t, 0.65);
         // 小舟在画面上的位置（水道 9.5 m）
         const bx = BOAT.x0 + BOAT.v * t + offX(BOAT.d), by = BOAT.deck + offY(BOAT.d), wl = BOAT.wl + offY(BOAT.d);
         // 水面的闪光点与细亮纹（随拍轻轻提亮，淡入淡出）
@@ -1971,7 +2029,7 @@
             g.stroke();
           }
         }
-        if (!window.__C1DBG) g.drawImage(RB, ox, oy, RBW, RBH);
+        g.drawImage(RB, ox, oy, RBW, RBH);
         // 四片斜叶与水珠：水珠先静静停在叶心旁（开镜就在），到时在叶面上滚向最低的叶缘（0.35 s，渐快），脱落后自由落体，
         // 正好在第17句第1~4字落进叶旁的空水面，荡开一亮一暗的涟漪（约 1.2 s 扩到四十像素上下）
         for (let k = 0; k < 4; k++) {
@@ -2014,14 +2072,30 @@
           }
         }
         // 右边高梗上的荷花与花苞（随风轻摇，±1.5° 以内）
+        let budTip = null;
         for (const Fl of [RBUD, ...FLOWERS]) {
           const a = swayAng(t, Fl.ph, Fl.x) + (Fl.lean || 0);
           const fx = Fl.x + offX(Fl.d), yb = yW(Fl.d) + offY(Fl.d), ty = Fl.y + offY(Fl.d), tx = fx + Math.sin(a) * (yb - ty);
+          if (Fl === RBUD) budTip = [tx + Fl.s * 0.96 * Math.sin(a), ty - Fl.s * 0.96 * Math.cos(a)];
           g.strokeStyle = '#557f4c'; g.lineWidth = Math.max(1.6, (F * 0.012) / Fl.d); g.lineCap = 'round';
           g.beginPath(); g.moveTo(fx, yb); g.quadraticCurveTo(fx, (yb + ty) / 2, tx, ty); g.stroke();
           g.save(); g.translate(tx, ty); g.rotate(a);
           if (Fl === RBUD) g.drawImage(budSpr(), -Fl.s * 0.3, -Fl.s, Fl.s * 0.6, Fl.s);
           else g.drawImage(flowerSpr(), -Fl.s / 2, -Fl.s * 0.82, Fl.s, Fl.s * 0.875);
+          g.restore();
+        }
+        // 红蜻蜓：位置按自己的深度随镜头移动；停着时随花苞一起摇；朝向随飞行方向平滑转动
+        if (t < 5.0) {
+          const tipRest = [budTip[0] - offX(RBUD.d), budTip[1] - offY(RBUD.d)];
+          const S0 = dfState(t, tipRest), S1 = dfState(t + 1 / 30, tipRest);
+          const vx = S1.x - S0.x, vy = S1.y - S0.y;
+          // 飞时头朝飞行方向，停着时头朝左、略抬（角度走最短的弧平滑过渡）
+          const fa = Math.hypot(vx, vy) > 0.02 ? Math.atan2(vy, vx) : Math.PI;
+          const pa = Math.PI + 0.12, dA = Math.atan2(Math.sin(pa - fa), Math.cos(pa - fa));
+          const ang = fa + dA * S0.perch;
+          const da = 1 - smooth((t - 4.1) / 0.6);
+          g.save(); g.translate(S0.x + offX(S0.d), S0.y + offY(S0.d));
+          drawDragonfly(g, 0, -1.2 * S0.perch, S0.d, ang, S0.perch, da);
           g.restore();
         }
         // 近处的挺水荷叶丛（1.6–1.9 m，略虚）：叶梗从画面下沿以下升起；叶形、倾角都不变，只随风轻摇
@@ -2040,7 +2114,8 @@
         // 最近处：左侧（歌词区）的大荷叶，随镜头按自己的深度移动
         const lxo = offX(LEFT_D), lyo = offY(LEFT_D);
         g.drawImage(K.cache('c1v4left0', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, false)), lxo, lyo, LEFT_W, LEFT_H);
-        if (t > T_GU && t < T_GU + 4.5) paleStrips(g, K.cache('c1v4left1', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, true)), lxo, lyo, LEFT_W, LEFT_H, t, 0.45);
+        // 歌词区：风里叶色只淡淡地变一点，字的背景明暗保持稳定
+        if (t > T_GU && t < T_GU + 4.5) paleBlend(g, K.cache('c1v4left1', LEFT_W, LEFT_H, 1, (q) => paintLeft(q, true)), lxo, lyo, LEFT_W, LEFT_H, t, 0.12);
         // 白雾化入：转场的 0.8 s 里与上一镜补的雾一起，使整段的雾色权重平滑落下（不在转场开头突然变白）
         const fa = 0.3 * (1 - smooth((t + FOG_TR) / 1.2));
         if (fa > 0.001) { g.fillStyle = rgba(FOG_COL, fa); g.fillRect(0, 0, 1280, 720); }

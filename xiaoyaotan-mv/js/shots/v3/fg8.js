@@ -1533,27 +1533,30 @@
     });
 
     // ---------- 影子投射：竖直平面上的剪影（深度 zp、地面线 yg）按太阳方向逐条投到地上 ----------
-    function castMask(q, mask, box, zp, yg, sun, k) {
-      const m = F / zp, cxm = box.x + box.w / 2;
+    // 每条横带用仿射近似；带的上下沿处中线的投影点取精确值，相邻横带首尾相接（低太阳、长影子时也不会错成台阶或断成一截截）
+    function castMask(q, mask, box, zp, yg, sun, k, pivot) {
+      const m = F / zp, cxm = pivot == null ? box.x + box.w / 2 : pivot;
       const sw = mask.width / box.w;
-      const step = 4;
-      for (let y0 = box.y; y0 < box.y + box.h; y0 += step) {
-        const yc = y0 + step / 2, Y = (yg - yc) / m;
-        if (Y < -0.05) continue;
-        const Xc = (cxm - 640) / m;
-        const Zc = zp - Y * sun.sz;
-        if (Zc < 2) continue;
-        const Xs = Xc + Y * sun.sx;
-        const a = zp / Zc;
-        const c = -(F / m) * (sun.sx * Zc + Xs * sun.sz) / (Zc * Zc);
-        const d = -F * HC * sun.sz / (m * Zc * Zc);
-        const xt = 640 + F * Xs / Zc, yt = YH + F * HC / Zc;
-        const e = xt - a * cxm - c * yc, f = yt - d * yc;
+      const Xc = (cxm - 640) / m;
+      const at = (yy) => {                            // 剪影里高度为 yy 的一行：中线落在地上的位置与该处的横向缩放
+        const Y = Math.max(0, (yg - yy) / m), Zc = Math.max(2, zp - Y * sun.sz), Xs = Xc + Y * sun.sx;
+        return [640 + F * Xs / Zc, YH + F * HC / Zc, zp / Zc];
+      };
+      // 横带高度自适应：每条带投到缓冲里约一行高（太细的带光栅化时会出锯齿，太粗则透视误差大）
+      for (let y0 = box.y, step = 2; y0 < box.y + box.h; y0 += step) {
+        const dd = Math.abs(at(y0 + 1)[1] - at(y0)[1]);
+        step = clamp(1.25 / Math.max(1e-3, dd * k), 2, 14);
+        const y1 = y0 + step;
+        if ((yg - y0) / m < -0.05) continue;
+        if (zp - Math.max(0, (yg - y0) / m) * sun.sz < 2) continue;
+        const [x0, t0, a0] = at(y0), [x1, t1, a1] = at(y1);
+        const a = 0.5 * (a0 + a1), c = (x1 - x0) / step, d = (t1 - t0) / step;
+        const e = x0 - a * cxm - c * y0, f = t0 - d * y0;
         q.setTransform(k * a, 0, k * c, k * d, k * e, k * f);
-        q.drawImage(mask, 0, (y0 - box.y) * sw, mask.width, (step + 1) * sw, box.x, y0, box.w, step + 1);
+        q.drawImage(mask, 0, (y0 - box.y) * sw, mask.width, (step + 0.5) * sw, box.x, y0, box.w, step + 0.5);
       }
     }
-    const SH = { w: 320, h: 180 };                   // 影子缓冲（1/4 分辨率，放大后自然成柔和的半影）
+    const SH = { w: 640, h: 360, y0: 230 };         // 影子缓冲（1/2 分辨率，放大后成柔和的半影；低太阳时细长斜影的边也不出台阶）；y0 = 地面 y 460 处的缓冲行
     function shadeLayer(lt, sun, fm, clouds) {
       const b = buf('f7shade', SH.w, SH.h), q = b.g, k = SH.w / 1280;
       q.fillStyle = '#000';
@@ -1570,8 +1573,8 @@
         }
         q.closePath(); q.fill(); q.globalCompositeOperation = 'source-over';
       }
-      castMask(q, treeMask(), TB, ZT, TREE.y, sun, k);
-      castMask(q, manMask(), MB, Z0, GY0, sun, k);
+      castMask(q, treeMask(), TB, ZT, TREE.y, sun, k, TREE.x - 20);   // 以树干为准（树干的影子最实，不能错开）
+      castMask(q, manMask(), MB, Z0, GY0, sun, k, MAN.x);
       // 石鼓凳：底圆与顶圆投影的凸包
       q.setTransform(k, 0, 0, k, 0, 0);
       const ring = [];
@@ -1597,7 +1600,7 @@
       // 换成影子的颜色
       q.globalCompositeOperation = 'source-in'; q.fillStyle = '#6a88c2'; q.fillRect(0, 0, 1280, 720);
       // 云层盖过的地方没有直射光：影子随云影前沿从左向右消失
-      if (fm) { q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'destination-out'; q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, 320, 180); }
+      if (fm) { q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'destination-out'; q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, SH.w, SH.h); }
       q.globalCompositeOperation = 'source-over';
       return b;
     }
@@ -1859,7 +1862,7 @@
           sb = shadeLayer(lt, sun, fm, clouds);
           g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.82;
           g.imageSmoothingEnabled = true;
-          g.drawImage(sb.c, 0, 115, SH.w, SH.h - 115, 0, 460, 1280, 260);
+          g.drawImage(sb.c, 0, SH.y0, SH.w, SH.h - SH.y0, 0, 460, 1280, 260);
           g.restore();
         }
         // 晴时的暖光：只在受光的雪面上（影子里只有冷的天光），清晨橙、午后琥珀；云影、云层盖过的地方没有
@@ -1870,10 +1873,10 @@
             const wb = buf('f7warm', SH.w, SH.h), q = wb.g;
             q.fillStyle = warmC; q.fillRect(0, 0, SH.w, SH.h);
             q.globalCompositeOperation = 'destination-out'; q.drawImage(sb.c, 0, 0);
-            if (fm) q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, 320, 180);
+            if (fm) q.drawImage(fm.c, 0, 0, 320, 180, 0, 0, SH.w, SH.h);
             q.globalCompositeOperation = 'source-over';
             g.imageSmoothingEnabled = true;
-            g.drawImage(wb.c, 0, 115, SH.w, SH.h - 115, 0, 460, 1280, 260);
+            g.drawImage(wb.c, 0, SH.y0, SH.w, SH.h - SH.y0, 0, 460, 1280, 260);
           }
           // 门洞里墙外的雪地也向阳（云层前沿到了就没有）
           g.globalAlpha = wk * lit(gateCx, gateCy);

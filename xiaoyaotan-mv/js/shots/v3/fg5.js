@@ -1738,19 +1738,16 @@
     });
     const MIST = [{ y: 418, a: 0.75, v: 5 }, { y: 474, a: 0.62, v: 8 }];
 
-    // ---- 地形的天际线（远山两层、近岭、烽台、城楼取最高者）：地影只压在地形上，不压天空 ----
+    // ---- 地形的天际线（远山两层、近岭、烽台取最高者）：地影只压在地形上，不压天空（城楼在地影之后单独画，不必算进来）----
     let SKYCLIP = null;
     function skyClip() {
       if (SKYCLIP) return SKYCLIP;
-      const cv = document.createElement('canvas'); cv.width = 4; cv.height = 4;
-      const cg = cv.getContext('2d');
-      const towerTop = (x) => { if (x < 30 || x > 300) return 1e9; for (let y = 300; y < 650; y += 1) if (cg.isPointInPath(TOWER.body, x, y)) return y; return 1e9; };
       const beaconTop = (x) => (x < PLAT.x0 || x > PLAT.x1 ? 1e9 : x < PLAT.x0 + 8 ? lerp(G(PLAT.x0) + 6, PLAT.top, (x - PLAT.x0) / 8) : x > PLAT.x1 - 8 ? lerp(PLAT.top, G(PLAT.x1) + 6, (x - PLAT.x1 + 8) / 8) : PLAT.top - PAR.sill);
       const p = new Path2D();
       p.moveTo(-80, 800);
-      for (let x = -80; x <= W + 80; x += 2) {
+      for (let x = -80; x <= W + 80; x += 4) {
         const cx = clamp(x, -20, W + 20);
-        p.lineTo(x, Math.min(FAR[0].ridgeAt(cx), FAR[1].ridgeAt(cx), G(x), beaconTop(x), towerTop(x)) - 0.5);
+        p.lineTo(x, Math.min(FAR[0].ridgeAt(cx), FAR[1].ridgeAt(cx), G(x), beaconTop(x)) - 0.5);
       }
       p.lineTo(W + 80, 800); p.closePath();
       // 余晖只染雪面：再把城墙正面与烽台墩身作为子路径加进去，用奇偶规则挖掉（它们朝东背光，只有西沿一线受光）
@@ -1786,40 +1783,44 @@
     const SH_DN = [[0, 0.25], [8, 0.33], [16, 0.5], [26, 1]];
     function earthShadow(g, ysh) {
       const SC = skyClip();
-      const q = 1 / 8, x0 = -80, w = W + 160, h = 800;
+      const q = 1 / 8, x0 = -80, w = W + 160, y0 = 240, h = 560;
       const pw = Math.ceil(w * q), ph = Math.ceil(h * q);
       const edge = [];
-      for (let x = x0; x <= x0 + w; x += 8) edge.push([x, litEdge(x, ysh)]);
+      let yMax = 0;
+      for (let x = x0; x <= x0 + w; x += 8) { const y = litEdge(x, ysh); edge.push([x, y]); yMax = Math.max(yMax, y); }
       const poly = (dy, up) => {
         const p = new Path2D();
-        p.moveTo(x0, up ? -10 : h + 10);
+        p.moveTo(x0, up ? y0 - 10 : y0 + h + 10);
         for (const [x, y] of edge) p.lineTo(x, y + dy);
-        p.lineTo(x0 + w, up ? -10 : h + 10); p.closePath();
+        p.lineTo(x0 + w, up ? y0 - 10 : y0 + h + 10); p.closePath();
         return p;
       };
       const ups = SH_UP.map(([d]) => poly(-d, true));
-      const mask = (key, base, col, list, polys) => {
+      const layer = (key, base, sets) => {
         const M = rawCanvas(key, pw, ph);
-        M.g.setTransform(q, 0, 0, q, -x0 * q, 0);
-        M.g.fillStyle = base; M.g.fillRect(x0, 0, w, h);
-        for (let i = 0; i < list.length; i++) { M.g.globalAlpha = list[i][1]; M.g.fillStyle = col; M.g.fill(polys[i]); }
+        M.g.setTransform(q, 0, 0, q, -x0 * q, -y0 * q);
+        M.g.fillStyle = base; M.g.fillRect(x0, y0, w, h);
+        for (const [col, list, polys] of sets) for (let i = 0; i < list.length; i++) { M.g.globalAlpha = list[i][1]; M.g.fillStyle = col; M.g.fill(polys[i]); }
         M.g.globalAlpha = 1;
         return M.c;
       };
-      g.save();
-      g.clip(SC.glow, 'evenodd');
-      g.imageSmoothingEnabled = true;
-      g.globalCompositeOperation = 'multiply';
-      g.drawImage(mask('fg5_d3_tint', '#ffffff', '#ffd2b4', SH_UP, ups), 0, 0, pw, ph, x0, 0, w, h);
-      g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.6;
-      g.drawImage(mask('fg5_d3_glow', '#000000', '#a0461c', SH_UP, ups), 0, 0, pw, ph, x0, 0, w, h);
-      g.restore();
+      // 正片叠底一遍：边界以上略压掉蓝（偏暖），以下压成地影蓝
       g.save();
       g.clip(SC.p);
       g.imageSmoothingEnabled = true;
       g.globalCompositeOperation = 'multiply';
-      g.drawImage(mask('fg5_d3_shade', '#ffffff', '#9aa6cc', SH_DN, SH_DN.map(([d]) => poly(d, false))), 0, 0, pw, ph, x0, 0, w, h);
+      g.drawImage(layer('fg5_d3_mul', '#ffffff', [['#ffd2b4', SH_UP, ups], ['#9aa6cc', SH_DN, SH_DN.map(([d]) => poly(d, false))]]), 0, 0, pw, ph, x0, y0, w, h);
       g.restore();
+      // 滤色一遍：只在雪面上（挖掉城墙正面与烽台墩身），只画到边界以下一点
+      const hg = Math.min(h, yMax + 8 - y0), phg = Math.ceil(hg * q);
+      if (hg > 0) {
+        g.save();
+        g.clip(SC.glow, 'evenodd');
+        g.imageSmoothingEnabled = true;
+        g.globalCompositeOperation = 'screen'; g.globalAlpha = 0.6;
+        g.drawImage(layer('fg5_d3_glow', '#000000', [['#a0461c', SH_UP, ups]]), 0, 0, pw, phg, x0, y0, w, phg / q);
+        g.restore();
+      }
     }
 
     // 星：日落后西天先出来的一颗亮星（金星），低在余晖之上
@@ -1856,13 +1857,12 @@
           g.restore();
           // 山间雾带
           const M = MIST[k];
-          if (!(window.__fg5skip || {}).mist) { g.globalAlpha = M.a; g.drawImage(mistTex(k), -160 + M.v * (t + 0.7), M.y, W + 240, 90); g.globalAlpha = 1; }
+          g.globalAlpha = M.a; g.drawImage(mistTex(k), -160 + M.v * (t + 0.7), M.y, W + 240, 90); g.globalAlpha = 1;
         }
         g.drawImage(ridgeTex(), 0, 250, W, 470);
-        if (!(window.__fg5skip || {}).tufts) drawTufts(g, t);
+        drawTufts(g, t);
         // 地影与高处的余晖
-        const SK = window.__fg5skip || {};
-        if (!SK.shadow) earthShadow(g, ysh);
+        earthShadow(g, ysh);
         // 城楼（低处，始终在地影里）
         g.drawImage(towerShadeTex(), 0, 310, 330, 340);
         // 山脊与墙顶的暖光：只在地影线以上
@@ -1886,7 +1886,7 @@
         drawPole(g, FLAG, ysh, t, 9, true);
         drawBanner(g, t, ysh);
         const lit = smooth((ysh - (MAN.y - MAN.h)) / (MAN.h * 0.9));
-        if (!SK.man) XYT.sil.draw(g, 'old', 'standSide', MAN.x, MAN.y, MAN.h, Math.max(0, t) + 2, { facing: 1, wind: 0.3, windDir: 1, body: '#18203a', rim: lit > 0.02 ? mix(WARM, WARM2, 0.5) : null, rimSide: 1, rimWidth: 2, alpha: 1 });
+        XYT.sil.draw(g, 'old', 'standSide', MAN.x, MAN.y, MAN.h, Math.max(0, t) + 2, { facing: 1, wind: 0.3, windDir: 1, body: '#18203a', rim: lit > 0.02 ? mix(WARM, WARM2, 0.5) : null, rimSide: 1, rimWidth: 2, alpha: 1 });
         // 烽台前沿的女墙与垛头：墙身挡到老人的大腿，垛头齐腰
         drawParapet(g, ysh);
         const wl = smooth((t - tLing) / 0.6);
@@ -1906,7 +1906,7 @@
           g.restore();
         }
         // 零星细雪
-        if (!SK.snow) drawSnow(g, t);
+        drawSnow(g, t);
         g.restore();
       },
     });
