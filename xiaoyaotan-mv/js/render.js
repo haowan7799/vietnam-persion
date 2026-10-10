@@ -312,7 +312,95 @@
       // 质检时可关掉歌词（XYT.QA.noLyrics），只看镜头本身的运动
       if (!(XYT.QA && XYT.QA.noLyrics)) this.lyrics(g, t);
       this.endCard(g, t);
-      this.post(g, t, postNext ? XYT.scenes[seg.scene] || XYT.scenes.mist : sc, postNext, postK);
+      const scA = postNext ? XYT.scenes[seg.scene] || XYT.scenes.mist : sc;
+      if (this.brandOn()) this.credits(g, t, scA, postNext, postK);
+      this.post(g, t, scA, postNext, postK);
+      if (this.brandOn()) this.watermark(g, t, scA, postNext, postK);
+    }
+
+    // ---------- 署名与水印（成片用；质检工具设 XYT.BRAND = false 关掉，关歌词的质检渲染也一并关掉） ----------
+    brandOn() { return XYT.BRAND !== false && !(XYT.QA && XYT.QA.noLyrics); }
+
+    // 当前画面用的字色：取镜头的歌词色（本来就按背景选过、保证看得清），转场中两镜之间线性过渡
+    brandInk(scA, scB, k) {
+      const hex = (c) => { const v = parseInt(String(c || '#2a2622').slice(1, 7), 16); return [v >> 16, (v >> 8) & 255, v & 255]; };
+      const a = hex(scA.text), b = scB ? hex(scB.text) : a, m = scB ? k : 0;
+      const c = a.map((v, i) => Math.round(lerp(v, b[i], m)));
+      const lum = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / 255;
+      return { rgb: c.join(','), halo: lum > 0.55 ? '10,8,16' : '250,246,236' };
+    }
+
+    // 片头、片尾的“制作人”署名：片头在片名竖排下方，片尾在画面下方居中，淡入时轻轻上浮
+    credits(g, t, scA, scB, k) {
+      if (!this.tl.storyboard) return;
+      const dur = this.tl.duration;
+      const cards = [
+        { a: 6.9, b: 9.75, fo: 0.55, x: 1060, y: 612, size: 26 },
+        { a: dur - 8.4, b: dur - 0.75, fo: 0.6, x: 640, y: 646, size: 28 },
+      ];
+      for (const cd of cards) {
+        if (t < cd.a || t > cd.b + cd.fo) continue;
+        const qi = clamp((t - cd.a) / 0.9), qo = clamp((t - cd.b) / cd.fo);
+        const a = easeOut(qi) * (1 - smooth(qo));
+        if (a <= 0.004) continue;
+        const ink = this.brandInk(scA, scB, k);
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.globalAlpha = a; g.globalCompositeOperation = 'source-over';
+        g.shadowColor = `rgba(${ink.halo},0.85)`; g.shadowBlur = 10;
+        g.fillStyle = `rgba(${ink.rgb},0.92)`;
+        const y = cd.y + 6 * (1 - easeOut(qi));
+        g.font = `${cd.size}px ${XYT.FONT}`;
+        g.fillText('制作人：@爱做梦的狍子', cd.x, y);
+        g.restore();
+      }
+    }
+
+    // 全片水印：轮流停在左上、右下，偶尔在正中（更淡），每处停十几秒，缓入缓出；避开片头片尾署名和歌词区
+    watermark(g, t, scA, scB, k) {
+      const dur = this.tl.duration;
+      // 时间轴换了（加载歌曲、切换分镜）就重排
+      if (!this.wmSched || this.wmSched.tl !== this.tl) {
+        const seq = [['tl', 15], ['br', 15], ['tl', 15], ['br', 15], ['c', 6]];
+        const list = [];
+        let x = this.tl.storyboard ? 12.4 : 2, i = 0;
+        const end = this.tl.storyboard ? dur - 9.6 : dur - 2;
+        while (x < end - 5) {
+          const [pos, len] = seq[i % seq.length];
+          const b = Math.min(x + len, end);
+          if (b - x >= 5) list.push({ pos, a: x, b });
+          x = b + 2.5; i++;
+        }
+        this.wmSched = { tl: this.tl, list };
+      }
+      const w = this.wmSched.list.find((v) => t >= v.a && t <= v.b);
+      if (!w) return;
+      const fade = 1.2, env = smooth(clamp((t - w.a) / fade)) * smooth(clamp((w.b - t) / fade));
+      if (env <= 0.004) return;
+      const ink = this.brandInk(scA, scB, k);
+      const S = this.S;
+      g.save();
+      g.setTransform(S, 0, 0, S, 0, 0);
+      g.globalCompositeOperation = 'source-over';
+      g.textBaseline = 'middle';
+      const text = '@爱做梦的狍子';
+      if (w.pos === 'c') {
+        g.textAlign = 'center';
+        g.font = `30px ${XYT.FONT}`;
+        g.globalAlpha = 0.17 * env;
+        g.shadowColor = `rgba(${ink.halo},0.5)`; g.shadowBlur = 6;
+        g.fillStyle = `rgb(${ink.rgb})`;
+        g.fillText(text, 640, 360);
+      } else {
+        const tl = w.pos === 'tl';
+        g.textAlign = tl ? 'left' : 'right';
+        g.font = `20px ${XYT.FONT}`;
+        g.globalAlpha = 0.36 * env;
+        g.shadowColor = `rgba(${ink.halo},0.6)`; g.shadowBlur = 5;
+        g.fillStyle = `rgb(${ink.rgb})`;
+        g.fillText(text, tl ? 34 : 1246, tl ? 34 : 698);
+      }
+      g.restore();
     }
 
     overlays(g, t, c, sc) {

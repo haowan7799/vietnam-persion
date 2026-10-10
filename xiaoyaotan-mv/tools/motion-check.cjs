@@ -45,6 +45,7 @@ if (!id || !song) { console.error('用法：node tools/motion-check.cjs <镜头i
   await page.evaluate(() => XYT.api.fonts());
   const r = await page.evaluate(async ({ id, fps, res, withLyrics, strip, nStrip }) => {
     XYT.QA = { noLyrics: !withLyrics };
+    XYT.BRAND = false;
     XYT.api.setResolution(res);
     const tl = XYT.api.state().tl;
     const k = tl.segments.findIndex((s) => s.scene === id);

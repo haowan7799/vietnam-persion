@@ -3,7 +3,7 @@
  * 逍遥叹 · 音乐动画 —— 离线逐帧渲染（H.264 + AAC 的 MP4，不受实时录制掉帧影响）
  *
  * 依赖：Node 18+、ffmpeg、playwright（npm i playwright && npx playwright install chromium）
- * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--crf 18] [--seconds 20] [--storyboard] [--no-lyrics]
+ * 用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--crf 18] [--seconds 20] [--storyboard] [--no-lyrics] [--no-brand]
  */
 'use strict';
 const path = require('path');
@@ -26,6 +26,8 @@ const crf = flag('--crf', '18');
 const useBoard = args.includes('--storyboard'); if (useBoard) args.splice(args.indexOf('--storyboard'), 1);
 // --no-lyrics：质检用，渲染时不画歌词（只看画面本身的运动）
 const noLyrics = args.includes('--no-lyrics'); if (noLyrics) args.splice(args.indexOf('--no-lyrics'), 1);
+// --no-brand：不画水印和制作人署名
+const noBrand = args.includes('--no-brand'); if (noBrand) args.splice(args.indexOf('--no-brand'), 1);
 const [audio, lyricsPath, outArg] = args;
 if (!audio) {
   console.error('用法：node tools/render.cjs <音频文件> [歌词.lrc] [输出.mp4] [--res 1080] [--fps 30] [--seconds 20]');
@@ -63,6 +65,7 @@ if (conv.status !== 0 || !fs.existsSync(wav)) {
     console.log(`已应用歌词，镜头数 ${shots}`);
   }
   if (noLyrics) await tab.evaluate(() => { XYT.QA = { noLyrics: true }; });
+  if (noBrand) await tab.evaluate(() => { XYT.BRAND = false; });
   if (useBoard) {
     const n = await tab.evaluate(() => XYT.api.setStoryboard(XYT.STORYBOARD));
     console.log(`已应用分镜表，镜头数 ${n}`);

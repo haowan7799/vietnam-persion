@@ -579,4 +579,7 @@
     seal, xiangyun, moonDisc, inkBlob, ribbon,
   };
   XYT.FONT = '"Ma Shan Zheng", "STKaiti", "KaiTi", "Kaiti SC", "Noto Serif SC", serif';
+  // 繁体题字用的书法楷体（Ma Shan Zheng 缺不少繁体字）
+  XYT.FONT_TC = '"Yuji Syuku", "BiauKai", "DFKai-SB", "KaiTi", serif';
+  XYT.TC_TEXT = '撫琴為人無人知我樂';
 })();

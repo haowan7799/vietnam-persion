@@ -158,11 +158,12 @@
   }
   function loadFonts() {
     if (!document.fonts || !document.fonts.load) return Promise.resolve();
-    const text = '逍遥叹演唱胡歌终同人音乐动画版权归原作者所有酒' + (st.tl ? st.tl.lines.map((l) => l.text).join('') + st.tl.segments.map((s) => s.char || '').join('') : '');
+    const text = '逍遥叹演唱胡歌终同人音乐动画版权归原作者所有酒制作人：@爱做梦的狍子' + (st.tl ? st.tl.lines.map((l) => l.text).join('') + st.tl.segments.map((s) => s.char || '').join('') : '');
     const uniq = [...new Set(Array.from(text))].join('');
     return Promise.all([
       document.fonts.load(`64px "Ma Shan Zheng"`, uniq),
       document.fonts.load(`18px "Noto Serif SC"`, uniq),
+      document.fonts.load(`64px "Yuji Syuku"`, XYT.TC_TEXT || ''),
     ]).catch(() => {});
   }
 

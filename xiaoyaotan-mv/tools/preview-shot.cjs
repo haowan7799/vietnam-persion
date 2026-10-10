@@ -37,6 +37,8 @@ if (!ids.length) { console.error('用法：node tools/preview-shot.cjs <镜头id
   await page.goto('file://' + path.resolve(__dirname, '..', 'index.html'));
   await page.waitForFunction(() => window.XYT && XYT.api && XYT.api.state().tl, null, { timeout: 30000 });
   await page.evaluate(() => XYT.api.fonts());
+  // 预览只看镜头本身：不画成片的水印和署名
+  await page.evaluate(() => { XYT.BRAND = false; });
   if (song) {
     await page.setInputFiles('#audioFile', path.resolve(song));
     await page.waitForFunction(() => XYT.api.state().an.source === 'audio' && document.getElementById('anaBox').hidden, null, { timeout: 180000 });
