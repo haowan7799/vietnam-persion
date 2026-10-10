@@ -1058,6 +1058,16 @@
       }
       return ins;
     };
+    // 屏幕点到多边形边界的最短距离
+    const distPoly = (poly, x, y) => {
+      let m = 1e9;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [ax, ay] = poly[j], [bx, by] = poly[i], dx = bx - ax, dy = by - ay;
+        const k = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1));
+        m = Math.min(m, Math.hypot(x - ax - k * dx, y - ay - k * dy));
+      }
+      return m;
+    };
     const polyPath = (tg, pts) => { tg.beginPath(); pts.forEach((p, i) => (i ? tg.lineTo(p[0], p[1]) : tg.moveTo(p[0], p[1]))); tg.closePath(); };
     // 桌面圆在高度 Y 的轮廓
     const topPath = (tg, Y, s) => {
@@ -1077,10 +1087,9 @@
     // 下落速度（世界单位/秒）：大片雪约 0.5 m/s
     const VF = 2.4;
     // 着陆的中层雪片：确定性排程（按密度函数逆采样）；不落在棋子、棋罐上，也不落在被棋盘、棋罐挡住的桌面上
-    const LANDERS = (() => {
-      const out = [], r = rng(7311);
-      const rate = (t) => 5 + 40 * smooth((t - FB2[0] + 0.3) / 0.7);
-      let t = -1.2;
+    function makeLanders(seed, rate, t0) {
+      const out = [], r = rng(seed);
+      let t = t0;
       while (t < 7.2) {
         t += (0.6 + 0.8 * r()) / rate(t);
         let X, Z, onBoard = false, ok = false;
@@ -1104,10 +1113,25 @@
         if (!ok) continue;
         out.push({ T: t, X, Z, onBoard, rad: (0.011 + r() * 0.014) * (t > FB2[0] ? 1.25 : 1), ph: r() * TAU, f: 0.5 + r() * 0.7, sw: 0.02 + r() * 0.03 });
       }
-      return out;
-    })();
+      // 排程之后再剔除（随机序列不变）：盘边雪沿一带、紧贴盘身轮廓的桌面、棋罐脚下的柔影里都不留落雪，免得骑在边线上成亮点
+      return out.filter((L) => {
+        if (L.onBoard) {
+          const u = L.X * CR + L.Z * SR, v = -L.X * SR + L.Z * CR;
+          return BH - Math.max(Math.abs(u), Math.abs(v)) > L.rad * 0.8 + 0.03;
+        }
+        const [sx, sy, d] = P3(L.X, 0.006, L.Z), sp = L.rad * 0.9 * F / d;
+        if (distPoly(BOARD_HULL, sx, sy) < sp + 1.5) return false;
+        return BOWLS.every(([X, Z]) => {
+          const [ex, ey, rx, ry] = ell(X, 0.008, Z, 0.275), dx = (sx - ex) / (rx + sp), dy = (sy - ey - 1.5) / (ry * 1.1 + sp);
+          return dx * dx + dy * dy > 1;
+        });
+      });
+    }
+    const LANDERS = makeLanders(7311, (t) => 5 + 40 * smooth((t - FB2[0] + 0.3) / 0.7), -1.2);
+    // 第28句雪下密的那几秒另加一批（整盘转白要有相称的雪量），第8字后渐稀
+    const LANDERS2 = makeLanders(7377, (t) => 0.4 + 75 * smooth((t - FB2[0]) / 0.8) * (1 - smooth((t - FB2[7] - 0.2) / 0.8)), FB2[0] - 0.6);
     // 远景雪片（桌后虚处）与近景虚化雪片
-    const FAR = (() => { const r = rng(808), o = []; for (let i = 0; i < 150; i++) o.push({ x0: r() * (W + 60), y0: r() * (H + 40), v: 50 + r() * 40, rad: 0.9 + r() * 1.3, ph: r() * TAU, f: 0.4 + r() * 0.5, act: i < 60 ? -99 : FB2[0] - 1.4 + r() * 1.4 }); return o; })();
+    const FAR = (() => { const r = rng(808), o = []; for (let i = 0; i < 270; i++) o.push({ x0: r() * (W + 60), y0: r() * (H + 40), v: 50 + r() * 40, rad: 0.9 + r() * 1.3, ph: r() * TAU, f: 0.4 + r() * 0.5, act: i < 60 ? -99 : i < 150 ? FB2[0] - 1.4 + r() * 1.4 : FB2[0] - 0.6 + r() * 1.0 }); return o; })();
     const NEAR = (() => { const r = rng(909), o = []; for (let i = 0; i < 70; i++) o.push({ x0: r() * (W + 120), y0: r() * (H + 160), v: 300 + r() * 220, rad: 6 + r() * 10, ph: r() * TAU, f: 0.3 + r() * 0.4, a: 0.26 + r() * 0.18, act: i < 14 ? -99 : FB2[0] - 0.5 + r() * 1.4 }); return o; })();
 
     // ---------- 浅景深：清晰与模糊两遍按屏幕高度线性混合（远处与画面下沿虚） ----------
@@ -1354,7 +1378,7 @@
       }));
     }
     // 积雪的薄膜：一张均匀的雪面，乘上细颗粒遮罩逐级变厚（颗粒远小于棋格，像越落越密的雪粉，不成片、不成岛）
-    // 第 k 级的平均覆盖约为 k/NL；末级之后再换成带雪沿与沿下柔影的整片雪面
+    // 第 k 级的平均覆盖约为 k/NL；雪沿与接触暗影另成两层
     const NL = 7, FILM_B = 0.82, FILM_E = 0.35;
     // 屏幕点反投到高度 Y0 的水平面
     function unproj(x, y, Y0) {
@@ -1469,6 +1493,12 @@
         g.restore();
       });
     }
+    // 薄屑与全部雪屑的合成（雪屑全到之后每帧只贴这一张）
+    function dustSpkAll() {
+      return K.cache('ff4_d2_dspk', TB[2], TB[3], 1, (g) => {
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(dustBoth(), 0, 0); g.drawImage(speckCum(SPK_D.length), 0, 0); g.restore();
+      });
+    }
     // 前 k 级雪屑依次叠好的合成（与逐级叠画的像素完全相同，每帧少贴几张大图）
     function speckCum(k) {
       if (k <= 1) return speckTex(0);
@@ -1500,11 +1530,15 @@
       tg.closePath();
     }
     const tableRimAt = (s, Y) => { const a = Math.PI + s * Math.PI; return P3(TABLE_R * Math.cos(a), Y, TABLE_R * Math.sin(a)); };
-    const boardRimAt = (s, Y) => { // 近侧边 + 右侧边
-      if (s < 0.62) { const q = s / 0.62; return PB(lerp(-BH, BH, q), -BH, Y); }
-      const q = (s - 0.62) / 0.38; return PB(BH, lerp(-BH, BH, q), Y);
-    };
-    function snowSurface(tg, full) {
+    const nearRimAt = (s, Y) => PB(lerp(-BH, BH, s), -BH, Y); // 近侧盘边（侧面朝镜头）
+    // 左、右、远三条盘边的侧面都背向镜头，看到的只是盘面雪的轮廓；w = 从轮廓往盘内的距离
+    const CONTOURS = [
+      (s, w) => PB(-BH + w, lerp(-BH, BH, s), BT + 0.006),
+      (s, w) => PB(BH - w, lerp(-BH, BH, s), BT + 0.006),
+      (s, w) => PB(lerp(-BH, BH, s), BH - w, BT + 0.006),
+    ];
+    // 雪面本身（颗粒遮罩只作用于这一层；雪沿、接触暗影各成一层，不随遮罩时隐时现）
+    function snowSurface(tg) {
       // 桌面
       tg.save(); topPath(tg, 0.008, 1); tg.clip();
       let gr = tg.createLinearGradient(0, 228, 0, H);
@@ -1512,23 +1546,7 @@
       tg.fillStyle = gr; tg.fillRect(0, 200, W, H);
       ripples(tg, 3132, 70, 0.008, false);
       tg.restore();
-      if (full) { // 雪沿：雪面在桌沿圆转向下（偏灰的窄带），沿下石壁一道柔影
-        for (let k = 0; k < 4; k++) { tg.fillStyle = `rgba(30,36,42,${[0.26, 0.17, 0.1, 0.04][k]})`; rimBand(tg, tableRimAt, 64, -0.01 - k * 0.01, -0.02 - k * 0.01); tg.fill(); }
-        tg.fillStyle = '#dde3e8'; rimBand(tg, tableRimAt, 64, 0.008, -0.01); tg.fill();
-        tg.fillStyle = 'rgba(250,251,252,0.7)'; rimBand(tg, tableRimAt, 64, 0.009, 0.002); tg.fill();
-      }
       cutFootprints(tg);
-      // 棋罐脚下雪面上的接触柔影（罐身挡住中间，只露出一圈，近侧略重）
-      BOWLS.forEach(([X, Z]) => {
-        const [sx, sy, srx, sry] = ell(X, 0.008, Z, 0.275);
-        const gg = tg.createRadialGradient(0, 0, 0, 0, 0, 1);
-        gg.addColorStop(0, 'rgba(70,78,88,0.5)'); gg.addColorStop(0.76, 'rgba(70,78,88,0.4)'); gg.addColorStop(0.88, 'rgba(70,78,88,0.16)'); gg.addColorStop(1, 'rgba(70,78,88,0)');
-        tg.save(); tg.translate(sx, sy + 1.5); tg.scale(srx, sry * 1.1);
-        tg.fillStyle = gg; tg.beginPath(); tg.arc(0, 0, 1, 0, TAU); tg.fill(); tg.restore();
-      });
-      tg.save(); tg.globalCompositeOperation = 'destination-out'; tg.fillStyle = '#000';
-      BOWLS.forEach(([X, Z]) => bowlSil(tg, X, Z));
-      tg.restore();
       // 盘面
       tg.save(); polyPath(tg, quadAt(BT + 0.006)); tg.clip();
       gr = tg.createLinearGradient(0, quadAt(BT)[3][1], 0, quadAt(BT)[0][1]);
@@ -1536,11 +1554,6 @@
       tg.fillStyle = gr; tg.fillRect(0, 200, W, H);
       ripples(tg, 3133, 40, BT + 0.006, true);
       tg.restore();
-      if (full) {
-        for (let k = 0; k < 3; k++) { tg.fillStyle = `rgba(36,24,12,${[0.3, 0.18, 0.08][k]})`; rimBand(tg, boardRimAt, 40, BT - 0.008 - k * 0.01, BT - 0.018 - k * 0.01); tg.fill(); }
-        tg.fillStyle = '#dde3e8'; rimBand(tg, boardRimAt, 40, BT + 0.006, BT - 0.008); tg.fill();
-        tg.fillStyle = 'rgba(250,251,252,0.7)'; rimBand(tg, boardRimAt, 40, BT + 0.007, BT + 0.001); tg.fill();
-      }
       // 罐盖雪顶：微拱，上亮下灰，前沿略厚
       BOWLS.forEach(([X, Z]) => {
         const [ex, ey, rx, ry] = lidTop(X, Z);
@@ -1550,17 +1563,90 @@
         tg.fillStyle = 'rgba(255,255,255,0.6)'; tg.beginPath(); tg.ellipse(ex - rx * 0.1, ey - ry * 0.35 - 1.5, rx * 0.55, ry * 0.4, 0, 0, TAU); tg.fill();
       });
     }
-    // s = 1..NL-1：颗粒遮罩下的雪面；s = NL：整片（无雪沿）；s = NL+1：整片加雪沿与柔影
+    // s = 1..NL-1：颗粒遮罩下的雪面；s = NL：整片
     function filmTex(s) {
-      return K.cache('ff4_d2_film3_' + s, TB[2], TB[3], 1, (g) => {
+      return K.cache('ff4_d2_film4_' + s, TB[2], TB[3], 1, (g) => {
         const mask = s < NL ? filmMask(s) : null;
         dofInto(g, TB, 3.2, (tg) => {
-          snowSurface(tg, s > NL);
+          snowSurface(tg);
           if (mask) {
             tg.save(); tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'destination-in'; tg.imageSmoothingEnabled = false;
             tg.drawImage(mask, 0, 0); tg.restore();
           }
         });
+      });
+    }
+    // 盘身四周桌面雪的环境遮蔽：一圈圈外扩的圆角框叠出由深到浅，再整体柔化（只在建缓存时用滤镜）
+    function boardAO() {
+      return K.cache('ff4_d2_ao', TB[2], TB[3], 1, (g) => {
+        const sc = g.getTransform().a, t = document.createElement('canvas');
+        t.width = Math.round(TB[2] * sc); t.height = Math.round(TB[3] * sc);
+        const tg = t.getContext('2d'); tg.setTransform(sc, 0, 0, sc, -TB[0] * sc, -TB[1] * sc);
+        tg.fillStyle = 'rgb(100,110,124)'; tg.globalAlpha = 0.022;
+        for (let k = 1; k <= 16; k++) {
+          const dd = 0.24 * Math.pow(k / 16, 1.6);
+          tg.beginPath();
+          [[1, -1], [1, 1], [-1, 1], [-1, -1]].forEach(([su, sv], ci) => { // 四角各一段圆弧
+            const a0 = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][ci];
+            for (let i = 0; i <= 6; i++) {
+              const a = a0 + i / 6 * Math.PI / 2, [x, y] = PB(su * BH + dd * Math.cos(a), sv * BH + dd * Math.sin(a), 0.008);
+              (ci || i) ? tg.lineTo(x, y) : tg.moveTo(x, y);
+            }
+          });
+          tg.closePath(); tg.fill();
+        }
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.filter = `blur(${(2.5 * sc).toFixed(2)}px)`; g.drawImage(t, 0, 0); g.restore();
+      });
+    }
+    // 接触暗影层：棋罐脚下与盘身四周桌面雪的柔影（平滑，不受颗粒遮罩影响），盖在雪膜、雪屑之上
+    function contactTex() {
+      return K.cache('ff4_d2_contact', TB[2], TB[3], 1, (g) => dofInto(g, TB, 3.2, (tg) => {
+        tg.save(); topPath(tg, 0.008, 1); tg.clip();
+        tg.drawImage(boardAO(), TB[0], TB[1], TB[2], TB[3]);
+        BOWLS.forEach(([X, Z]) => { // 罐身挡住中间，只露出一圈，近侧略重
+          const [sx, sy, srx, sry] = ell(X, 0.008, Z, 0.275);
+          const gg = tg.createRadialGradient(0, 0, 0, 0, 0, 1);
+          gg.addColorStop(0, 'rgba(70,78,88,0.5)'); gg.addColorStop(0.76, 'rgba(70,78,88,0.4)'); gg.addColorStop(0.88, 'rgba(70,78,88,0.16)'); gg.addColorStop(1, 'rgba(70,78,88,0)');
+          tg.save(); tg.translate(sx, sy + 1.5); tg.scale(srx, sry * 1.1);
+          tg.fillStyle = gg; tg.beginPath(); tg.arc(0, 0, 1, 0, TAU); tg.fill(); tg.restore();
+        });
+        tg.restore();
+        cutFootprints(tg);
+        tg.save(); tg.globalCompositeOperation = 'destination-out'; tg.fillStyle = '#000';
+        polyPath(tg, quadAt(BT + 0.006)); tg.fill(); // 盘面雪（比盘顶略高）也挡住身后的桌面
+        tg.restore();
+      }));
+    }
+    // 雪沿层：桌沿与近侧盘边的雪沿（圆转向下的灰带、受天光的亮线、沿下侧壁的暗影），三条背向镜头的盘边只画雪面在轮廓处圆转的灰带
+    function rimTex() {
+      return K.cache('ff4_d2_rim', TB[2], TB[3], 1, (g) => dofInto(g, TB, 3.2, (tg) => {
+        for (let k = 0; k < 4; k++) { tg.fillStyle = `rgba(30,36,42,${[0.26, 0.17, 0.1, 0.04][k]})`; rimBand(tg, tableRimAt, 64, -0.01 - k * 0.01, -0.02 - k * 0.01); tg.fill(); }
+        tg.fillStyle = '#dde3e8'; rimBand(tg, tableRimAt, 64, 0.008, -0.01); tg.fill();
+        tg.fillStyle = 'rgba(250,251,252,0.7)'; rimBand(tg, tableRimAt, 64, 0.009, 0.002); tg.fill();
+        tg.save(); tg.globalCompositeOperation = 'destination-out'; tg.fillStyle = '#000';
+        BOWLS.forEach(([X, Z]) => bowlSil(tg, X, Z));
+        tg.restore();
+        for (let k = 0; k < 3; k++) { tg.fillStyle = `rgba(36,24,12,${[0.3, 0.18, 0.08][k]})`; rimBand(tg, nearRimAt, 24, BT - 0.008 - k * 0.01, BT - 0.018 - k * 0.01); tg.fill(); }
+        tg.fillStyle = '#dde3e8'; rimBand(tg, nearRimAt, 24, BT + 0.006, BT - 0.008); tg.fill();
+        tg.fillStyle = 'rgba(250,251,252,0.7)'; rimBand(tg, nearRimAt, 24, BT + 0.007, BT + 0.001); tg.fill();
+        CONTOURS.forEach((at) => {
+          [[0, 0.004, 0.2], [0.004, 0.008, 0.13], [0.008, 0.012, 0.075], [0.012, 0.017, 0.035]].forEach(([w0, w1, a]) => {
+            tg.fillStyle = `rgba(108,118,132,${a})`; rimBand(tg, at, 24, w0, w1); tg.fill();
+          });
+          tg.fillStyle = 'rgba(255,255,255,0.4)'; rimBand(tg, at, 24, 0.019, 0.027); tg.fill();
+        });
+      }));
+    }
+    // 两层都到终值后合成一张（少贴一张大图）
+    function edgesTex() {
+      return K.cache('ff4_d2_edges', TB[2], TB[3], 1, (g) => {
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(contactTex(), 0, 0); g.drawImage(rimTex(), 0, 0); g.restore();
+      });
+    }
+    // 积雪落满之后：雪面、接触暗影、雪沿合成一张
+    function surfFinalTex() {
+      return K.cache('ff4_d2_surf', TB[2], TB[3], 1, (g) => {
+        g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(filmTex(NL), 0, 0); g.drawImage(edgesTex(), 0, 0); g.restore();
       });
     }
     // 一颗棋子（含接触阴影）
@@ -1805,13 +1891,16 @@
         const d1 = smooth((t - tXiang) / 1.5);
         // 雪膜厚度：第28句第1字起，第4字约 0.17，第6字约 0.44，第7字约 0.66，第8字前 0.1 秒满
         const tDe = charLT(c, 6, 1, FB2[6]);
-        const A = t < tDuo ? 0.17 * Math.pow(clamp((t - tXiang) / Math.max(0.3, tDuo - tXiang)), 1.5)
-          : t < tBu ? lerp(0.17, 0.44, (t - tDuo) / Math.max(0.2, tBu - tDuo))
-            : t < tDe ? lerp(0.44, 0.66, (t - tBu) / Math.max(0.1, tDe - tBu))
-              : lerp(0.66, 1, clamp((t - tDe) / Math.max(0.1, tWo - 0.1 - tDe)));
+        const Aof = (tt) => (tt < tDuo ? 0.17 * Math.pow(clamp((tt - tXiang) / Math.max(0.3, tDuo - tXiang)), 1.5)
+          : tt < tBu ? lerp(0.17, 0.44, (tt - tDuo) / Math.max(0.2, tBu - tDuo))
+            : tt < tDe ? lerp(0.44, 0.66, (tt - tBu) / Math.max(0.1, tDe - tBu))
+              : lerp(0.66, 1, clamp((tt - tDe) / Math.max(0.1, tWo - 0.1 - tDe))));
+        const A = Aof(t);
+        // 落定的雪片被后来的雪埋住：要等落定后又积了一层、且四周已近全白，才与雪面融为一体
+        const buried = (T) => smooth((A - Aof(T)) / 0.3) * smooth((A - 0.55) / 0.45);
         const P = 4 * smooth((t - tXiang - 0.2) / Math.max(0.6, tDe - tXiang - 0.2));
-        const fin = smooth((t - tWo + 0.1) / 0.3); // 换成带雪沿的整片雪面
-        if (fin < 1) {
+        const fin = smooth((t - tWo + 0.1) / 0.3); // 雪屑淡去，只剩平整的雪面（只换质感，不换形状）
+        if (fin >= 1) blitTB(g, surfFinalTex()); else {
           const q = A * NL, s0 = Math.min(NL, Math.floor(q)), fq = q - s0;
           if (s0 < NL && fq > 0.002) {
             // 相邻两级按透明度线性插值（加色合成两张同色的雪面），避免两级叠加时在换级处跳变
@@ -1822,16 +1911,23 @@
             blitTB(g, sc);
           } else if (s0 >= 1) blitTB(g, filmTex(s0));
           const ka = 1 - fin;
-          if (d1 >= 1 && d0 >= 0.8) { g.globalAlpha = ka; blitTB(g, dustBoth()); } else {
-            g.globalAlpha = clamp(d0 * ka); blitTB(g, dustTex(0));
-            if (d1 > 0.003) { g.globalAlpha = clamp(d1 * ka); blitTB(g, dustTex(1)); }
-          }
           const pi = Math.min(4, Math.floor(P)), pf = P - pi;
-          if (pi >= 1) { g.globalAlpha = ka; blitTB(g, speckCum(pi)); }
-          if (pi < 4 && pf > 0.002) { g.globalAlpha = clamp(pf * ka); blitTB(g, speckTex(pi)); }
+          if (pi === 4 && d1 >= 1 && d0 >= 0.8) { g.globalAlpha = ka; blitTB(g, dustSpkAll()); } else {
+            if (d1 >= 1 && d0 >= 0.8) { g.globalAlpha = ka; blitTB(g, dustBoth()); } else {
+              g.globalAlpha = clamp(d0 * ka); blitTB(g, dustTex(0));
+              if (d1 > 0.003) { g.globalAlpha = clamp(d1 * ka); blitTB(g, dustTex(1)); }
+            }
+            if (pi >= 1) { g.globalAlpha = ka; blitTB(g, speckCum(pi)); }
+            if (pi < 4 && pf > 0.002) { g.globalAlpha = clamp(pf * ka); blitTB(g, speckTex(pi)); }
+          }
+          // 接触暗影与雪沿各自一层，随雪厚渐显，从不消失
+          const cA = smooth((A - 0.2) / 0.5), rA = smooth((A - 0.35) / 0.4);
+          if (cA >= 1 && rA >= 1) { g.globalAlpha = 1; blitTB(g, edgesTex()); } else {
+            if (cA > 0.003) { g.globalAlpha = cA; blitTB(g, contactTex()); }
+            if (rA > 0.003) { g.globalAlpha = rA; blitTB(g, rimTex()); }
+          }
           g.globalAlpha = 1;
         }
-        if (fin > 0) { g.globalAlpha = clamp(fin); blitTB(g, filmTex(NL + 1)); g.globalAlpha = 1; }
         // 棋子：接触阴影随雪厚变淡；雪埋到棋子脚下后，雪丘脚边一圈淡影
         const skirt = smooth((A - 0.62) / 0.28), bury = smooth((A - 0.85) / 0.15);
         const shA = (1 - 0.8 * smooth(A / 0.75)) * (1 - fin);
@@ -1880,11 +1976,12 @@
           if (!f.air) { // 落点下的一圈浅影（被后来的积雪盖住）
             const sa = 0.22 * (1 - A) * smooth(f.age / 0.2);
             if (sa > 0.005) { g.fillStyle = `rgba(80,66,48,${sa})`; g.beginPath(); g.ellipse(f.x, f.y + 1, s * 0.9, s * 0.45, 0, 0, TAU); g.fill(); }
-            g.drawImage(fs, f.x - s, f.y - sy, s * 2, sy * 2);
+            const ka = 1 - buried(tKey[j]);
+            if (ka > 0.003) { g.globalAlpha = ka; g.drawImage(fs, f.x - s, f.y - sy, s * 2, sy * 2); g.globalAlpha = 1; }
           } else airFlake(g, f.x, f.y, s, 1, clamp(f.dt / 0.15));
         });
         // 中层着陆雪片（落定后不动）
-        for (const L of LANDERS) {
+        for (const Ls of [LANDERS, LANDERS2]) for (const L of Ls) {
           if (t < L.T - 1.1) continue;
           const f = flakeAt(L, t, L.onBoard ? BT : 0.006);
           if (f.air) {
@@ -1892,7 +1989,9 @@
             airFlake(g, f.x, f.y, f.s * 1.2, 0.9, clamp(f.dt / 0.12));
             continue;
           }
-          g.globalAlpha = 0.9;
+          const la = 0.9 * (1 - buried(L.T));
+          if (la < 0.003) continue;
+          g.globalAlpha = la;
           const s = f.s * 1.2, sq = lerp(1, 0.62, smooth(f.age / 0.15));
           g.drawImage(fs, f.x - s, f.y - s * sq, s * 2, s * 2 * sq);
         }
@@ -1921,6 +2020,23 @@
         }
       },
     });
+    // 积雪各级缓存较重，首次实时播放时现建会卡顿：页面空闲时按需要的先后预先建好（只改建缓存的时机，画面不变）
+    const WARM = [sceneTex, () => dustTex(0), () => dustTex(1)];
+    for (let s = 1; s <= NL; s++) WARM.push(() => filmTex(s));
+    SPK_D.forEach((_, k) => WARM.push(() => speckTex(k)));
+    for (let k = 2; k <= SPK_D.length; k++) WARM.push(() => speckCum(k));
+    WARM.push(dustBoth, dustSpkAll, contactTex, rimTex, edgesTex, surfFinalTex, () => stonesTex(true), () => stonesTex(false), () => stonesTex(false, true), stoneDustTex, stonesFinalTex);
+    if (typeof requestIdleCallback === 'function') {
+      let wi = 0, wS = 0;
+      const step = (dl) => {
+        const S = XYT.sprites && XYT.sprites.S;
+        if (!S) { setTimeout(() => requestIdleCallback(step), 1500); return; }
+        if (S !== wS) { wS = S; wi = 0; } // 换了分辨率就按新倍率重来（已建的缓存直接命中，不会重画）
+        while (wi < WARM.length && (dl.didTimeout || dl.timeRemaining() > 6)) WARM[wi++]();
+        if (wi < WARM.length) requestIdleCallback(step);
+      };
+      setTimeout(() => requestIdleCallback(step), 2000);
+    }
   })();
   // ============================================================
   // e2_ropebridge 断桥：风雨峡谷里的吊桥起伏扭转，近侧底绳先断、木板成串滑落，其余绳索崩断，两半甩向崖壁，最后一块木板坠入翻涌的云雾
