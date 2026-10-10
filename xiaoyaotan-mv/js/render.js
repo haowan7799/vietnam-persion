@@ -413,6 +413,8 @@
         if (t < ln.t - 0.2 || t > ln.out + 0.9) continue;
         const sc = XYT.scenes[ln.scene] || XYT.scenes.mist;
         const L = this.layout(ln);
+        // 上一句逐字淡出时改过 globalAlpha，这里必须复位，否则新一句的底板会按上一句残留的透明度画、等上一句消失后突然整块冒出来
+        g.globalAlpha = 1;
         if (ln.zone === 'bottom' || ln.zone === 'top') {
           // 横排歌词垫一条两端渐隐的淡墨底，复杂背景上也看得清
           const ps = L.pos.filter(Boolean);
