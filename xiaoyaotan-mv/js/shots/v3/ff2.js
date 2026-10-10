@@ -521,7 +521,7 @@
     if (I > 1.005) { g.globalCompositeOperation = 'lighter'; glowAt(g, 640, 360, 330, 300, '#c8783a', (I - 1) * 1.8); }
     else if (I < 0.995) glowAt(g, 640, 360, 330, 300, '#0c0806', (1 - I) * 2.4);
     g.globalCompositeOperation = 'lighter';
-    [[230, 300, 46], [1108, 232, 34], [1192, 452, 22]].forEach(([x, y, r], i) => glowAt(g, x, y, r * 1.5, r * 1.6, '#e8a060', 0.10 + 0.03 * noise1(lt * 1.7 + i * 5, 3 + i)));
+    [[170, 300, 46], [1108, 232, 34], [1192, 452, 22]].forEach(([x, y, r], i) => glowAt(g, x, y, r * 1.5, r * 1.6, '#e8a060', 0.10 + 0.03 * noise1(lt * 1.7 + i * 5, 3 + i)));
     g.globalCompositeOperation = 'source-over';
     g.restore();
 

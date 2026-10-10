@@ -182,8 +182,11 @@
           blitBox(gb, mb.canvas, box);
         }
       } else if (type === 'iris') {
-        const r = easeInOut(p) * 820 + 1;
-        const gr = gb.createRadialGradient(640, 360, r * 0.75, 640, 360, r);
+        // 圆形渐开：转场结束时实心部分（内圈 0.75r）必须盖到最远的画角，否则上一镜的四角会在最后一帧突然消失
+        const cx = trans && trans.x != null ? trans.x : 640, cy = trans && trans.y != null ? trans.y : 360;
+        const R = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) / 0.75 + 4;
+        const r = easeInOut(p) * R + 1;
+        const gr = gb.createRadialGradient(cx, cy, r * 0.75, cx, cy, r);
         gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
         gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
       } else if (type === 'slash') {
@@ -196,11 +199,6 @@
         // 软边横扫：右侧随进度推进，边缘 160px 渐隐
         const pos = lerp(-200, W + 200, easeInOut(p));
         const gr = gb.createLinearGradient(pos - 160, 0, pos + 160, 0);
-        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-        gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
-      } else if (type === 'iris' && trans && trans.x != null) {
-        const r = easeInOut(p) * 1500 + 1;
-        const gr = gb.createRadialGradient(trans.x, trans.y, r * 0.8, trans.x, trans.y, r);
         gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
         gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
       } else if (type === 'scroll') {
