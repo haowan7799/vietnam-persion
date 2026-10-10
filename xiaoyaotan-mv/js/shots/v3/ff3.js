@@ -541,8 +541,10 @@
         const str = Math.pow(clamp(1 - e / emitDur), 0.8) * (0.75 + 0.25 * Math.exp(-e / 0.35));
         const rise = 92 * a - 8 * a * a;
         const x = ox + 0.6 + 24 * a * a + (0.6 + 9 * a) * Math.sin(e * 4.3 + a * 1.4) + (0.3 + 3.2 * a) * Math.sin(e * 11.3 + 2.1 + a);
-        const al = 0.5 * str * Math.pow(clamp(1 - a / life), 1.1) * smooth(a / 0.08);
-        return [x, oy - rise, a, al, 2 + 10 * clamp(a / (life * 0.75))];
+        // 最先冒出的 0.4 s 烟（带子最上端）淡入为 0 并略散开，顶端是一团柔和的散烟而不是齐口
+        const head = smooth(e / 0.4);
+        const al = 0.5 * str * Math.pow(clamp(1 - a / life), 1.1) * smooth(a / 0.08) * head;
+        return [x, oy - rise, a, al, 2 + 10 * clamp(a / (life * 0.75)) + 6 * (1 - head)];
       };
       for (let k = k0; k <= k1; k++) pts.push(at(t - (t0 + k * step)));
       if (t < t0 + emitDur) pts.push(at(0));
@@ -569,7 +571,7 @@
       const span = Math.max(1, yBot - yTop);
       const grad = (rgb, k) => {
         const gr = g.createLinearGradient(0, yTop, 0, yBot);
-        const n = Math.min(10, pts.length - 1);
+        const n = Math.min(28, pts.length - 1);
         for (let j = 0; j <= n; j++) {
           const p = pts[Math.round((j / n) * (pts.length - 1))];
           gr.addColorStop(clamp((p[1] - yTop) / span), `rgba(${rgb},${(p[3] * k).toFixed(3)})`);

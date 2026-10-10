@@ -1322,7 +1322,7 @@
     // 老人身高 66：女墙墙身挡到他的大腿，垛头齐腰（0.5 h）；他站在一个垛口里，上半身露在两个垛头之间
     const PLAT = { x0: 926, x1: 1074, top: 292 };
     const PAR = { sill: 22, merl: 11 };
-    const MERL = [929, 961, 993, 1025, 1057];                    // 垛头左缘（宽 14，垛口宽 18；975–993 是老人站的垛口）
+    const MERL = [934, 963, 993, 1023, 1052];                    // 垛头左缘（宽 14，两端与墙身齐平；垛口宽 15–16，977–993 是老人站的垛口）
     const POLES = [340, 450, 560, 665, 765, 860].map((x, i) => ({ x, base: WT(x) + 1, h: i < 2 ? 2.77 * HW(x) : 76 - 10 * (x - 340) / 520 }));
     const FLAG = { x: 1013, base: PLAT.top, h: 128 };
     // 老人站在旗杆左边，面朝西边的余晖；残旗向右（下风）垂，不会扫到他
@@ -1621,7 +1621,8 @@
       // 城墙投在近坡上的长长的蓝影：贴着墙脚，往下坡（朝镜头）铺开，越往城楼一端越宽，边缘柔
       g.save();
       g.filter = `blur(${(7 * g.getTransform().a).toFixed(1)}px)`;
-      g.fillStyle = 'rgba(26,36,66,0.34)';
+      // 影子在烽台脚的雪堆之前淡出（雪堆不被它垫出一块硬边）
+      { const sg = g.createLinearGradient(PLAT.x0 - 90, 0, PLAT.x0 - 26, 0); sg.addColorStop(0, 'rgba(26,36,66,0.34)'); sg.addColorStop(1, 'rgba(26,36,66,0)'); g.fillStyle = sg; }
       g.beginPath(); g.moveTo(WX0 + 4, G(WX0 + 4));
       for (let x = WX0 + 4; x <= WX1; x += 6) g.lineTo(x, G(x) + 1);
       for (let x = WX1; x >= WX0 + 4; x -= 6) { const u = (x - WX0) / (WX1 - WX0); g.lineTo(x - 18 * (1 - u), G(x) + 10 + 26 * (1 - u) * (1 - u) + 6); }
@@ -1752,7 +1753,11 @@
       p.lineTo(W + 80, 800); p.closePath();
       // 余晖只染雪面：再把城墙正面与烽台墩身作为子路径加进去，用奇偶规则挖掉（它们朝东背光，只有西沿一线受光）
       const glow = new Path2D(p);
-      glow.addPath(RIDGE.plat);
+      // 烽台墩身：下沿顺着台脚雪堆的顶线走（雪堆本身照样受余晖），不用墩身方块的直底边
+      { const dT = (x) => { const e = smooth((x - PLAT.x0 + 20) / 30) * smooth((PLAT.x1 + 24 - x) / 30); return G(x) + 2 - 9 * e - 2 * noise1(x * 0.08, 77) * e + 1; };
+        glow.moveTo(PLAT.x0, dT(PLAT.x0)); glow.lineTo(PLAT.x0 + 8, PLAT.top); glow.lineTo(PLAT.x1 - 8, PLAT.top); glow.lineTo(PLAT.x1, dT(PLAT.x1));
+        for (let x = PLAT.x1; x >= PLAT.x0; x -= 4) glow.lineTo(x, dT(x));
+        glow.closePath(); }
       glow.moveTo(WX0, G(WX0) + 3);
       for (let x = WX0; x <= PLAT.x0; x += 4) glow.lineTo(x, WT(x) - 0.5);
       for (let x = PLAT.x0; x >= WX0; x -= 4) glow.lineTo(x, G(x) + 3);
@@ -1923,7 +1928,8 @@
       // 东侧（左）背光更暗
       const ef = g.createLinearGradient(x0, 0, x0 + 50, 0);
       ef.addColorStop(0, 'rgba(14,20,36,0.4)'); ef.addColorStop(1, 'rgba(14,20,36,0)');
-      g.fillStyle = ef; g.fillRect(x0, yM, 50, PAR.sill + PAR.merl + 2);
+      g.fillStyle = ef; g.fillRect(x0, yS, 50, PAR.sill + 2);
+      for (const x of MERL) if (x < x0 + 50) g.fillRect(x, yM, 14, PAR.merl + 0.5);
       // 雪
       g.fillStyle = '#b4c4dc';
       for (const x of MERL) g.fillRect(x - 0.5, yM - 1.8, 15, 2.2);
