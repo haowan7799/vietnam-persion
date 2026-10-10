@@ -939,13 +939,13 @@
     }));
     // 霜褪去的时刻：滑落的小团在滑动中褪，抖落的雪团离枝即褪
     const frostA = (cl, t) => 1 - smooth((t - cl.r + 0.14) / 0.2);
-    const frostEnd = (cl) => (cl.early >= 0 ? cl.r + 0.06 : cl.r + 0.4);
+    const frostEnd = (cl) => (cl.early >= 0 ? cl.r + 0.06 : cl.r + 0.26);
     // 抖落的雪团：霜跟着离去的雪团被揭开——雪团离开一朵花越远，这朵花上的霜越淡（顺着雪团离去的方向依次露出）
     function frostWipe(g, cl, L, t) {
       const s = t - cl.r;
       let dx = 0, dy = 0;
       if (s > 0) { dx = fallX(cl, s) - cl.fx; dy = fallY(cl, s) - cl.fy; }
-      const tc = s > 0 ? 1 - smooth((s - 0.22) / 0.16) : 1;
+      const tc = s > 0 ? 1 - smooth((s - 0.12) / 0.13) : 1;
       if (tc < 0.003) return;
       const cx = cl.x, cy = cl.y - 0.25 * cl.h, rx = 0.55 * cl.w + 1.5, ry = 0.55 * cl.h + 1.5;
       for (const o of L) {
@@ -991,14 +991,26 @@
         b.fillStyle = gr; b.fill(path);
       });
     });
-    // 下落中的雪团：离枝的 0.1 秒里从枝上的雪条形状松成一个圆团（抖落的）；滑落的小团保持原形
-    function drawFalling(g, B, C1, cl, s, am) {
-      const [x, y, a, k, al] = coreXf(cl, s), A0 = al * am;
-      if (A0 < 0.004) return;
-      if (cl.early >= 0) { g.globalAlpha = A0; setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26); return; }
-      const d = 0.8 * cl.w * k, ml = smooth(s / 0.07), mc = 1 - smooth((s - 0.03) / 0.12);
-      if (ml > 0.004) { g.globalAlpha = A0 * ml; setT(g, B, mul(C1, trs(x, y - 0.25 * cl.h, a * 0.5, d / 32, d * 0.82 / 32))); g.drawImage(lumpSpr(cl.v), -16, -17, 32, 32); }
-      if (mc > 0.004) { g.globalAlpha = A0 * mc; setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26); }
+    // 下落中的雪团：离枝的 0.12 秒里从枝上的雪条形状松成一个圆团（抖落的）；滑落的小团保持原形。
+    // inGroup：离枝后的头 0.12 秒在所在枝组的次序里画雪条原形（渐隐）；否则画在最前面的圆团（渐显，轴对齐、不旋转，省开销）
+    function drawFalling(g, B, C1, cl, s, inGroup) {
+      const [x, y, a, k, al] = coreXf(cl, s);
+      if (cl.early >= 0) {
+        g.globalAlpha = al * (inGroup ? 1 : smooth(s / XR));
+        if (g.globalAlpha < 0.004) return;
+        setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
+        return;
+      }
+      if (inGroup) {
+        g.globalAlpha = al * (1 - smooth((s - 0.02) / 0.1));
+        if (g.globalAlpha < 0.004) return;
+        setT(g, B, mul(C1, trs(x, y, a, cl.w / 40 * k, cl.h / 26 * k))); g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
+        return;
+      }
+      g.globalAlpha = al * smooth(s / 0.1);
+      if (g.globalAlpha < 0.004) return;
+      const d = 0.8 * cl.w * k, cx = C1[0] * x + C1[4], cy = C1[3] * (y - 0.25 * cl.h) + C1[5], sc = C1[0];
+      g.setTransform(B); g.drawImage(lumpSpr(cl.v), cx - 0.5 * d * sc, cy - 0.53 * d * 0.82 * sc, d * sc, d * 0.82 * sc);
     }
     // 柔光圆点（雪片、雪粉）
     const dot = (col, core) => K.cache(`f8dot:${col}:${core}`, 64, 64, 1, (g) => {
@@ -1055,14 +1067,15 @@
       });
     });
 
-    // 红梅露出后的暖调：整幅先乘一层 #f2d0c8（雪的亮部转向暖粉、冷灰褪去），再在树冠周围滤色叠一团很淡的暖红，像满树红花映出的光
-    const warmGlow = () => K.cache('f8:warmglow', W, H, 0.5, (g) => {
-      let gr = g.createRadialGradient(470, 360, 0, 470, 360, 620);
-      gr.addColorStop(0, 'rgba(255,150,118,0.2)'); gr.addColorStop(0.45, 'rgba(255,165,135,0.1)'); gr.addColorStop(1, 'rgba(255,170,140,0)');
+    // 红梅露出后的暖调：整幅乘一层暖粉（雪的亮部转向 #f2d0c8 一带、冷灰褪去）；树冠周围略偏红，像满树红花映出的光，歌词区略淡
+    const warmTex = () => K.cache('f8:warmmul', W, H, 0.25, (g) => {
+      g.fillStyle = '#f3d5c3'; g.fillRect(0, 0, W, H);
+      let gr = g.createRadialGradient(470, 340, 0, 470, 340, 560);
+      gr.addColorStop(0, 'rgba(236,180,164,0.85)'); gr.addColorStop(0.5, 'rgba(240,194,178,0.4)'); gr.addColorStop(1, 'rgba(243,213,195,0)');
       g.fillStyle = gr; g.fillRect(0, 0, W, H);
-      gr = g.createLinearGradient(0, 470, 0, H);
-      gr.addColorStop(0, 'rgba(255,170,150,0)'); gr.addColorStop(1, 'rgba(255,170,150,0.06)');
-      g.fillStyle = gr; g.fillRect(0, 470, W, H - 470);
+      gr = g.createLinearGradient(0, 0, 0, 170);
+      gr.addColorStop(0, 'rgba(247,226,214,0.8)'); gr.addColorStop(1, 'rgba(247,226,214,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, 170);
     });
     // 雪地上的落红：围着树根、人脚边最密，顺风（向左）拖开，远处零星；分五层，随花瓣落下一层层淡入
     const SCAT_Y = 556;
@@ -1089,6 +1102,9 @@
         g.restore();
       }
     });
+    const scatterPre = (n) => (n === 1 ? scatterLayer(0) : K.cache('f8:scatP' + n, W + 120, H - SCAT_Y, 1, (g) => {
+      g.drawImage(scatterPre(n - 1), 0, 0, W + 120, H - SCAT_Y); g.drawImage(scatterLayer(n - 1), 0, 0, W + 120, H - SCAT_Y);
+    }));
     // ---------------- 每帧绘制的部件 ----------------
     // 雪：远处两层平铺的雪点贴图，中景粒子，近处少量大而虚的雪片
     // 远处的细雪：小块可平铺的雪点贴图，两层不同大小、不同速度。每块预先画出 2×4 个亚像素相位（x 半像素、y 四分之一像素），
@@ -1228,7 +1244,6 @@
       draw(g, c) {
         const t = c.lt, dur = c.dur;
         const e = events(c), M = getM(e), D = M.D;
-        XYT._f8dbg = { M, G, CL, e, petalPos, upPos };
         const B = g.getTransform();
         // 镜头：整镜 1.00 → 1.07 缓推；远景视差慢、近景快
         const Z = 1 + 0.07 * smooth((t + 0.7) / (dur + 0.7));
@@ -1240,7 +1255,11 @@
         farSnow(g, B, t, D, dens);
         setT(g, B, C1); g.drawImage(groundLayer(), -60, HOR - 6, W + 120, H - HOR + 60);
         const SCT = [e.du + 0.55, e.cheng + 0.35, e.hong + 0.12, e.hong + 0.42, e.hong + 0.75];
-        for (let k = 0; k < 5; k++) {
+        // 已完全淡入的前几层合成一张画，正在淡入的层单独画
+        let kf = 0;
+        while (kf < 5 && t >= SCT[kf] + 0.5) kf++;
+        if (kf > 0) g.drawImage(scatterPre(kf), -60, SCAT_Y, W + 120, H - SCAT_Y);
+        for (let k = kf; k < 5; k++) {
           const a = smooth((t - SCT[k]) / 0.5);
           if (a > 0.004) { g.globalAlpha = a; g.drawImage(scatterLayer(k), -60, SCAT_Y, W + 120, H - SCAT_Y); }
         }
@@ -1337,7 +1356,7 @@
           if (k > 0) for (const cl of gp.clumps) {
             const s = t - cl.r;
             if (s < 0 || s >= XR) continue;
-            drawFalling(g, B, C1, cl, s, 1);
+            drawFalling(g, B, C1, cl, s, true);
           }
           g.globalAlpha = 1;
         }
@@ -1392,7 +1411,7 @@
             }
             // 下坠途中身后拖出的一小团雪粉
             const ta = s - 0.1;
-            if (ta > 0 && ta < 0.6 && life > 0.1) {
+            if (cl.w >= 14 && ta > 0 && ta < 0.6 && life > 0.1) {
               const x0 = fallX(cl, 0.1), y0 = fallY(cl, 0.1) - 0.2 * cl.h;
               const R = 0.35 * cl.w + 2 + 18 * Math.pow(ta, 0.6);
               puffAt(x0 - 50 * ta - 100 * (D(t - dl(x0)) - D(cl.r + 0.1 - dl(x0))), y0 + 14 * ta, R, R * 0.9, 0.16 * smooth(ta / 0.06) * (1 - smooth(ta / 0.6)));
@@ -1449,7 +1468,7 @@
             g.drawImage(clumpSpr(cl.v), -20, -19, 40, 26);
             continue;
           }
-          drawFalling(g, B, C1, cl, s, smooth(s / XR));   // 最前面这一份渐显；组内那一份保证没被挡住的地方始终不透明
+          drawFalling(g, B, C1, cl, s, false);   // 最前面这一份渐显；组内那一份保证没被挡住的地方始终不透明
         }
         g.globalAlpha = 1;
         petals(ZMAN, ZTREE + 0.2);
@@ -1491,8 +1510,7 @@
         g.setTransform(B);
         const warm = 0.2 * smooth((t - e.du) / 0.6) + 0.2 * smooth((t - e.cheng) / 0.5) + 0.6 * smooth((t - e.hong + 0.05) / 0.6);
         if (warm > 0.002) {
-          g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.62 * warm; g.fillStyle = '#f3d5c3'; g.fillRect(0, 0, W, H);
-          g.globalCompositeOperation = 'screen'; g.globalAlpha = warm; g.drawImage(warmGlow(), 0, 0, W, H);
+          g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.64 * warm; g.drawImage(warmTex(), 0, 0, W, H);
           g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
         }
       },

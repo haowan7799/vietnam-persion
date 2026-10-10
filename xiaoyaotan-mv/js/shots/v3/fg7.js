@@ -1655,6 +1655,45 @@
       for (let k = 1; k < GSTOP.length; k++) if (q <= GSTOP[k][0]) return mix(GSTOP[k - 1][1], GSTOP[k][1], (q - GSTOP[k - 1][0]) / (GSTOP[k][0] - GSTOP[k - 1][0]));
       return GSTOP[GSTOP.length - 1][1];
     }
+    // 断枝桩的布置：整片林子一次算好（与绘制顺序无关）。每棵最多两根（屏幕上窄于 14 像素的只有 0–1 根），
+    // 同一棵树上两根高差 ≥ 1.4 米、左右随机；相邻树干（屏幕横距 170 像素内）的桩在屏幕上高差 ≥ 16 像素，
+    // 免得几棵树的桩排成一条水平线、像电线杆的横担。近处的树先排
+    const STUBS = (() => {
+      const plan = new Map(), placed = [];
+      const order = TREES.slice().sort((a, b) => a[1] - b[1]);
+      for (const [x, z, d] of order) {
+        const list = []; plan.set(x + ',' + z, list);
+        const [sx, sy] = P(x, z), w = Math.max(1.5, F * d / z), k = F / z;
+        if (w <= 5) continue;
+        const top = -20, base = Math.min(sy + 2, H + 20);
+        const span = Math.min(12, HC + (HOR - top - 8) / k) - 1.8;
+        if (span <= 0) continue;
+        const r = A.rng(Math.round(x * 100 + z * 7) + 5179);
+        const nb = w < 14 ? (r() < 0.55 ? 1 : 0) : (r() < 0.6 ? 2 : 1);
+        let hm = 1.8 + r() * span;
+        for (let q = 0; q < nb; q++) {
+          if (q > 0) hm = 1.8 + ((hm - 1.8 + 1.6 + 2.4 * r()) % span);
+          let ok = false, yy = 0;
+          for (let tr = 0; tr < 4 && !ok; tr++) {
+            if (tr > 0) hm = 1.8 + ((hm - 1.8 + 0.9 + 1.4 * r()) % span);
+            yy = HOR + k * (HC - hm);
+            ok = yy >= top + 6 && yy <= base - w && !list.some((s) => Math.abs(s.hm - hm) < 1.4) &&
+              !placed.some((p) => Math.abs(p[1] - yy) < 16 && Math.abs(p[0] - sx) < 170);
+          }
+          if (!ok) continue;
+          const up = r() < 0.45;
+          list.push({
+            hm, sd: r() < 0.5 ? -1 : 1,
+            a: up ? -(0.2 + 0.4 * r()) : 0.25 + 0.35 * r(),            // 斜度（弧度）：负为上翘，正为下垂
+            Lm: 0.08 + 0.12 * r(),                                       // 0.08–0.20 米，长短差 2.5 倍
+            thm: 0.022 + 0.014 * r(),
+            sp: [r(), r(), r()],                                         // 断茬长短
+          });
+          placed.push([sx, yy]);
+        }
+      }
+      return plan;
+    })();
     // 松干：按真实高度收分（每米细约 2.4%），根部略张开，整根带一点点弯；逆光——朝镜头的一面在阴里，左侧偏冷暗，
     // 右缘一道暖色轮廓光；高处的树皮在斜阳里泛橙。树皮是干笔皴出来的竖向鳞片与纵沟；几根断枝桩，桩上压一小溜雪
     function drawTrunk(g, x, z, d) {
@@ -1667,7 +1706,8 @@
       const warm = mix(mix('#8a5634', '#7a5440', tint), '#d8d4cc', haze * 0.9);
       const rim = mix('#ffd89a', '#f1e6d4', haze);
       const hmAt = (yy) => HC - (yy - HOR) / k;
-      const lean = (r() - 0.5) * 0.022, ph = r() * TAU, bend = 0.03 + 0.04 * r();
+      // 中景（z > 9）的树干斜度放宽到约 ±1.4°，免得一排排平行竖线像电线杆
+      const lean = (r() - 0.5) * (z > 9 ? 0.05 : 0.022), ph = r() * TAU, bend = 0.03 + 0.04 * r();
       const cxAt = (yy) => { const hm = Math.max(0, hmAt(yy)); return sx + k * (lean * hm + bend * Math.sin(hm / 2.8 + ph) * smooth(hm / 2.5)); };
       const hwAt = (yy) => { const hm = Math.max(0, hmAt(yy)); return 0.5 * w * Math.max(0.35, 1 - 0.024 * hm) * (1 + 0.24 * Math.exp(-hm / 0.32)); };
       const ys = [];
@@ -1733,29 +1773,54 @@
             yy -= len + Math.min(60, w * (0.15 + 0.7 * r()));
           }
         }
-        // 断枝桩：短而粗、向外略垂，桩上压一小溜雪（受光一面暖白）
-        if (w > 5) {
-          const nb = 1 + Math.floor(r() * 3);
-          for (let q = 0; q < nb; q++) {
-            const hm = 1.8 + r() * (Math.min(9, hmAt(top + 8)) - 1.8);
+        // 断枝桩：每棵最多两根，高度错开（同一棵树上任意两根相距 ≥ 1.4 米，不论左右），左右随机；
+        // 有的上翘、有的下垂，长短相差两倍多，末端是参差的断茬尖；颜色是比树干更深的树皮色，
+        // 只在上沿压一线薄雪（不超过桩粗的四成），朝右（向阳）的桩才有一线暖色轮廓光
+        {
+          const stubCol = mix(col, '#17120f', 0.4 * (1 - haze * 0.6));
+          const stubDark = mix(col, '#0e0b0a', 0.6 * (1 - haze * 0.6));
+          const snowC = mix('#f6efe4', '#eef0f2', haze);
+          for (const { hm, sd, a, Lm, thm, sp } of STUBS.get(x + ',' + z) || []) {
             const yy = HOR + k * (HC - hm);
-            if (yy < top + 6 || yy > base - w) continue;
-            const sd = q % 2 ? 1 : -1, L = Math.max(3, k * (0.07 + 0.13 * r())), dr = 0.15 + 0.35 * r();
-            const th0 = Math.max(0.7, k * 0.032), th1 = Math.max(0.45, k * 0.012);
-            const x0 = cxAt(yy) + sd * hwAt(yy) * 0.85, x1 = x0 + sd * L, y1 = yy + L * dr;
-            g.fillStyle = mix(col, '#1e1a18', 0.25);
-            // 断口参差：末端两三个小折角
-            g.beginPath(); g.moveTo(x0, yy - th0); g.quadraticCurveTo(x0 + sd * L * 0.5, yy + L * dr * 0.45 - th0 * 0.9, x1, y1 - th1);
-            g.lineTo(x1 + sd * th1 * 0.9, y1 - th1 * 0.2); g.lineTo(x1 + sd * th1 * 0.2, y1 + th1 * 0.3); g.lineTo(x1 + sd * th1 * 0.7, y1 + th1);
-            g.quadraticCurveTo(x0 + sd * L * 0.5, yy + L * dr * 0.55 + th0 * 0.9, x0, yy + th0 * 1.2); g.closePath(); g.fill();
-            if (sd > 0) { g.strokeStyle = rgba(rim, 0.55); g.lineWidth = Math.max(0.5, th0 * 0.35); g.beginPath(); g.moveTo(x0, yy - th0 * 0.7); g.lineTo(x1, y1 - th1 * 0.7); g.stroke(); }
-            // 桩上的雪
-            const sT = Math.max(0.5, k * 0.014);
-            g.fillStyle = rgba(mix('#fdf3e2', '#eef0f2', haze), 0.95);
-            g.beginPath(); g.moveTo(x0 + sd * L * 0.05, yy - th0 * 0.9);
-            g.quadraticCurveTo(x0 + sd * L * 0.45, yy + L * dr * 0.45 - th0 - sT * 1.6, x1 + sd * th1 * 0.3, y1 - th1 * 0.9);
-            g.quadraticCurveTo(x0 + sd * L * 0.5, yy + L * dr * 0.5 - th0 * 0.8, x0 + sd * L * 0.05, yy - th0 * 0.5);
+            const L = Math.max(3.5, k * Lm), th0 = Math.min(L * 0.3, Math.max(0.8, k * thm));
+            const c = Math.cos(a), s = Math.sin(a);
+            const dx = sd * c, dy = s, nx = sd * s, ny = -c;               // 轴向、朝上的法向
+            const x0 = cxAt(yy) + sd * hwAt(yy) * 0.82;
+            const pt = (t, o) => [x0 + dx * t + nx * o, yy + dy * t + ny * o];
+            const mv = (p) => g.moveTo(p[0], p[1]), ln = (p) => g.lineTo(p[0], p[1]);
+            const qc = (p, e) => g.quadraticCurveTo(p[0], p[1], e[0], e[1]);
+            // 桩身：根部略粗（枝领），往外收细，末端两三根长短不一的断茬尖
+            g.fillStyle = stubCol;
+            g.beginPath();
+            mv(pt(-th0 * 0.6, th0 * 1.45));
+            qc(pt(L * 0.15, th0 * 1.05), pt(L * 0.45, th0 * 0.78));
+            qc(pt(L * 0.68, th0 * 0.62), pt(L * (0.8 + 0.06 * sp[0]), th0 * 0.5));
+            ln(pt(L * (0.98 + 0.1 * sp[1]), th0 * 0.32));
+            ln(pt(L * 0.86, th0 * 0.12));
+            ln(pt(L * (0.93 + 0.12 * sp[2]), -th0 * 0.1));
+            ln(pt(L * 0.8, -th0 * 0.28));
+            ln(pt(L * (0.86 + 0.08 * sp[0]), -th0 * 0.42));
+            qc(pt(L * 0.6, -th0 * 0.66), pt(L * 0.35, -th0 * 0.85));
+            qc(pt(L * 0.1, -th0 * 1.1), pt(-th0 * 0.6, -th0 * 1.6));
             g.closePath(); g.fill();
+            // 下半边更暗（背光），根部一点点压在树干上的暗影
+            g.fillStyle = rgba(stubDark, 0.55);
+            g.beginPath();
+            mv(pt(-th0 * 0.4, -th0 * 0.1)); qc(pt(L * 0.45, -th0 * 0.05), pt(L * 0.82, -th0 * 0.2));
+            ln(pt(L * 0.8, -th0 * 0.3)); qc(pt(L * 0.4, -th0 * 0.78), pt(-th0 * 0.5, -th0 * 1.45));
+            g.closePath(); g.fill();
+            // 上沿一线薄雪：中间最厚约 0.6·th0（桩粗 2·th0 的三成），两头收尖
+            const sw = th0 * 0.6;
+            g.fillStyle = rgba(snowC, 0.85 * (1 - haze * 0.4));
+            g.beginPath();
+            mv(pt(L * 0.04, th0 * 0.98));
+            qc(pt(L * 0.35, th0 * 0.86 + sw * 1.5), pt(L * 0.7, th0 * 0.6));
+            qc(pt(L * 0.38, th0 * 0.7), pt(L * 0.04, th0 * 0.98));
+            g.closePath(); g.fill();
+            if (sd > 0) {
+              g.strokeStyle = rgba(rim, 0.5 * (1 - haze * 0.5)); g.lineWidth = Math.max(0.5, th0 * 0.22);
+              g.beginPath(); mv(pt(L * 0.08, th0 * 0.75)); qc(pt(L * 0.5, th0 * 0.55), pt(L * 0.82, th0 * 0.38)); g.stroke();
+            }
           }
         }
       } else {
