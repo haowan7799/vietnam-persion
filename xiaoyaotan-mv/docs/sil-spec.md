@@ -22,14 +22,15 @@ XYT.sil.draw(g, who, pose, x, y, h, t, opts)
   - `alpha`：整体透明度；
   - `glow`：0..1，周身柔光（用于回忆、梦境）；
   - `snow`：0..1，斗笠顶、肩上、头顶朝上的面积雪厚度（白色形状，平滑增长）；
-  - `walkPhase`：走路相位偏移（秒）。
+  - `walkPhase`：走路相位偏移（秒）；
+  - `settle`：为真时画完立刻让目标画布执行挂起的绘制（读回 1 个像素）。默认不读回，需要时也可以每帧调用一次 `XYT.sil.settle(g)`。
 
 同时提供：
 
 - `XYT.sil.poses`：`{ who: [pose, ...] }`。
 - `XYT.sil.walkSpeed(h)`：走路姿势在这个身高下每秒前进的像素。镜头按 `x = x0 + facing * walkSpeed(h) * t` 移动人物，脚就不会滑。
 - `XYT.sil.bounds(who, pose, h)`：`{ left, right, top, bottom }`，相对着地点的包围盒，用来避开歌词区。
-- `XYT.sil.boat(g, x, y, len, t, opts)`：侧面木船（`y` 是船板面，`len` 是船长），可选 `opts.awning`（乌篷）、`opts.body`、`opts.rim`、`opts.rimSide`。船和人一起用时，人画在船板上，用同一个起伏量。
+- `XYT.sil.boat(g, x, y, len, t, opts)`：侧面木船（`y` 是船板面，`len` 是船长），可选 `opts.awning`（乌篷）、`opts.body`、`opts.rim`、`opts.rimSide`。船和人一起用时，人画在船板上，用同一个起伏量。船舷比船板高约 0.022 船长：先 `boat(..., {layer:'back'})`、再画人（`opts.boat` 传 `boat()` 的返回值）、最后 `boat(..., {layer:'front'})`，船舷就挡住坐、卧的人的下半身和站着的人的脚。
 
 ## 人物与姿势
 

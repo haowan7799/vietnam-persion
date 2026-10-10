@@ -3,18 +3,22 @@
  * 每个姿势是一整块设计好的闭合剪影（单位坐标：站立身高 = 100，原点是着地点，x 朝人物面向的一侧，y 向下），不做关节骨架。
  * 绘制：有厚度的主体部件用实色画进一张离屏剪影（同色重叠不出缝；手臂压在身上、剑压在背上这类重叠处，用载入时算好的
  *       淡色细带分开）→ 积雪 → 轮廓光 → 合成到画面；发丝、发带、剑穗、簪、草穗这类细件（cls 'thin'）和背光一侧的
- *       远侧手臂、斗篷（cls 'shade'）不进离屏剪影，按前后次序直接画在目标画布上，不描轮廓光。
+ *       远侧手臂、斗篷（cls 'shade'）不进离屏剪影，按前后次序直接画在目标画布上，不描轮廓光；夹在两层主体之间的细件
+ *       先画在剪影前，再把压在它上面的主体从离屏剪影原样补画回来，前后次序与不描轮廓光时完全一致。
  *       轮廓光 = 剪影 − 剪影向光平移 rimW；另外按“边”判定哪些边不亮（rimAnalyze：对着窄缝的边、细窄的尖梢、
  *       贴着细件的边，一条边要么整条亮、要么整条渐隐，不会出现亮线内缩、外侧留暗线）。判定用的低分辨率覆盖度
- *       直接由轮廓多边形在 JS 里扫描得到，不读回离屏画布；合成全部是整像素平移（见 rimPass、settle）。
- *       无旋转、等比缩放时对齐到整像素；半透明时篙、钓竿、剑身与剪影先叠好再整体淡入淡出。
+ *       直接由轮廓多边形在 JS 里扫描得到，不读回离屏画布；合成全部是整像素平移（见 rimPass）。个别轮廓段用设计好的
+ *       “不亮区域”（nrz，按光从哪一侧来生效，可带渐变）去掉被身体挡住的亮边。曲线由自己按折线展平（见 addSmooth），
+ *       缩放、呼吸时长而缓的边不会因画布切分曲线的刀数跳档而整条挪动。
+ *       无旋转、等比缩放时对齐到整像素；半透明时剪影外的东西（篙、钓竿、剑身、细件）与剪影先叠好再整体淡入淡出。
+ *       默认不读回调用方画布（opts.settle / settle(g) 可选）；直接画到调用方画布上的离屏画布按尺寸轮换。
  * 会动的只有挂在固定锚点上的头发、发带、袖口、下摆、披帛、斗篷边，用 2–3 个正弦叠加；wind = 0 时只剩呼吸。
  * 接口补充：
  *   - opts.hat：老者 standSide / walkSide / sitSide 戴斗笠；
  *   - opts.boat：boat() 的返回值，人画在船板上并随船起伏（镜头不必再自己套船的变换）；
  *   - opts.waterDepth：船板（或坐面）到水面的像素距离，篙和钓线在水面处截断；opts.lineTo：钓线末端（单位身高/100）；
  *   - boat(g, x, y, len, t, { layer: 'back' | 'front' })：'back' 只画乌篷，'front' 只画船身——先画 back、再画人、
- *     最后画 front，船舷就能挡住坐着、躺着的人的下半身；
+ *     最后画 front，船舷（比船板高约 0.022 船长）就能挡住坐着、躺着的人的下半身和站着的人的脚；
  *   - bounds(who, pose, h, facing | opts)：opts 里的 facing、hat、waterDepth / boat（篙与钓线算到水面）都会考虑；
  *   - opts.line：'skip' 不画钓线，'only' 只画钓线——人坐在船上垂钓时，先 draw(..., {line:'skip'})、再画船身前层、
  *     最后 draw(..., {line:'only'})，钓线就不会被船舷挡住；
@@ -79,16 +83,16 @@
   }
   // 曲线自己按折线展平（不交给画布的 bezierCurveTo）：画布按设备像素决定每段三次曲线切几刀，比例、呼吸稍一变化，刀数就跳一档，
   // 长而缓的边（膝头、笠沿、钓竿）会整条挪动约 0.3 像素，轮廓光随之一帧一帧地“爬”。这里按二阶差分估算误差，使折线与曲线的
-  // 偏差不超过 FLAT_TOL 像素：静态轮廓按参考比例 FLAT_REF（每单位 8 像素，约 h = 800）预建一次，之后放大缩小都不再变；
-  // 每帧现算的部件按本帧实际比例 flatS 展平（刀数变化时折线只差零点零几像素，看不出跳动）
-  const FLAT_TOL = 0.1, FLAT_REF = 8;
-  let flatS = FLAT_REF;
+  // 偏差不超过给定的像素数：静态轮廓按参考比例 FLAT_REF（每单位 8 像素，约 h = 800）、偏差 FLAT_TOL_S 预建一次，之后放大缩小
+  // 都不再变；每帧现算的部件按本帧实际比例 flatS、偏差 FLAT_TOL 展平（刀数变化时折线只差零点零几像素，看不出跳动）
+  const FLAT_TOL = 0.12, FLAT_REF = 8, FLAT_TOL_S = 0.25;
+  let flatS = FLAT_REF, flatT = FLAT_TOL_S;
   function addSmooth(P2, pts, closed) {
     const n = pts.length;
     if (n < 2) return;
     if (closed && area(pts) < 0) pts = pts.slice().reverse();
     const get = closed ? (i) => pts[((i % n) + n) % n] : (i) => pts[i < 0 ? 0 : i >= n ? n - 1 : i];
-    const kq = (0.75 * flatS) / FLAT_TOL;
+    const kq = (0.75 * flatS) / flatT;
     P2.moveTo(pts[0][0], pts[0][1]);
     const segs = closed ? n : n - 1;
     for (let i = 0; i < segs; i++) {
@@ -449,7 +453,7 @@
     hair: '#c9c6bf',
     blue: '#4a76a6',
     blueOld: '#5d7894',
-    pink: '#e8b7c3',
+    pink: '#d9a9b5',
     gourd: '#93693a',
     gourdHi: '#ad8048',
     snow: '#eef2f6',
@@ -1171,8 +1175,8 @@
       { z: 2.2, pts: [[9.6, -60], [10.2, -48], [10.8, -40]], w: 0.4 }, { z: 2.2, pts: [[-9.6, -60], [-10.2, -48], [-10.8, -40]], w: 0.4 },
     );
     // 披帛两端与背后弧带的连接（固定；披帛的这几段有厚度，算主体，排在长发后面）
-    parts.push({ z: 3, c: 'pink', cls: '', pts: taper([[11.0, -67.4], [12.8, -66.0], [13.9, -63.6]], () => 2.2, 'round') });
-    parts.push({ z: 3, c: 'pink', cls: '', pts: taper([[-11.0, -67.4], [-12.8, -66.0], [-13.9, -63.6]], () => 2.2, 'round') });
+    parts.push({ z: 3, c: 'pink', cls: '', pts: taper([[11.0, -67.4], [12.8, -66.0], [13.9, -63.6]], () => 1.35, 'round') });
+    parts.push({ z: 3, c: 'pink', cls: '', pts: taper([[-11.0, -67.4], [-12.8, -66.0], [-13.9, -63.6]], () => 1.35, 'round') });
     // 头、发髻、簪
     parts.push({ z: 4, c: 'hairD', dyn: 1, pts: TW(R.backHair, false) });
     parts.push({ z: 4.1, c: 'hairD', pts: TW(R.backHead, true) });
@@ -1182,20 +1186,20 @@
     parts.push({ z: 4.2, c: 'hairD', pts: ell(b0[0], b0[1], 3.1, 2.5, tilt, 14) }, { z: 4.2, c: 'hairD', pts: ell(b1[0], b1[1], 1.85, 1.5, tilt - 0.45, 10) }, { z: 4.2, c: 'hairD', pts: ell(b2[0], b2[1], 1.85, 1.5, tilt + 0.45, 10) });
     folds.push({ z: 4.2, c: 'hairD', pts: [TP(-1.3, -99.6), TP(-1.75, -101.4), TP(-1.2, -102.9)], w: 0.32 }, { z: 4.2, c: 'hairD', pts: [TP(1.3, -99.6), TP(1.75, -101.4), TP(1.2, -102.9)], w: 0.32 });
     const p0 = TP(0.9, -101.75), p1 = TP(-4.75, -102.45);
-    parts.push({ z: 4.4, c: 'gold', pts: band([p0, p1], 0.46) }, { z: 4.4, c: 'gold', pts: ell(p1[0], p1[1], 0.62, 0.55, tilt, 8) });
+    parts.push({ z: 4.4, c: 'gold', cls: 'deco', pts: band([p0, p1], 0.46) }, { z: 4.4, c: 'gold', cls: 'deco', pts: ell(p1[0], p1[1], 0.62, 0.55, tilt, 8) });
     folds.push({ z: 4, c: 'hairD', pts: TW([[-2.0, -94], [-2.6, -80], [-2.0, -62]], false), w: 0.4 }, { z: 4, c: 'hairD', pts: TW([[2.0, -94], [2.6, -80], [2.0, -62]], false), w: 0.4 });
     const snow = [{ pts: [[-9.6, -78.0], [-7.8, -82.0], [-5.2, -83.6], [-2.6, -84.8]], th: 1.4 }, { pts: [[2.6, -84.8], [5.2, -83.6], [7.8, -82.0], [9.6, -78.0]], th: 1.4 }, { pts: [TP(-3.4, -101.3), TP(-1.7, -103.2), TP(0, -103.8), TP(1.7, -103.2), TP(3.4, -101.3)], th: 0.9 }];
     function dyn(env, out) {
       // 披帛两端：从肘外侧搭下，压在广袖外侧垂过袖口；风往身体一侧吹时只偏一点，而且不越过根部的竖线（不会横到身上）。
       // 并肩背影里她右侧整个被少年挡住，右端不画（否则下梢会在两人之间的膝盖高度时隐时现）
-      if (!opt.pair) out.push({ z: 2.3, c: 'pink', cls: 'norim', pts: shawlTail(env, 13.6, -63.4, 50, { side: 1, a0: 0.02, seed: 0.6, w0: 2.3, w1: 1.8 }) });
-      out.push({ z: 2.3, c: 'pink', cls: 'norim', pts: shawlTail(env, -13.6, -63.4, 50, { side: -1, a0: -0.02, seed: 2.3, w0: 2.3, w1: 1.8 }) });
+      if (!opt.pair) out.push({ z: 2.3, c: 'pink', cls: 'norim', pts: shawlTail(env, 13.6, -63.4, 50, { side: 1, a0: 0.02, seed: 0.6, w0: 1.45, w1: 0.55 }) });
+      out.push({ z: 2.3, c: 'pink', cls: 'norim', pts: shawlTail(env, -13.6, -63.4, 50, { side: -1, a0: -0.02, seed: 2.3, w0: 1.45, w1: 0.55 }) });
       // 背后兜成的弧带：中点随风轻轻起伏；挂在肘间、离开后背，所以盖在长发梢上面
       const sag = 0.8 * env.w * bsw(env.t, 0.8);
-      out.push({ z: 4.05, c: 'pink', cls: '', pts: taper([[-11.4, -66.8], [-7.6, -60.4], [0, -57.0 + sag], [7.6, -60.4], [11.4, -66.8]], (u) => 2.2 + 0.5 * Math.sin(u * Math.PI), 'round') });
+      out.push({ z: 4.05, c: 'pink', cls: '', pts: taper([[-11.4, -66.8], [-7.6, -60.4], [0, -57.0 + sag], [7.6, -60.4], [11.4, -66.8]], (u) => 1.3 + 0.45 * Math.sin(u * Math.PI), 'round') });
       // 簪头垂坠：短（含坠珠不到 2 个单位）
       const d = bchain(env, p1[0], p1[1] + 0.45, 1.25, 3, { a0: 0, lift: 0.8, amp: 0.4, ph: 0.4, idle: 0.1 });
-      out.push({ z: 4.5, c: 'gold', pts: band(d, 0.22) }, { z: 4.5, c: 'gold', pts: ell(d[3][0], d[3][1] + 0.25, 0.4, 0.5, 0, 8) });
+      out.push({ z: 4.5, c: 'gold', cls: 'deco', pts: band(d, 0.22) }, { z: 4.5, c: 'gold', cls: 'deco', pts: ell(d[3][0], d[3][1] + 0.25, 0.4, 0.5, 0, 8) });
     }
     // 不描轮廓光的区域：背光一侧广袖袖口的下缘向上斜收、对着裙身（中间隔着一道比窄缝宽的空），光被身体挡住，不该亮。
     // sh = 1：光从 +x 来时作用于 -x 侧的袖口；sh = -1 反之（区域的边界都落在没有亮边的地方，硬边也看不出来）
@@ -1233,7 +1237,7 @@
     parts.push({ z: 3, c: 'body', dyn: 1, sep: 0.6, pts: R.sideSleeve });
     parts.push({ z: 4, c: 'hairD', pts: R.sideHairCap });
     parts.push({ z: 4, c: 'hairD', pts: [[-6.4, -97.4], [-5.8, -100.0], [-3.8, -101.8], [-1.4, -102.0], [0.4, -100.6], [-0.4, -98.4], [-2.8, -97.0], [-5.2, -96.4]] });
-    parts.push({ z: 4.5, c: 'gold', pts: rot(R.pin, -2.6, -99.6, 0.25).map((p) => [p[0] - 1.2, p[1] + 0.2, p[2]]) }, { z: 4.5, c: 'gold', pts: shift(rot(R.pinGem, -2.6, -99.6, 0.25), -1.2, 0.2) });
+    parts.push({ z: 4.5, c: 'gold', cls: 'deco', pts: rot(R.pin, -2.6, -99.6, 0.25).map((p) => [p[0] - 1.2, p[1] + 0.2, p[2]]) }, { z: 4.5, c: 'gold', cls: 'deco', pts: shift(rot(R.pinGem, -2.6, -99.6, 0.25), -1.2, 0.2) });
     folds.push(
       { pts: [[-4.2, -64.8], [0, -64.6], [4.3, -64.8]], w: 0.8 },
       { pts: [[2.6, -60], [3.8, -40], [5.6, -16], [6.6, -2]], w: 0.7 },
@@ -1248,8 +1252,8 @@
       dyn(env, out) {
         // 披帛横过上臂（固定），前端自袖口前垂下、后端在身后飘
         out.push({ z: 5, c: 'pink', fl: 1, pts: [[-4.6, -78.6], [-1.0, -77.2], [2.6, -73.6], [5.6, -66.4], [8.4, -62.6], [8.4, -60.2], [5.2, -63.2], [1.6, -70.6], [-1.6, -74.4], [-4.8, -75.6]] });
-        out.push({ z: 5, c: 'pink', pts: shawlTail(env, 8.0, -61.0, 42, { side: 1, towardK: 0.3, a0: 0.04, seed: 0.6, w0: 2.2, w1: 1.7 }) });
-        out.push({ z: 0, c: 'pink', pts: shawlTail(env, -4.6, -71.0, 46, { side: -1, a0: -0.15, rest: 0.6, seed: 2.4, w0: 2.2, w1: 1.7 }) });
+        out.push({ z: 5, c: 'pink', pts: shawlTail(env, 8.0, -61.0, 42, { side: 1, towardK: 0.3, a0: 0.04, seed: 0.6, w0: 1.4, w1: 0.55 }) });
+        out.push({ z: 0, c: 'pink', pts: shawlTail(env, -4.6, -71.0, 46, { side: -1, a0: -0.15, rest: 0.6, seed: 2.4, w0: 1.4, w1: 0.55 }) });
       },
     };
   });
@@ -1268,7 +1272,10 @@
     const folds = her.folds.map((f) => Object.assign({}, f, { z: (f.z == null ? 2 : f.z) - 10, w: f.w * HS, pts: toH(f.pts) }))
       .concat(yb.folds.map((f) => Object.assign({}, f, { pts: shift(f.pts, YX0, 0) })));
     return {
-      parts, folds, nrz: her.nrz.filter((z) => z.pts[0][0] < 0).map((z) => ({ sh: z.sh, fade: z.fade, pts: toH(z.pts) })),
+      // 光从右来时她右侧的后颈、肩头被少年挡住：后颈一带不亮，往上到下颌高度渐渐亮起（头部右侧仍有一道轮廓光把两人分开），
+      // 不会在两人之间留下随发带晃动时有时无的碎亮线
+      parts, folds, nrz: her.nrz.filter((z) => z.pts[0][0] < 0).map((z) => ({ sh: z.sh, fade: z.fade, pts: toH(z.pts) }))
+        .concat([{ sh: 1, fade: [-85.5, -90.0], pts: [[-9.5, -92.0, 1], [1.5, -92.0, 1], [1.5, -72.0, 1], [-9.5, -72.0, 1]] }]),
       snow: her.snow.map((c) => ({ pts: toH(c.pts), th: c.th * HS })).concat(yb.snow.map((c) => ({ pts: shift(c.pts, YX0, 0), th: c.th }))),
       dyn(env, out) {
         const a = [];
@@ -1322,7 +1329,7 @@
   T.rows = strawRows([[-6.2, 6.0, -79.5, -79.0, 7, 4.2], [-9.4, 8.4, -69.5, -69.0, 9, 4.6], [-11.6, 9.6, -59.0, -58.6, 10, 4.8], [-13.2, 10.6, -49.6, -49.4, 11, 4.4]]);
   T.robe = [[8.6, -46.0], [8.1, -30.0, 0, 0.2], [8.3, -16.0, 0, 0.45], [8.6, -3.0, 1, 0.8, 0.3], [3.0, -2.2, 0, 0.85, 0.7], [-3.0, -2.0, 0, 0.9, 1.1], [-8.4, -2.6, 1, 1.0, 1.5], [-9.2, -16.0, 0, 0.6], [-9.4, -30.0, 0, 0.3], [-9.6, -46.0]];
   T.shoe = [[0.4, -3.0], [5.4, -3.0], [8.4, -1.8], [10.0, -0.6], [10.0, 0, 1], [0.0, 0, 1], [-0.2, -1.4]];
-  // 蓑衣下缘草穗：只在下缘挂一排，末端圆收，随风轻摆
+  // 蓑衣下缘草穗：只在下缘挂一排，末端圆收，随风轻摆；草穗是蓑衣自己最外的一层草，画在蓑衣上面（根部压着蓑衣下缘约 1 个单位）
   function travelerFringe(env, out, X) {
     X = X || ID;
     const B = X(T.coatBottom);
@@ -1330,13 +1337,13 @@
       const s = (i + 0.5 * hash01(i * 7 + 5)) / 13, k = s * (B.length - 1), j = Math.min(B.length - 2, Math.floor(k)), f = k - j;
       const x = B[j][0] + (B[j + 1][0] - B[j][0]) * f, y = B[j][1] + (B[j + 1][1] - B[j][1]) * f;
       const r = hash01(i * 13 + 2);
-      out.push({ z: 2.9, c: 'fringe', pts: strand(env, { x, y: y - 1.0, len: 3.0 + 2.4 * r, n: 4, a0: -0.12 + 0.12 * s + 0.3 * (hash01(i * 3 + 1) - 0.5), lift: 0.35, amp: 0.4, seed: i * 1.3, w0: 1.5 + 0.6 * r, w1: 0.14, tip: 'round', f: 0.55 + 0.2 * r }) });
+      out.push({ z: 3.05, c: 'fringe', pts: strand(env, { x, y: y - 1.0, len: 3.0 + 2.4 * r, n: 4, a0: -0.12 + 0.12 * s + 0.3 * (hash01(i * 3 + 1) - 0.5), lift: 0.35, amp: 0.4, seed: i * 1.3, w0: 1.5 + 0.6 * r, w1: 0.14, tip: 'round', f: 0.55 + 0.2 * r }) });
     }
     const K = X(T.coatBack);
     for (let i = 0; i < 4; i++) {
       const s = (i + 0.6) / 4.4, k = s * (K.length - 1), j = Math.min(K.length - 2, Math.floor(k)), f = k - j;
       const x = K[j][0] + (K[j + 1][0] - K[j][0]) * f, y = K[j][1] + (K[j + 1][1] - K[j][1]) * f;
-      out.push({ z: 2.9, c: 'fringe', pts: strand(env, { x: x + 0.8, y, len: 2.0 + 0.6 * hash01(i + 40), n: 3, a0: -0.45, lift: 0.4, amp: 0.35, seed: i * 2.1 + 9, w0: 1.3, w1: 0.4, tip: 'round', back: -1, f: 0.6 }) });
+      out.push({ z: 3.05, c: 'fringe', pts: strand(env, { x: x + 0.8, y, len: 2.0 + 0.6 * hash01(i + 40), n: 3, a0: -0.45, lift: 0.4, amp: 0.35, seed: i * 2.1 + 9, w0: 1.3, w1: 0.4, tip: 'round', back: -1, f: 0.6 }) });
     }
   }
   const TRAV_SNOW = [{ pts: [[-17.0, -91.6], [-10.0, -94.5], [-3.0, -97.6], [0.5, -101.6], [1.8, -104.4]], th: 1.4 }, { pts: [[1.8, -104.4], [3.2, -101.6], [6.8, -97.6], [13.0, -94.5], [19.0, -92.2]], th: 1.4 }];
@@ -1504,6 +1511,7 @@
   //   'shade' 在身体背光一侧的部件（远侧手臂、身后的斗篷）：pt.sh = 1 表示光从单位坐标 +x 侧（人物面向的一侧）来时
   //           它被身体挡住，这时不描轮廓光；光从另一侧来时它是普通部件。
   //   'norim' 按前后次序画进剪影、参与判定，但自身不描轮廓光（压在袖上的披帛垂端）；
+  //   'deco'  小饰件（簪、坠）：像细件一样直接画在剪影前后、不描轮廓光，但不压暗旁边主体的轮廓光（亮边从簪下穿过，不留缺口和横纹）；
   //   默认（''）是有厚度的主体。点缀色（发带、披帛、簪、草穗）默认算细件，可用 cls: '' 改回主体。
   const AUTO_THIN = { blue: 1, pink: 1, gold: 1, fringe: 1 };
   const clsOf = (pt) => (pt.cls != null ? pt.cls : AUTO_THIN[pt.c] ? 'thin' : '');
@@ -1850,7 +1858,7 @@
   // 周身柔光：画在人物身后（主画布上），圆心与半径取自包围盒；径向渐变预先画成小图再缩放
   const glowSprites = new Map();
   function glowSprite(col) {
-    let s = glowSprites.get(col);
+    let s = glowSprites.get('base|' + col);
     if (s) return s;
     s = document.createElement('canvas'); s.width = s.height = 128;
     const gg = s.getContext('2d'), gc = rgb(col);
@@ -1859,9 +1867,14 @@
     gr.addColorStop(0.45, `rgba(${gc[0]},${gc[1]},${gc[2]},0.16)`);
     gr.addColorStop(1, `rgba(${gc[0]},${gc[1]},${gc[2]},0)`);
     gg.fillStyle = gr; gg.fillRect(0, 0, 128, 128);
-    if (glowSprites.size > 16) glowSprites.clear();
-    glowSprites.set(col, s);
+    glowPut('base|' + col, s);
     return s;
+  }
+  // 柔光贴图缓存：超出容量时只丢掉最久没用的一张（不整张清空，柔光强度渐变时不会每帧重建）
+  function glowPut(k, v) {
+    if (glowSprites.has(k)) glowSprites.delete(k);
+    glowSprites.set(k, v);
+    while (glowSprites.size > 24) glowSprites.delete(glowSprites.keys().next().value);
   }
   // 柔光是贴着身形的椭圆（站姿竖长、卧姿横长），比外接圆少画四成以上的像素；柔光图按实际像素大小缓存（半径取整到
   // 4 像素一档），整像素位置直接贴上，不做缩放取样
@@ -1871,17 +1884,24 @@
     const T = g.getTransform(), S = Math.hypot(T.a, T.b) || 1;
     const rq = (v) => Math.max(8, Math.round(((0.62 * v + 12) * u * S) / 4) * 4);
     const rx = rq(Math.max(bw, 0.55 * bh)), ry = rq(Math.max(bh, 0.55 * bw));
-    const col = o.rim || '#fff1d2', key = col + '|' + rx + 'x' + ry;
-    let sp = glowSprites.get(key);
+    // 柔光强度按 1/32 一档直接烘进贴图（贴图本身带透明度，画的时候不再乘 globalAlpha——带 globalAlpha 的贴图要慢三倍）
+    const col = o.rim || '#fff1d2', key = col + '|' + rx + 'x' + ry, q = Math.max(1, Math.round(glow * 32)), kq = key + '|' + q;
+    let sp = glowSprites.get(kq);
     if (!sp) {
-      sp = document.createElement('canvas'); sp.width = 2 * rx; sp.height = 2 * ry;
-      const gg = sp.getContext('2d');
-      gg.drawImage(glowSprite(col), 0, 0, 128, 128, 0, 0, 2 * rx, 2 * ry);
-      if (glowSprites.size > 16) glowSprites.clear();
-      glowSprites.set(key, sp);
+      let base = glowSprites.get(key);
+      if (!base) {
+        base = document.createElement('canvas'); base.width = 2 * rx; base.height = 2 * ry;
+        base.getContext('2d').drawImage(glowSprite(col), 0, 0, 128, 128, 0, 0, 2 * rx, 2 * ry);
+        glowPut(key, base);
+      }
+      if (q >= 32) sp = base;
+      else {
+        sp = document.createElement('canvas'); sp.width = 2 * rx; sp.height = 2 * ry;
+        const gg = sp.getContext('2d'); gg.globalAlpha = q / 32; gg.drawImage(base, 0, 0);
+      }
+      glowPut(kq, sp);
     }
     g.save();
-    g.globalAlpha *= glow;
     const px = x + facing * cx * u, py = y + cy * u;
     if (Math.abs(T.b) < 1e-9 && Math.abs(T.c) < 1e-9) {
       g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1955,12 +1975,14 @@
           let kv = stop && gap < G125 ? 255 * sstep(G125, G075, gap) : 0;
           // 细件（发带、剑穗、披帛、发丝）压在亮带上或在亮边外侧：按它离这条边的距离连续地压暗
           if (Tn && kv < 255) {
-            const q1 = k < w ? k : w - 1;
-            for (let q = j > kb ? j - kb : 0; q <= q1; q++) {
+            // 距离按格内的边位置算（边越过格界时距离连续变化，压暗程度不会一帧一跳）
+            // 压在剪影里面的细件也按它离边的距离渐变：一个亮边宽以内整段压暗，两个亮边宽以外不管（不再按固定格数一刀切）
+            const q1 = k < w ? k : w - 1, ej = j < w ? A[a0 + j * d4] / 255 : 0, kin = Math.ceil((2 * rimW) / f) + 1;
+            for (let q = j > kin ? j - kin : 0; q <= q1; q++) {
               const v = Tn[t0 + q * d4];
               if (!v) continue;
-              const dist = q <= j ? 0 : (q - j) * f;
-              const tv = Math.min(255, v * 3.3) * (dist ? sstep(G125, G075, dist) : 1);
+              const fade = q > j ? sstep(G125, G075, Math.max(0, q - j - ej) * f) : sstep(2 * rimW, rimW, Math.max(0, j + ej - q - 1) * f);
+              const tv = Math.min(255, v * 3.3) * fade;
               if (tv > kv) kv = tv;
             }
           }
@@ -2080,7 +2102,7 @@
     const facing = env.facing, u = h / U, px = u * S, breath = env.breath;
     const rimW = (o.rimWidth || Math.max(1, h / 120)) * S;
     // 本帧范围：静态部件 ∪ 本帧动态部件，外加曲线外凸、积雪、轮廓光的余量
-    flatS = Math.max(0.25, px); // 本帧现算的路径按实际比例展平（render 结束时由 draw 复原）
+    flatS = Math.max(0.25, px); flatT = FLAT_TOL; // 本帧现算的路径按实际比例展平（render 结束时由 draw 复原）
     const layers = collect(P, env);
     if (o.line === 'only') { // 钓线单独一遍（画在船身前层之后，钓线不会被船舷挡住）
       const ga0 = g.globalAlpha; g.globalAlpha = ga0 * alpha;
@@ -2097,7 +2119,7 @@
       inbuf = [];
       for (const L of layers) {
         if (EXT[L.c]) continue;
-        if (L.cls === 'thin' || (L.cls === 'shade' && L.sh === lightU)) (ex = ex || []).push(L);
+        if (L.cls === 'thin' || L.cls === 'deco' || (L.cls === 'shade' && L.sh === lightU)) (ex = ex || []).push(L);
         else { inbuf.push(L); if (L.cls === 'norim') (norim = norim || []).push(L); }
       }
       // 细件画在剪影前面还是后面：与它范围相交的主体都在它上面 → 剪影后（under）；都在它下面 → 剪影前（front）；
@@ -2108,8 +2130,9 @@
         const e = E.bb;
         if (e) for (const L of inbuf) {
           const b = L.bb;
-          if (!b || b[0] > e[1] || b[1] < e[0] || b[2] > e[3] || b[3] < e[2]) continue;
-          if (L.z <= E.z) below = true; else { above = true; (hi = hi || []).push(L); }
+          // 同一 z 的主体是同一件东西的另一部分（剑鞘与剑柄、护手），不算前后关系
+          if (!b || L.z === E.z || b[0] > e[1] || b[1] < e[0] || b[2] > e[3] || b[3] < e[2]) continue;
+          if (L.z < E.z) below = true; else { above = true; (hi = hi || []).push(L); }
         }
         if (above && !below) (under = under || []).push(E);
         else { if (above) E.hi = hi; (front = front || []).push(E); }
@@ -2150,7 +2173,7 @@
     if (o.rim) {
       const tk = [], tn = ex ? [] : null;
       for (const L of inbuf) if (L.polys) for (const q of L.polys) tk.push(q);
-      if (ex) for (const L of ex) if (L.polys) for (const q of L.polys) tn.push(q);
+      if (ex) for (const L of ex) if (L.polys && L.cls !== 'deco') for (const q of L.polys) tn.push(q);
       const nz = P.nrz[lightU];
       rimPass(M, W, H, rimW, side, o.rim,
         (norim || nz) && ((kc) => {
@@ -2260,7 +2283,7 @@
     env.waterU = (fb * U) / h;
     g.save();
     if (o.boat) applyBoat(g, o.boat);
-    try { render(g, P, env, x, y, h, o, alpha); } finally { flatS = FLAT_REF; }
+    try { render(g, P, env, x, y, h, o, alpha); } finally { flatS = FLAT_REF; flatT = FLAT_TOL_S; }
     g.restore();
   }
 
