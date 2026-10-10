@@ -45,9 +45,11 @@
         de: (d) => Math.exp(-Math.max(0, b.sinceDown) / d),
         rms: se(env, 'rms', t), onset: se(env, 'onset', t), low: se(env, 'low', t), high: se(env, 'high', t),
         line: seg.line != null && this.tl.lines ? this.tl.lines[seg.line] : null,
-        // 本句第 k 个字（不计标点空格）实际唱出的时间；没有歌词时为 null
-        charT: (k) => {
-          const ln = seg.line != null && this.tl.lines ? this.tl.lines[seg.line] : null;
+        // 本镜头第 off 句（0 = 镜头起始那句，1 = 下一句，用于一镜跨两句）
+        lineAt: (off = 0) => (seg.line != null && this.tl.lines ? this.tl.lines[seg.line + off] || null : null),
+        // 第 off 句第 k 个字（不计标点空格）实际唱出的时间；没有歌词时为 null
+        charT: (k, off = 0) => {
+          const ln = seg.line != null && this.tl.lines ? this.tl.lines[seg.line + off] : null;
           if (!ln) return null;
           const v = ln.reveal.filter((x) => x != null);
           return v.length ? v[Math.max(0, Math.min(v.length - 1, k))] : null;
@@ -64,6 +66,8 @@
       const dir = seg.idx % 2 ? 1 : -1;
       let z = 1.02 + 0.05 * c.p + (0.012 * c.be(0.18) + 0.02 * c.de(0.28)) * (0.5 + c.inten);
       let rot = 0, dx = dir * 14 * (c.p - 0.5), dy = 0;
+      // 精编分镜：镜头运动全部由镜头自己控制，引擎不再随拍缩放、不再横移
+      if (this.tl.storyboard && !sc.engineCam) { z = 1; dx = 0; }
       const dk = this.drunkAt(t);
       if (dk > 0) { rot = 0.022 * Math.sin(t * 1.7) * dk; z += 0.04 * dk; dx += 10 * Math.sin(t * 1.1) * dk; }
       if (sc.shake) { const k = 7 * Math.exp(-b.sinceDown / 0.12) * c.inten; dx += k * Math.sin(t * 93); dy += k * Math.cos(t * 71); }
@@ -204,7 +208,8 @@
       this.overlays(g, t, c, sc);
       this.wordFx(g, t, sc);
       this.title(g, t);
-      this.lyrics(g, t);
+      // 质检时可关掉歌词（XYT.QA.noLyrics），只看镜头本身的运动
+      if (!(XYT.QA && XYT.QA.noLyrics)) this.lyrics(g, t);
       this.endCard(g, t);
       this.post(g, t, sc);
     }

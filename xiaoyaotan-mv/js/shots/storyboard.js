@@ -1,4 +1,4 @@
-/* 分镜表：每句歌词对应的镜头 id、歌词区位与转场（不含歌词文字）。由分镜流程生成。 */
+/* 第三版分镜表：每句歌词对应的镜头 id（一镜可跨两句）、歌词区位与转场（不含歌词文字）。 */
 (function () {
   'use strict';
   window.XYT = window.XYT || {};
@@ -8,294 +8,292 @@
     "duration": 313.6,
     "intro": [
       {
-        "id": "in1_ink",
+        "id": "i1_inkdawn",
         "at": 0.0
       },
       {
-        "id": "in2_yuhang",
-        "at": 7.31
+        "id": "i2_river",
+        "at": 10.64
       },
       {
-        "id": "in3_reflection",
-        "at": 13.97
-      },
-      {
-        "id": "in4_return",
+        "id": "i3_whitehair",
         "at": 17.3
-      },
-      {
-        "id": "in5_banner",
-        "at": 23.98
       }
     ],
     "interlude": [
       {
-        "id": "x1_frostpond",
+        "id": "x1_frozen",
         "at": 135.85
       },
       {
-        "id": "x2_nuwa",
+        "id": "x2_bell",
         "at": 143.98
       },
       {
-        "id": "x3_scroll",
+        "id": "x3_fishing",
         "at": 153.99
       }
     ],
     "outro": [
       {
-        "id": "o1_spring",
+        "id": "o1_thaw",
         "at": 295.85
       },
       {
         "id": "o2_depart",
-        "at": 300.66
-      },
-      {
-        "id": "o3_jetty",
         "at": 303.99
       },
       {
-        "id": "o4_seal",
+        "id": "o3_seal",
         "at": 310.68
       }
     ],
     "lines": {
-      "1": "va1_silence",
-      "2": "va2_kite",
-      "3": "va3_eave",
-      "4": "va4_wall",
-      "5": "va5_whisper",
-      "6": "va6_tide",
-      "7": "va7_lookback",
-      "8": "va8_maple",
-      "9": "vb1_farewell",
-      "10": "vb2_arena",
-      "11": "vb3_gu",
-      "12": "vb4_crossroad",
-      "13": "vb5_flysword",
-      "14": "vb6_bonfire",
-      "15": "vb7_storyteller",
-      "16": "vb8_drunkroof",
-      "17": "c1_lotusboat",
-      "18": "c1_swordarray",
-      "19": "c1_ashroad",
-      "20": "c1_stranger",
-      "21": "c1_wallink",
-      "22": "c1_caiyi",
-      "23": "c1_butterflycandle",
-      "24": "c1_maplestorm",
-      "25": "vb21_ruins",
-      "26": "vb22_stage",
-      "27": "vb23_window",
-      "28": "vb24_signpost",
-      "29": "vb25_cliff",
-      "30": "vb26_ashring",
-      "31": "vb27_sunshower",
-      "32": "vb28_gourdfall",
-      "33": "c2_bloodmoon",
-      "34": "c2_anu",
-      "35": "c2_tower",
-      "36": "c2_chains",
-      "37": "c2_yueru",
-      "38": "c2_tassel",
-      "39": "c2_nuwalight",
-      "40": "c2_redlight",
-      "41": "c3_wake",
-      "42": "c3_frostsword",
-      "43": "c3_relics",
-      "44": "c3_icelake",
-      "45": "c3_snowcursive",
-      "46": "c3_riverlanterns",
-      "47": "c3_lastlamp",
-      "48": "c3_allred"
+      "1": "a1_pavilion",
+      "3": "a2_wallsun",
+      "5": "a3_tide",
+      "7": "a4_maplepond",
+      "9": "b1_bridge",
+      "11": "b2_puppet",
+      "13": "b3_cliffcranes",
+      "15": "b4_teahouse",
+      "17": "c1_lotus",
+      "18": "c1_rustsword",
+      "19": "c1_oldroad",
+      "20": "c1_citywall",
+      "21": "c1_inkdesk",
+      "22": "c1_guqin",
+      "23": "c1_candle",
+      "24": "c1_fireworks",
+      "25": "d1_gate",
+      "27": "d2_weiqi",
+      "29": "d3_geese",
+      "31": "d4_hilldrunk",
+      "33": "e1_stormpeak",
+      "34": "e2_ropebridge",
+      "35": "e3_temple",
+      "36": "e4_redsand",
+      "37": "e5_inkrain",
+      "38": "e6_peony",
+      "39": "e7_fireflies",
+      "40": "e8_riverlanterns",
+      "41": "f1_snowhut",
+      "42": "f2_icicle",
+      "43": "f3_footprints",
+      "44": "f4_frostwindow",
+      "45": "f5_plumshadow",
+      "46": "f6_lotusboat",
+      "47": "f7_sundial",
+      "48": "f8_redplain"
     },
     "zones": {
-      "1": "left",
-      "2": "top",
-      "3": "left",
+      "1": "right",
+      "2": "right",
+      "3": "right",
       "4": "right",
-      "5": "right",
+      "5": "top",
       "6": "top",
       "7": "left",
       "8": "left",
-      "9": "right",
+      "9": "top",
       "10": "top",
       "11": "top",
       "12": "top",
       "13": "right",
-      "14": "top",
+      "14": "right",
       "15": "top",
-      "16": "left",
+      "16": "top",
       "17": "left",
       "18": "left",
       "19": "top",
-      "20": "top",
+      "20": "right",
       "21": "right",
-      "22": "left",
-      "23": "right",
-      "24": "top",
-      "25": "right",
-      "26": "left",
+      "22": "top",
+      "23": "left",
+      "24": "bottom",
+      "25": "top",
+      "26": "top",
       "27": "top",
       "28": "top",
-      "29": "right",
-      "30": "right",
-      "31": "top",
-      "32": "left",
-      "33": "top",
-      "34": "left",
-      "35": "right",
+      "29": "bottom",
+      "30": "bottom",
+      "31": "right",
+      "32": "right",
+      "33": "right",
+      "34": "top",
+      "35": "left",
       "36": "top",
-      "37": "right",
+      "37": "bottom",
       "38": "left",
-      "39": "top",
-      "40": "left",
+      "39": "left",
+      "40": "top",
       "41": "left",
-      "42": "right",
-      "43": "left",
-      "44": "top",
-      "45": "right",
-      "46": "left",
+      "42": "left",
+      "43": "top",
+      "44": "bottom",
+      "45": "left",
+      "46": "top",
       "47": "top",
-      "48": "left"
+      "48": "top"
     },
     "trans": {
-      "in2_yuhang": {
-        "type": "ink",
-        "dur": 1.2
+      "i2_river": {
+        "type": "wipe:mist",
+        "dur": 1.0
       },
-      "in3_reflection": "cut",
-      "in4_return": "cut",
-      "in5_banner": {
-        "type": "wipe:wind",
-        "dur": 0.5
+      "i3_whitehair": {
+        "type": "fade",
+        "dur": 0.8
       },
-      "va1_silence": "cut",
-      "va2_kite": "cut",
-      "va3_eave": "cut",
-      "va4_wall": "cut",
-      "va5_whisper": "cut",
-      "va6_tide": {
-        "type": "iris",
-        "dur": 0.6,
-        "x": 520,
-        "y": 420
+      "a1_pavilion": {
+        "type": "fade",
+        "dur": 0.8
       },
-      "va7_lookback": "cut",
-      "va8_maple": "cut",
-      "vb1_farewell": "cut",
-      "vb2_arena": "cut",
-      "vb3_gu": {
-        "type": "iris",
-        "dur": 0.6,
-        "x": 520,
-        "y": 520
-      },
-      "vb4_crossroad": {
-        "type": "wipe:rain",
+      "a2_wallsun": {
+        "type": "fade",
         "dur": 0.7
       },
-      "vb5_flysword": {
-        "type": "wipe:cloud",
-        "dur": 0.7
-      },
-      "vb6_bonfire": "cut",
-      "vb7_storyteller": {
-        "type": "scroll",
+      "a3_tide": {
+        "type": "fade",
         "dur": 0.9
       },
-      "vb8_drunkroof": "cut",
-      "c1_lotusboat": {
-        "type": "flash",
-        "color": "#ffffff"
+      "a4_maplepond": {
+        "type": "fade",
+        "dur": 0.8
       },
-      "c1_swordarray": "cut",
-      "c1_ashroad": "cut",
-      "c1_stranger": "cut",
-      "c1_wallink": "cut",
-      "c1_caiyi": {
-        "type": "flash",
-        "color": "#ffffff"
+      "b1_bridge": {
+        "type": "wipe:rain",
+        "dur": 0.8
       },
-      "c1_butterflycandle": {
+      "b2_puppet": {
         "type": "iris",
-        "dur": 0.6,
-        "x": 880,
-        "y": 260
+        "dur": 0.7
       },
-      "c1_maplestorm": "cut",
-      "x1_frostpond": {
+      "b3_cliffcranes": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "b4_teahouse": {
+        "type": "fade",
+        "dur": 0.8
+      },
+      "c1_lotus": {
+        "type": "fog",
+        "dur": 0.8
+      },
+      "c1_rustsword": "cut",
+      "c1_oldroad": {
+        "type": "fade",
+        "dur": 0.6
+      },
+      "c1_citywall": "cut",
+      "c1_inkdesk": {
+        "type": "fade",
+        "dur": 0.6
+      },
+      "c1_guqin": "cut",
+      "c1_candle": {
+        "type": "fade",
+        "dur": 0.6
+      },
+      "c1_fireworks": "cut",
+      "x1_frozen": {
+        "type": "fade",
+        "dur": 1.2
+      },
+      "x2_bell": {
+        "type": "wipe:snow",
+        "dur": 1.0
+      },
+      "x3_fishing": {
         "type": "fade",
         "dur": 1.0
       },
-      "x2_nuwa": {
+      "d1_gate": {
+        "type": "fade",
+        "dur": 0.8
+      },
+      "d2_weiqi": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "d3_geese": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "d4_hilldrunk": {
+        "type": "fade",
+        "dur": 0.8
+      },
+      "e1_stormpeak": {
         "type": "flash",
-        "color": "#ffe9b0"
+        "dur": 0.001,
+        "color": "#ffffff"
       },
-      "x3_scroll": {
-        "type": "scroll",
-        "dur": 0.9
-      },
-      "vb21_ruins": "cut",
-      "vb22_stage": {
+      "e2_ropebridge": "cut",
+      "e3_temple": {
         "type": "wipe:rain",
         "dur": 0.7
       },
-      "vb23_window": "cut",
-      "vb24_signpost": "cut",
-      "vb25_cliff": "cut",
-      "vb26_ashring": "cut",
-      "vb27_sunshower": "cut",
-      "vb28_gourdfall": "cut",
-      "c2_bloodmoon": {
-        "type": "flash",
-        "color": "#ffffff"
-      },
-      "c2_anu": "cut",
-      "c2_tower": "cut",
-      "c2_chains": "cut",
-      "c2_yueru": "cut",
-      "c2_tassel": {
+      "e4_redsand": {
         "type": "wipe:dust",
         "dur": 0.7
       },
-      "c2_nuwalight": {
-        "type": "wipe:wave",
+      "e5_inkrain": "cut",
+      "e6_peony": {
+        "type": "fade",
+        "dur": 0.6
+      },
+      "e7_fireflies": {
+        "type": "fade",
+        "dur": 0.6
+      },
+      "e8_riverlanterns": {
+        "type": "fade",
         "dur": 0.7
       },
-      "c2_redlight": {
-        "type": "flash",
-        "color": "#ffffff"
+      "f1_snowhut": {
+        "type": "fog",
+        "dur": 0.8
       },
-      "c3_wake": "cut",
-      "c3_frostsword": "cut",
-      "c3_relics": {
+      "f2_icicle": "cut",
+      "f3_footprints": {
         "type": "wipe:snow",
+        "dur": 0.8
+      },
+      "f4_frostwindow": {
+        "type": "fade",
         "dur": 0.7
       },
-      "c3_icelake": {
-        "type": "wipe:mist",
+      "f5_plumshadow": {
+        "type": "fade",
         "dur": 0.7
       },
-      "c3_snowcursive": "cut",
-      "c3_riverlanterns": "cut",
-      "c3_lastlamp": "cut",
-      "c3_allred": "cut",
-      "o1_spring": {
+      "f6_lotusboat": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "f7_sundial": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "f8_redplain": {
+        "type": "fade",
+        "dur": 0.7
+      },
+      "o1_thaw": {
         "type": "fade",
         "dur": 1.2
       },
-      "o2_depart": "cut",
-      "o3_jetty": {
+      "o2_depart": {
         "type": "wipe:mist",
-        "dur": 0.7
+        "dur": 1.0
       },
-      "o4_seal": {
+      "o3_seal": {
         "type": "ink",
         "dur": 1.0
       }
     }
   };
-  XYT.STORYBOARD_NAMES = {"in1_ink": "墨开山河", "in2_yuhang": "余杭晨雾", "in3_reflection": "篙点倒影", "in4_return": "白发归人", "in5_banner": "酒旗风起", "va1_silence": "铃静尘浮", "va2_kite": "风倦纸鸢", "va3_eave": "落日赖檐", "va4_wall": "日挂墙头", "va5_whisper": "喜堂耳语", "va6_tide": "潮声东去", "va7_lookback": "回首旧街", "va8_maple": "枫落成忆", "vb1_farewell": "推舟离岛", "vb2_arena": "擂台撕绸", "vb3_gu": "茶中蛊影", "vb4_crossroad": "岔路红线", "vb5_flysword": "御剑凌云", "vb6_bonfire": "篝火散席", "vb7_storyteller": "隔窗听书", "vb8_drunkroof": "醉卧入梦", "c1_lotusboat": "荷湖轻狂", "c1_swordarray": "万剑梦碎", "c1_ashroad": "负骨南行", "c1_stranger": "街头陌路", "c1_wallink": "题壁墨枯", "c1_caiyi": "彩依还蝶", "c1_butterflycandle": "蝶绕残烛", "c1_maplestorm": "枫天初雪", "x1_frostpond": "枫落秋池", "x2_nuwa": "女娲时轮", "x3_scroll": "长卷故地", "vb21_ruins": "孤舟归岛", "vb22_stage": "空台系绸", "vb23_window": "窗纸童年", "vb24_signpost": "路标无人", "vb25_cliff": "剑落晨崖", "vb26_ashring": "灰烬五座", "vb27_sunshower": "太阳雨童戏", "vb28_gourdfall": "檐下坠壶", "c2_bloodmoon": "血月拜月", "c2_anu": "阿奴弑父", "c2_tower": "塔中符牢", "c2_chains": "锁链相认", "c2_yueru": "月如回眸", "c2_tassel": "塔倾红穗", "c2_nuwalight": "孤光抗魔", "c2_redlight": "怀中红光", "c3_wake": "雪巅长啸", "c3_frostsword": "霜剑为碑", "c3_relics": "雪原遗物", "c3_icelake": "冰池倒影", "c3_snowcursive": "雪上题名", "c3_riverlanterns": "湖灯送人", "c3_lastlamp": "十年孤灯", "c3_allred": "天地皆红", "o1_spring": "雪融春回", "o2_depart": "渡口反打", "o3_jetty": "渡头小女孩", "o4_seal": "落款钤印"};
+  XYT.STORYBOARD_NAMES = {"i1_inkdawn": "墨晓", "i2_river": "一叶孤舟", "i3_whitehair": "白发归人", "a1_pavilion": "长亭秋风", "a2_wallsun": "夕阳墙头", "a3_tide": "伊人潮声", "a4_maplepond": "回首枫落", "b1_bridge": "伞落桥尽", "b2_puppet": "命运戏偶", "b3_cliffcranes": "凌云鹤散", "b4_teahouse": "笑传醉梦", "c1_lotus": "荷塘狂歌", "c1_rustsword": "剑锈梦破", "c1_oldroad": "古道西风", "c1_citywall": "城头望尘", "c1_inkdesk": "墨尽愁书", "c1_guqin": "曲终人散", "c1_candle": "残烛争晖", "c1_fireworks": "烟火成红", "x1_frozen": "冰湖孤灯", "x2_bell": "寺钟雪晓", "x3_fishing": "寒江独钓", "d1_gate": "灯熄门掩", "d2_weiqi": "雪落棋局", "d3_geese": "雁阵剑尘", "d4_hilldrunk": "山头醉梦", "e1_stormpeak": "雷峰狂笑", "e2_ropebridge": "断桥", "e3_temple": "破庙夜雨", "e4_redsand": "红尘风沙", "e5_inkrain": "墨尽雨洗", "e6_peony": "残红", "e7_fireflies": "萤火消晨", "e8_riverlanterns": "河灯红雪", "f1_snowhut": "雪庐笑饮", "f2_icicle": "冰棱断", "f3_footprints": "雪径无人", "f4_frostwindow": "霜窗", "f5_plumshadow": "梅影墨尽", "f6_lotusboat": "残荷雪舟", "f7_sundial": "白首如烛", "f8_redplain": "天地皆红", "o1_thaw": "春回", "o2_depart": "远去", "o3_seal": "落款"};
 })();
