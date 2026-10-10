@@ -196,9 +196,9 @@
       } else if (type === 'fade') {
         gb.globalCompositeOperation = 'source-over';
       } else if (type && type.startsWith('wipe')) {
-        // 软边横扫：右侧随进度推进，边缘 160px 渐隐
-        const pos = lerp(-200, W + 200, easeInOut(p));
-        const gr = gb.createLinearGradient(pos - 160, 0, pos + 160, 0);
+        // 软边横扫：前缘匀速推进（两端略缓），边缘 380px 渐隐，走满整个转场时长
+        const pos = lerp(-420, W + 420, 0.5 - 0.5 * Math.cos(Math.PI * p));
+        const gr = gb.createLinearGradient(pos - 380, 0, pos + 380, 0);
         gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
         gb.fillStyle = gr; gb.fillRect(0, 0, W, H);
       } else if (type === 'scroll') {
@@ -237,21 +237,26 @@
       }
       g.globalAlpha = 1;
       if (type && type.startsWith('wipe')) {
-        // 横扫的前缘带一道有颜色的雾/雨/尘/浪
+        // 横扫的前缘：一片稀疏的雪/雨/尘/雾随前缘飘过，整体很淡，不把画面提亮
         const kind = type.split(':')[1] || 'mist';
-        const col = { wind: '#e8dcc0', rain: '#b8c4cc', cloud: '#ffffff', dust: '#c9a77a', wave: '#d8eef4', snow: '#ffffff', mist: '#eef2f2' }[kind] || '#ffffff';
-        const pos = lerp(-200, W + 200, easeInOut(p));
+        const col = { wind: '#e8dcc0', rain: '#c8d2da', cloud: '#ffffff', dust: '#c9a77a', wave: '#d8eef4', snow: '#ffffff', mist: '#eef2f2' }[kind] || '#ffffff';
+        const pos = lerp(-420, W + 420, 0.5 - 0.5 * Math.cos(Math.PI * p));
         const a = Math.sin(Math.PI * p);
         g.save();
-        const gr = g.createLinearGradient(pos - 260, 0, pos + 120, 0);
-        gr.addColorStop(0, rgba(col, 0)); gr.addColorStop(0.6, rgba(col, 0.75 * a)); gr.addColorStop(1, rgba(col, 0));
-        g.fillStyle = gr; g.fillRect(pos - 260, 0, 380, H);
+        const gr = g.createLinearGradient(pos - 420, 0, pos + 260, 0);
+        gr.addColorStop(0, rgba(col, 0)); gr.addColorStop(0.65, rgba(col, (kind === 'mist' || kind === 'cloud' ? 0.32 : 0.16) * a)); gr.addColorStop(1, rgba(col, 0));
+        g.fillStyle = gr; g.fillRect(pos - 420, 0, 680, H);
         if (kind === 'rain' || kind === 'wind' || kind === 'snow' || kind === 'dust') {
-          g.fillStyle = rgba(kind === 'wind' ? '#a8552c' : kind === 'dust' ? '#8a6a44' : '#ffffff', 0.7 * a);
-          for (let i = 0; i < 60; i++) {
-            const x = pos - 220 + h2(i, seed) * 300, y = h2(i, seed + 1) * H;
-            if (kind === 'rain') g.fillRect(x, y, 1.2, 18); else { g.beginPath(); g.arc(x, y, kind === 'wind' ? 4 : 2, 0, TAU); g.fill(); }
+          g.fillStyle = rgba(kind === 'wind' ? '#a8552c' : kind === 'dust' ? '#8a6a44' : '#ffffff', 0.45 * a);
+          for (let i = 0; i < 140; i++) {
+            // 每颗粒子有自己的深度：近的大、快、亮，远的小、慢、淡；随前缘一起移动并略有自身漂移
+            const z = 0.35 + 0.65 * h2(i, seed + 2), drift = (p * 60 + h2(i, seed + 3) * 40) * z;
+            const x = pos - 380 + h2(i, seed) * 560 + drift, y = (h2(i, seed + 1) * H + (kind === 'rain' ? p * 900 : kind === 'snow' ? p * 120 : p * 30) * z) % H;
+            g.globalAlpha = 0.25 + 0.75 * z;
+            if (kind === 'rain') g.fillRect(x, y, 1.1 * z, 16 * z);
+            else { g.beginPath(); g.arc(x, y, (kind === 'snow' ? 2.6 : 1.8) * z + 0.4, 0, TAU); g.fill(); }
           }
+          g.globalAlpha = 1;
         }
         g.restore();
       }
@@ -280,7 +285,8 @@
       const b = an.grid.info(t);
       let c = this.drawScene(g, seg, t, b);
       let curScene = seg, postNext = null, postK = 0;
-      if (next && next.trans && t >= next.start - next.trans.dur) {
+      // 硬切和闪白没有过渡帧：不在切点前一帧提前画出下一镜
+      if (next && next.trans && next.trans.type !== 'cut' && next.trans.type !== 'flash' && t >= next.start - next.trans.dur) {
         const p = clamp((t - (next.start - next.trans.dur)) / next.trans.dur);
         const gb = this.buf.g;
         gb.setTransform(S, 0, 0, S, 0, 0);
@@ -293,8 +299,9 @@
         // 后期（柔光、暗角、纸纹）随转场进度在两镜之间渐变，不在中点跳变
         postNext = XYT.scenes[next.scene] || XYT.scenes.mist; postK = smooth(p);
       }
-      if (seg.trans && seg.trans.type === 'flash' && t - seg.start < 0.17) {
-        const u = clamp((t - seg.start) / 0.17);
+      if (seg.trans && seg.trans.type === 'flash' && t - seg.start < 0.24) {
+        // 切点后的第一帧（1/30 s 内）保持峰值，然后 0.2 s 回落
+        const u = clamp((t - seg.start - 0.034) / 0.2);
         g.fillStyle = rgba(seg.trans.color || '#ffffff', 0.9 * (1 - u) * (1 - u));
         g.fillRect(0, 0, W, H);
       }
@@ -419,7 +426,7 @@
           // 横排歌词垫一条两端渐隐的淡墨底，复杂背景上也看得清
           const ps = L.pos.filter(Boolean);
           const t0 = ln.reveal.find((v) => v != null) ?? ln.t;
-          const vis = easeOut(clamp((t - t0) / 0.4)) * (1 - clamp((t - ln.out) / 0.6));
+          const vis = easeOut(clamp((t - t0) / 0.4)) * (1 - clamp((t - ln.out) / (ln.fd ? ln.fd + 0.15 : 0.6)));
           if (ps.length && vis > 0.01) {
             const x0 = ps[0].x - ps[0].size, x1 = ps[ps.length - 1].x + ps[0].size, y = ps[0].y, hh = ps[0].size * 1.7;
             const tc = parseInt(sc.text.slice(1), 16), lum = (0.3 * (tc >> 16) + 0.59 * ((tc >> 8) & 255) + 0.11 * (tc & 255)) / 255;
@@ -434,7 +441,7 @@
         ln.chars.forEach((ch, i) => {
           const p = L.pos[i], tau = ln.reveal[i];
           if (!p || tau == null || t < tau) return;
-          const q = clamp((t - tau) / 0.32), e = clamp((t - (ln.out - 0.1 + i * 0.025)) / 0.45);
+          const q = clamp((t - tau) / 0.32), e = clamp((t - (ln.out - 0.1 + i * (ln.stag ?? 0.025))) / (ln.fd || 0.45));
           const a = easeOut(q) * (1 - e);
           if (a <= 0.01) return;
           const s = (1.32 - 0.32 * easeOut(q)) * p.size;

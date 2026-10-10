@@ -388,6 +388,25 @@
       }
       if (ln.cls.drunk) drunk.push([ln.t, ln.end]);
     }
+    // 歌词不叠字：同一歌词区里下一句第一个字出现前，上一句必须已经淡完；
+    // 下一镜是硬切或闪白时，本句在切点前淡完（不让上一镜的歌词留在新画面上）。
+    // 字 i 完全消失的时刻 = out − 0.1 + i·stag + fd（见 render.js lyrics）
+    const fitOut = (A, deadline) => {
+      const rv = A.reveal.filter((v) => v != null), last = rv.length ? rv[rv.length - 1] : A.t;
+      const tailStd = 0.35 + 0.025 * Math.max(0, A.chars.length - 1);
+      const out = Math.min(A.out, deadline - tailStd);
+      if (out >= last + 0.35) { A.out = out; return; }
+      // 按默认节奏来不及：所有字一起、更快地淡出
+      const start = Math.max(last + 0.25, Math.min(A.out - 0.1, deadline - 0.2));
+      A.stag = 0; A.fd = Math.max(0.12, deadline - start); A.out = start + 0.1;
+    };
+    lines.forEach((A, k) => {
+      const B = lines[k + 1];
+      if (B && B.zone === A.zone) fitOut(A, (B.reveal.find((v) => v != null) ?? B.t) - 0.05);
+      const rv = A.reveal.filter((v) => v != null), s = sceneAt((rv.length ? rv[rv.length - 1] : A.t) + 0.01);
+      const nx = segs[segs.indexOf(s) + 1];
+      if (sb && nx && nx.trans && (nx.trans.type === 'cut' || nx.trans.type === 'flash')) fitOut(A, s.end - 0.03);
+    });
     fxEvents.sort((a, b) => a.t - b.t);
     // 分镜模式：画面由镜头自己设计，关掉旧的关键字字效、天气叠层和醉酒摇晃
     if (sb) { fxEvents.length = 0; drunk.length = 0; }
