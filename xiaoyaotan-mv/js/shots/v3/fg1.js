@@ -1136,12 +1136,22 @@
       return out;
     })();
     const WL_COL = '#36423a';
+    // 主枝粗细：根部 5px，过 t≈0.6 后逐渐收细到梢头约 1.2px（不留钝圆头）
+    const wlW = (t) => (t < 0.6 ? 5 : 5 - 3.8 * smooth((t - 0.6) / 0.4));
     function willowTwigTex() {
-      return K.cache('fg1_i3_wltwig', 460, 120, 0.5, (g) => {
-        blurInto(g, 460, 120, 2.2, (tg) => {
+      // 画布高 160、原点下移 60：可容 y −60..100 的枝点（主枝最低 y≈70，加上线宽与模糊也在内）
+      return K.cache('fg1_i3_wltwig2', 460, 160, 0.5, (g) => {
+        blurInto(g, 460, 160, 2.2, (tg) => {
           tg.translate(0, 60);
           tg.strokeStyle = '#2f3631'; tg.lineCap = 'round';
-          tg.lineWidth = 5; tg.beginPath(); tg.moveTo(WL_P[0][0], WL_P[0][1]); tg.quadraticCurveTo(WL_P[1][0], WL_P[1][1], WL_P[2][0], WL_P[2][1]); tg.stroke();
+          tg.lineWidth = 5; tg.beginPath(); tg.moveTo(WL_P[0][0], WL_P[0][1]);
+          for (let k = 1; k <= 24; k++) { const q = wlPt((0.6 * k) / 24); tg.lineTo(q[0], q[1]); }
+          tg.stroke();
+          // 梢段分小段描，每段取中点的粗细，连续收细
+          for (let k = 0; k < 40; k++) {
+            const t0 = 0.6 + (0.4 * k) / 40, t1 = 0.6 + (0.4 * (k + 1)) / 40, a = wlPt(t0), b = wlPt(t1);
+            tg.lineWidth = wlW((t0 + t1) / 2); tg.beginPath(); tg.moveTo(a[0], a[1]); tg.lineTo(b[0], b[1]); tg.stroke();
+          }
           tg.lineWidth = 2.2; let q = wlPt(0.6); tg.beginPath(); tg.moveTo(q[0], q[1]); tg.quadraticCurveTo(q[0] + 26, q[1] + 18, q[0] + 50, q[1] + 18); tg.stroke();
           tg.lineWidth = 1.6; q = wlPt(0.82); tg.beginPath(); tg.moveTo(q[0], q[1]); tg.quadraticCurveTo(q[0] + 14, q[1] - 10, q[0] + 34, q[1] - 12); tg.stroke();
         });
@@ -1178,9 +1188,10 @@
       // 整枝绕画外的根轻摆（±0.3°）
       const bs = 0.005 * Math.sin((TAU * lt) / 5.6 + 0.4) + 0.002 * Math.sin((TAU * lt) / 3.1);
       g.translate(60, -90); g.rotate(bs); g.translate(-60, 90);
-      g.drawImage(willowTwigTex(), 0, -60, 460, 120);
+      g.drawImage(willowTwigTex(), 0, -60, 460, 160);
       for (let i = 0; i < WL_STR.length; i++) {
-        const S0 = WL_STR[i], p0 = wlPt(S0.t), p = [p0[0], p0[1] + S0.dy];
+        // 柳丝的根压在枝里：随机下移量按该处枝的半宽收紧，梢头细处的柳丝也挂在枝上
+        const S0 = WL_STR[i], p0 = wlPt(S0.t), p = [p0[0], p0[1] + (S0.dy / 6) * 0.35 * wlW(S0.t)];
         const sw = S0.lean + 0.04 * (0.62 * Math.sin(TAU * 0.46 * lt + S0.ph) + 0.38 * Math.sin(TAU * 0.71 * lt + 1.9 * S0.ph));
         g.save(); g.translate(p[0], p[1]); g.rotate(-sw);
         g.drawImage(willowStrandTex(i), -(WLS_W - 40), -10, WLS_W, S0.len + 30);
