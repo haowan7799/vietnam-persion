@@ -54,20 +54,20 @@
       "5": "a3_tide",
       "7": "a4_maplepond",
       "9": "b1_bridge",
-      "11": "b2_puppet",
+      "11": "b2_lantern",
       "13": "b3_cliffcranes",
       "15": "b4_teahouse",
       "17": "c1_lotus",
-      "18": "c1_rustsword",
-      "19": "c1_oldroad",
-      "20": "c1_citywall",
+      "18": "c1_cobweb",
+      "19": "c1_steps",
+      "20": "c1_ridge",
       "21": "c1_inkdesk",
       "22": "c1_guqin",
-      "23": "c1_candle",
+      "23": "c1_noonlight",
       "24": "c1_fireworks",
       "25": "d1_gate",
       "27": "d2_weiqi",
-      "29": "d3_geese",
+      "29": "d3_pass",
       "31": "d4_hilldrunk",
       "33": "e1_stormpeak",
       "34": "e2_ropebridge",
@@ -76,13 +76,13 @@
       "37": "e5_inkrain",
       "38": "e6_peony",
       "39": "e7_fireflies",
-      "40": "e8_riverlanterns",
+      "40": "e8_reeds",
       "41": "f1_snowhut",
       "42": "f2_icicle",
-      "43": "f3_footprints",
-      "44": "f4_frostwindow",
-      "45": "f5_plumshadow",
-      "46": "f6_lotusboat",
+      "43": "f3_pines",
+      "44": "f4_window",
+      "45": "f5_inkstream",
+      "46": "f6_jetty",
       "47": "f7_sundial",
       "48": "f8_redplain"
     },
@@ -99,13 +99,13 @@
       "10": "top",
       "11": "top",
       "12": "top",
-      "13": "right",
-      "14": "right",
+      "13": "bottom",
+      "14": "bottom",
       "15": "top",
       "16": "top",
       "17": "left",
       "18": "left",
-      "19": "top",
+      "19": "right",
       "20": "right",
       "21": "right",
       "22": "top",
@@ -115,23 +115,23 @@
       "26": "top",
       "27": "top",
       "28": "top",
-      "29": "bottom",
-      "30": "bottom",
+      "29": "top",
+      "30": "top",
       "31": "right",
       "32": "right",
       "33": "right",
       "34": "top",
-      "35": "left",
-      "36": "top",
-      "37": "bottom",
+      "35": "bottom",
+      "36": "bottom",
+      "37": "top",
       "38": "left",
       "39": "left",
-      "40": "top",
+      "40": "left",
       "41": "left",
       "42": "left",
       "43": "top",
       "44": "bottom",
-      "45": "left",
+      "45": "right",
       "46": "top",
       "47": "top",
       "48": "top"
@@ -165,7 +165,7 @@
         "type": "wipe:rain",
         "dur": 0.8
       },
-      "b2_puppet": {
+      "b2_lantern": {
         "type": "iris",
         "dur": 0.7
       },
@@ -181,18 +181,18 @@
         "type": "fog",
         "dur": 0.8
       },
-      "c1_rustsword": "cut",
-      "c1_oldroad": {
+      "c1_cobweb": "cut",
+      "c1_steps": {
         "type": "fade",
         "dur": 0.6
       },
-      "c1_citywall": "cut",
+      "c1_ridge": "cut",
       "c1_inkdesk": {
         "type": "fade",
         "dur": 0.6
       },
       "c1_guqin": "cut",
-      "c1_candle": {
+      "c1_noonlight": {
         "type": "fade",
         "dur": 0.6
       },
@@ -217,7 +217,7 @@
         "type": "fade",
         "dur": 0.7
       },
-      "d3_geese": {
+      "d3_pass": {
         "type": "fade",
         "dur": 0.7
       },
@@ -248,7 +248,7 @@
         "type": "fade",
         "dur": 0.6
       },
-      "e8_riverlanterns": {
+      "e8_reeds": {
         "type": "fade",
         "dur": 0.7
       },
@@ -257,19 +257,19 @@
         "dur": 0.8
       },
       "f2_icicle": "cut",
-      "f3_footprints": {
+      "f3_pines": {
         "type": "wipe:snow",
         "dur": 0.8
       },
-      "f4_frostwindow": {
+      "f4_window": {
         "type": "fade",
         "dur": 0.7
       },
-      "f5_plumshadow": {
+      "f5_inkstream": {
         "type": "fade",
         "dur": 0.7
       },
-      "f6_lotusboat": {
+      "f6_jetty": {
         "type": "fade",
         "dur": 0.7
       },
@@ -295,5 +295,5 @@
       }
     }
   };
-  XYT.STORYBOARD_NAMES = {"i1_inkdawn": "墨晓", "i2_river": "一叶孤舟", "i3_whitehair": "白发归人", "a1_pavilion": "长亭秋风", "a2_wallsun": "夕阳墙头", "a3_tide": "伊人潮声", "a4_maplepond": "回首枫落", "b1_bridge": "伞落桥尽", "b2_puppet": "命运戏偶", "b3_cliffcranes": "凌云鹤散", "b4_teahouse": "笑传醉梦", "c1_lotus": "荷塘狂歌", "c1_rustsword": "剑锈梦破", "c1_oldroad": "古道西风", "c1_citywall": "城头望尘", "c1_inkdesk": "墨尽愁书", "c1_guqin": "曲终人散", "c1_candle": "残烛争晖", "c1_fireworks": "烟火成红", "x1_frozen": "冰湖孤灯", "x2_bell": "寺钟雪晓", "x3_fishing": "寒江独钓", "d1_gate": "灯熄门掩", "d2_weiqi": "雪落棋局", "d3_geese": "雁阵剑尘", "d4_hilldrunk": "山头醉梦", "e1_stormpeak": "雷峰狂笑", "e2_ropebridge": "断桥", "e3_temple": "破庙夜雨", "e4_redsand": "红尘风沙", "e5_inkrain": "墨尽雨洗", "e6_peony": "残红", "e7_fireflies": "萤火消晨", "e8_riverlanterns": "河灯红雪", "f1_snowhut": "雪庐笑饮", "f2_icicle": "冰棱断", "f3_footprints": "雪径无人", "f4_frostwindow": "霜窗", "f5_plumshadow": "梅影墨尽", "f6_lotusboat": "残荷雪舟", "f7_sundial": "白首如烛", "f8_redplain": "天地皆红", "o1_thaw": "春回", "o2_depart": "远去", "o3_seal": "落款"};
+  XYT.STORYBOARD_NAMES = {"i1_inkdawn": "墨晓", "i2_river": "一叶孤舟", "i3_whitehair": "白发归人", "a1_pavilion": "长亭秋风", "a2_wallsun": "夕阳墙头", "a3_tide": "伊人潮声", "a4_maplepond": "回首枫落", "b1_bridge": "伞落桥头", "b2_lantern": "走马灯", "b3_cliffcranes": "凌云鹤散", "b4_teahouse": "笑传醉梦", "c1_lotus": "荷塘狂歌", "c1_cobweb": "剑锈网断", "c1_steps": "夏山古阶", "c1_ridge": "夏岭望城", "c1_inkdesk": "墨尽纸飞", "c1_guqin": "曲终人散", "c1_noonlight": "白日残烛", "c1_fireworks": "烟火成红", "x1_frozen": "冰湖孤灯", "x2_bell": "寺钟雪晓", "x3_fishing": "寒江独钓", "d1_gate": "灯熄门掩", "d2_weiqi": "雪落棋局", "d3_pass": "雪关残旗", "d4_hilldrunk": "山头醉梦", "e1_stormpeak": "雷峰狂笑", "e2_ropebridge": "断桥", "e3_temple": "破庙夜雨", "e4_redsand": "红尘风沙", "e5_inkrain": "墨尽雨洗", "e6_peony": "残红", "e7_fireflies": "萤火消晨", "e8_reeds": "芦花残阳", "f1_snowhut": "雪庐笑饮", "f2_icicle": "冰棱断", "f3_pines": "雪林足迹", "f4_window": "临窗望雪", "f5_inkstream": "雪谷墨溪", "f6_jetty": "残荷空渡", "f7_sundial": "白首如烛", "f8_redplain": "天地皆红", "o1_thaw": "春回", "o2_depart": "远去", "o3_seal": "落款"};
 })();
