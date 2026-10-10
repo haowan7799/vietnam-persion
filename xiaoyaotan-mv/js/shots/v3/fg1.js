@@ -246,7 +246,7 @@
       g.beginPath(); g.moveTo(top[0] - 0.2, top[1]); g.lineTo(tip[0] - 0.2, tip[1]); g.stroke();
       g.restore();
     }
-    // 船、篙、人：画进临时画布（只画一次），正像与倒影都从这里取
+    // 船与人：画进临时画布（只画一次），正像与倒影都从这里取（本船无乌篷，back 层不画东西，篙放在画布外不改变前后关系）
     const GX = 230, GY = 210, GW = LEN + 2 * GX, GH = GY + 16;
     function groupCanvas(lt) {
       const bx = boatX(lt);
@@ -254,8 +254,8 @@
       const sc = scratch('fg1_i2_grp', GW, GH);
       const g = sc.g;
       g.translate(-ox, -oy);
+      // 篙不画进这里：正像里篙直接画在画面上（在本画布之前，人和船身照样压住它）；倒影里篙单独画成一根连续的线
       const m = SIL.boat(g, bx, DECK, LEN, lt, { layer: 'back', body: '#29231c', rim: RIM, rimSide: 1 });
-      drawPole(g, lt);
       SIL.draw(g, 'boatman', 'pole', bx + BMX, DECK, FH, lt + TB0, { facing: 1, boat: m, rim: RIM, rimSide: 1, wind: 0.25, windDir: -1, waterDepth: -10 * FH, body: BODY });
       // 远景里的归人用端坐的背影（sitBack）：上身直、圆头顶一个白髻，没有举到嘴边的手臂（sitBoat 的饮酒手臂在 20 px 高时像鸟喙）
       SIL.draw(g, 'old', 'sitBack', bx + OLDX, DECK, FH, lt + 1.7, { facing: 1, boat: m, rim: RIM, rimSide: 1, rimWidth: 1, wind: 0.35, windDir: -1, body: BODY });
@@ -596,18 +596,43 @@
         g.restore();
         // 船与倒影
         const grp = groupCanvas(lt);
-        // 倒影：沿水面线翻转，条带错动，半透明
-        g.save();
-        g.beginPath(); g.rect(0, WY, W, H - WY); g.clip();
-        const rows = GY;
-        for (let y = 0; y < rows; y += 2) {
-          const k = y / rows;
-          g.globalAlpha = 0.54 * (1 - 0.55 * k);
-          const dx = (0.25 + 1.5 * k) * Math.sin(y * 0.16 + lt * 2.1) + (0.15 + 0.7 * k) * Math.sin(y * 0.07 - lt * 1.4 + 1.1);
-          const sy = GY - y - 2; // 源图里水面线以上第 y 行
-          g.drawImage(grp.c, 0, Math.max(0, sy * S), grp.c.width, 2 * S, grp.ox + dx, WY + y, GW, 2);
+        // 倒影：沿水面线翻转，条带错动，半透明。先在临时层里画篙的倒影（一根连续的细线，随各行的错动轻轻弯），
+        // 再把船与人的倒影条带不透明地盖上去（船身照样挡住篙），最后整层按深度渐淡贴回
+        const pr = scratch('fg1_i2_refl', GW, GY);
+        const rg = pr.g;
+        rg.translate(-grp.ox, 0);
+        const rdx = (y) => { const k = y / GY; return (0.25 + 1.5 * k) * Math.sin(y * 0.16 + lt * 2.1) + (0.15 + 0.7 * k) * Math.sin(y * 0.07 - lt * 1.4 + 1.1); };
+        {
+          const P = poleAt(lt), tip = tipOf(P);
+          const ux = -Math.sin(P.phi), uy = Math.cos(P.phi);
+          const top = [tip[0] - LP * ux, tip[1] - LP * uy];
+          // 只取水面以上的一段：篙尖在水下时截到入水点
+          const sEnd = tip[1] > WY ? (WY - top[1]) / uy : LP;
+          if (sEnd > 1) {
+            const N = 36, pts = [];
+            for (let k = 0; k <= N; k++) {
+              const sx = top[0] + ux * sEnd * (k / N), d = WY - (top[1] + uy * sEnd * (k / N));
+              pts.push([sx + rdx(Math.max(0, d)), d]);
+            }
+            rg.lineCap = 'round'; rg.lineJoin = 'round';
+            for (const [col, lw, ox] of [[rgba(RIM, 0.75), 1.5, 0.5], [mix(BODY, '#5a4632', 0.35), 1.25, -0.2]]) {
+              rg.strokeStyle = col; rg.lineWidth = lw;
+              rg.beginPath(); pts.forEach((q, k) => (k ? rg.lineTo(q[0] + ox, q[1]) : rg.moveTo(q[0] + ox, q[1]))); rg.stroke();
+            }
+          }
         }
-        g.restore();
+        for (let y = 0; y < GY; y += 2) {
+          const sy = GY - y - 2; // 源图里水面线以上第 y 行
+          rg.drawImage(grp.c, 0, Math.max(0, sy * S), grp.c.width, 2 * S, grp.ox + rdx(y), y, GW, 2);
+        }
+        // 透明度随深度线性变淡：0.54 → 0.54×0.45
+        rg.setTransform(1, 0, 0, 1, 0, 0);
+        rg.globalCompositeOperation = 'destination-in';
+        const rgr = rg.createLinearGradient(0, 0, 0, pr.c.height);
+        rgr.addColorStop(0, 'rgba(0,0,0,0.54)'); rgr.addColorStop(1, `rgba(0,0,0,${(0.54 * 0.45).toFixed(3)})`);
+        rg.fillStyle = rgr; rg.fillRect(0, 0, pr.c.width, pr.c.height);
+        rg.globalCompositeOperation = 'source-over';
+        g.drawImage(pr.c, grp.ox, WY, GW, GY);
         // 篙尖出入水的涟漪：钉在世界坐标里，原地扩散、淡去
         const tbNow = lt + TB0, nNow = Math.floor((tbNow - PA * 2) / 2);
         g.save();
@@ -654,7 +679,8 @@
           }
         }
         g.restore();
-        // 正像
+        // 正像：先画篙（只画水面以上），再盖船与人——篙从船夫两拳之间穿过、在船身后入水
+        drawPole(g, lt);
         g.drawImage(grp.c, grp.ox, grp.oy, GW, GH);
         // 低雾：岸边（0.15）与水上（0.3）
         drawBand(g, B[1], MP, 396, 74, lt, 6, -1, 0.5);
